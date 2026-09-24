@@ -81,6 +81,7 @@ def test_openai_wrapper_tool_loop_offline() -> None:
     _, _, _, messages, _ = pipeline.query("What is my balance?", FunctionsRuntime(suite.tools), environment)
 
     assert len(requests) == 2
+    assert requests[0]["temperature"] == 0.0
     assert any(tool["function"]["name"] == "get_balance" for tool in requests[0]["tools"])
     tool_messages = [m for m in messages if m["role"] == "tool"]
     assert len(tool_messages) == 1

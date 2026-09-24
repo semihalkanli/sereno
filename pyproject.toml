@@ -40,3 +40,6 @@ testpaths = ["tests"]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"
+
+[tool.uv.sources]
+agentdojo = { git = "https://github.com/ethz-spylab/agentdojo", rev = "089ed468cf3ed0322acc66b0211f26d9d90dbf60" }

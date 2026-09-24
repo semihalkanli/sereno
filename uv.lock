@@ -9,7 +9,7 @@ resolution-markers = [
 [[package]]
 name = "agentdojo"
 version = "0.1.35"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/ethz-spylab/agentdojo?rev=089ed468cf3ed0322acc66b0211f26d9d90dbf60#089ed468cf3ed0322acc66b0211f26d9d90dbf60" }
 dependencies = [
     { name = "anthropic" },
     { name = "click" },
@@ -25,10 +25,6 @@ dependencies = [
     { name = "rich" },
     { name = "tenacity" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8a/dc/2cc783d46c73297c15127d3b7971d7ba7b5cb782bf36a8b240079f7df61d/agentdojo-0.1.35.tar.gz", hash = "sha256:9eacbc89d996f8656b235ad7b626bcf840b1ace7101174ca62d790c7c6d62956", size = 720411, upload-time = "2025-10-27T18:11:06.097Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/a0/371be72fdd08bbae0c3c5cd22e6b35390f35c9cbe189d14b72e49058bd4b/agentdojo-0.1.35-py3-none-any.whl", hash = "sha256:364bea4219716b716bf639f504d195943f7f6a5535d312ca41d7098704a2affd", size = 192363, upload-time = "2025-10-27T18:11:04.815Z" },
 ]
 
 [[package]]
@@ -1439,7 +1435,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agentdojo", specifier = ">=0.1.35,<0.2" },
+    { name = "agentdojo", git = "https://github.com/ethz-spylab/agentdojo?rev=089ed468cf3ed0322acc66b0211f26d9d90dbf60" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
 ]
 
