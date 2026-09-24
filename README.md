@@ -11,5 +11,13 @@ measure it. Both are at an early stage.
 
 ```sh
 uv sync
+cp .env.example .env   # then fill in OPENROUTER_API_KEY
 uv run sereno
+```
+
+## Development
+
+```sh
+uv run pytest
+uv run ruff format . && uv run ruff check .
 ```

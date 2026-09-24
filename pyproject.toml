@@ -7,7 +7,10 @@ authors = [
     { name = "Semih Alkanli", email = "alkanlisemih@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "agentdojo>=0.1.35,<0.2",
+    "python-dotenv>=1.2.3",
+]
 
 [project.scripts]
 sereno = "sereno:main"
@@ -15,3 +18,25 @@ sereno = "sereno:main"
 [build-system]
 requires = ["uv_build>=0.12.9,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
