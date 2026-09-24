@@ -21,3 +21,17 @@ uv run sereno
 uv run pytest
 uv run ruff format . && uv run ruff check .
 ```
+
+## Cost tracking
+
+Every paid run goes through the cost wrapper, which records the usage OpenRouter
+returns with each completion and appends one row per run to
+`runs/cost/ledger.jsonl`:
+
+```sh
+uv run scripts/cost.py run --label <label> -- <command> [args...]
+uv run scripts/cost.py report
+```
+
+The wrapped command can use any Python environment, including the separate
+AgentDyn checkout (`uv run --project ~/sereno-agentdyn/AgentDyn ...`).
