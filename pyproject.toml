@@ -1,0 +1,17 @@
+[project]
+name = "sereno"
+version = "0.1.0"
+description = "A long-horizon LLM agent that resists persistent prompt injection through provenance-aware memory and orchestration."
+readme = "README.md"
+authors = [
+    { name = "Semih Alkanli", email = "alkanlisemih@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+sereno = "sereno:main"
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"
