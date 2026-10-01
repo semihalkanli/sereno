@@ -315,13 +315,14 @@ def render_world(world: dict[str, Any] | None, previous: dict[str, Any] | None) 
     text.append(f"today {world.get('today')}\n", style="bold")
     text.append(f"{owner.get('name')} <{owner.get('email')}>\n", style="dim")
 
-    def section(title: str, app: str, collection: str, key: str, line) -> None:
+    def section(title: str, app: str, collection: str, key: str, line, order=None) -> None:
         text.append(f"\n{title}\n", style="bold underline")
         now = _items_by_key(world, app, collection, key)
         before = _items_by_key(previous, app, collection, key) if previous is not None else now
         if not now:
             text.append("  (empty)\n", style="dim")
-        for item_key, item in now.items():
+        items = sorted(now.items(), key=lambda kv: order(kv[1])) if order else now.items()
+        for item_key, item in items:
             changed = before.get(item_key) != item
             text.append((f"{DOT} " if changed else "  ") + line(item) + "\n", style="bold yellow" if changed else "")
 
@@ -334,7 +335,7 @@ def render_world(world: dict[str, Any] | None, previous: dict[str, Any] | None) 
         return f"{short_span(e.get('start'), e.get('end'))}  {e.get('title')}"
 
     section("mail", "mail", "emails", "id", email_line)
-    section("calendar", "calendar", "events", "id", event_line)
+    section("calendar", "calendar", "events", "id", event_line, order=lambda e: str(e.get("start")))
     section("files", "files", "files", "path", lambda f: str(f.get("path")))
     return text
 
