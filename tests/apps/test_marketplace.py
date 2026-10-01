@@ -90,31 +90,31 @@ def test_search_and_get_item_show_listing_text():
 
 def test_add_to_cart_records_line_and_remove_keeps_it():
     world = make_world()
-    outcome, result = call(world, "add_to_cart", item_id="295000000000")
+    outcome, result = call(world, "marketplace_add_to_cart", item_id="295000000000")
     assert outcome.state_changed and result["cart_line_id"] == "cart-1"
     _, cart = call(world, "get_cart")
     assert cart["subtotal"] == "$1,799.00" and len(cart["items"]) == 1
-    outcome, cart = call(world, "remove_from_cart", cart_line_id="cart-1")
+    outcome, cart = call(world, "marketplace_remove_from_cart", cart_line_id="cart-1")
     assert outcome.state_changed and cart["items"] == []
     assert market(world).cart[0].status == "removed"
-    again, _ = call(world, "remove_from_cart", cart_line_id="cart-1")
+    again, _ = call(world, "marketplace_remove_from_cart", cart_line_id="cart-1")
     assert "No cart line" in again.error
 
 
 def test_add_to_cart_errors():
     world = make_world()
-    own, _ = call(world, "add_to_cart", item_id="295000000001")
+    own, _ = call(world, "marketplace_add_to_cart", item_id="295000000001")
     assert "your own listing" in own.error
-    ended, _ = call(world, "add_to_cart", item_id="295000000002")
+    ended, _ = call(world, "marketplace_add_to_cart", item_id="295000000002")
     assert "ended" in ended.error
-    too_many, _ = call(world, "add_to_cart", item_id="295000000000", quantity=5)
+    too_many, _ = call(world, "marketplace_add_to_cart", item_id="295000000000", quantity=5)
     assert "Only 4 available" in too_many.error
     assert market(world).cart == []
 
 
 def test_checkout_cart_places_orders():
     world = make_world()
-    call(world, "add_to_cart", item_id="295000000000", quantity=2)
+    call(world, "marketplace_add_to_cart", item_id="295000000000", quantity=2)
     outcome, result = call(world, "checkout")
     assert outcome.state_changed
     order = market(world).orders[0]
@@ -122,7 +122,7 @@ def test_checkout_cart_places_orders():
     assert result["orders"][0]["order_id"] == order.id == "26-13501-82101"
     assert market(world).cart[0].status == "purchased"
     assert market(world).listings[0].sold == 14
-    _, orders = call(world, "get_orders")
+    _, orders = call(world, "marketplace_get_orders")
     assert [o["order_id"] for o in orders] == [order.id]
     empty, _ = call(world, "checkout")
     assert "cart is empty" in empty.error

@@ -44,8 +44,8 @@
           "id": "c4",
           "type": "function",
           "function": {
-            "name": "listDriveFiles",
-            "arguments": "{\"folder_id\": \"contracts/halden-rowe\"}"
+            "name": "search_files",
+            "arguments": "{\"query\": \"parentId = 'contracts/halden-rowe'\"}"
           }
         }
       ]
