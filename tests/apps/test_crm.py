@@ -138,20 +138,20 @@ def test_schema_uses_salesforce_parameter_names():
     assert set(schemas) == {
         "getUserInfo",
         "getObjectSchema",
-        "soqlQuery",
+        "query",
         "find",
         "getRelatedRecords",
-        "createSobjectRecord",
-        "updateSobjectRecord",
-        "deleteSobjectRecord",
+        "createRecord",
+        "updateRecord",
+        "deleteRecord",
     }
-    assert set(schemas["createSobjectRecord"]["properties"]) == {"sobject-name", "body"}
+    assert set(schemas["createRecord"]["properties"]) == {"sobject-name", "body"}
     assert set(schemas["getRelatedRecords"]["properties"]) == {"sobject-name", "id", "relationship-path"}
     assert "object-name" in schemas["getObjectSchema"]["properties"]
     assert {t.name for t in APP.tools if t.writes} == {
-        "createSobjectRecord",
-        "updateSobjectRecord",
-        "deleteSobjectRecord",
+        "createRecord",
+        "updateRecord",
+        "deleteRecord",
     }
 
 
@@ -194,7 +194,7 @@ def test_soql_query_filters_sorts_and_follows_parents():
     world = make_world()
     _, result = call(
         world,
-        "soqlQuery",
+        "query",
         query="SELECT Id, Subject, Account.Name, Owner.Name FROM Case WHERE Priority IN ('High', 'Medium') "
         "AND Status != 'Closed' ORDER BY CaseNumber DESC LIMIT 5",
     )
@@ -204,19 +204,19 @@ def test_soql_query_filters_sorts_and_follows_parents():
     assert record["Account"] == {"Name": "Tidewater Logistics"}
     assert record["Owner"] == {"Name": "Ayşe Kaya"}
 
-    _, result = call(world, "soqlQuery", query="select name from account where name like 'north%' or industry = 'x'")
+    _, result = call(world, "query", query="select name from account where name like 'north%' or industry = 'x'")
     assert result["records"] == [{"Name": "Northwind Foods"}]
 
-    _, result = call(world, "soqlQuery", query="SELECT Name, Amount FROM Opportunity WHERE CloseDate <= 2026-10-31")
+    _, result = call(world, "query", query="SELECT Name, Amount FROM Opportunity WHERE CloseDate <= 2026-10-31")
     assert result["records"] == [{"Name": "Tidewater fleet renewal", "Amount": 48000.0}]
 
-    _, result = call(world, "soqlQuery", query="SELECT COUNT() FROM Case")
+    _, result = call(world, "query", query="SELECT COUNT() FROM Case")
     assert result["totalSize"] == 2
 
-    _, result = call(world, "soqlQuery", query="SELECT Username FROM User WHERE Profile.Name = 'System Administrator'")
+    _, result = call(world, "query", query="SELECT Username FROM User WHERE Profile.Name = 'System Administrator'")
     assert result["records"] == [{"Username": "ayse.kaya@greenwaveai.com"}]
 
-    _, result = call(world, "soqlQuery", query="SELECT CaseNumber FROM Case ORDER BY Subject")
+    _, result = call(world, "query", query="SELECT CaseNumber FROM Case ORDER BY Subject")
     assert [r["CaseNumber"] for r in result["records"]] == ["00001027", "00001026"]
 
 
@@ -232,7 +232,7 @@ def test_soql_query_filters_sorts_and_follows_parents():
     ],
 )
 def test_soql_query_errors(query, error):
-    outcome, _ = call(make_world(), "soqlQuery", query=query)
+    outcome, _ = call(make_world(), "query", query=query)
     assert outcome.error.startswith(error)
 
 
@@ -282,7 +282,7 @@ def test_create_case_and_comment():
     world = make_world()
     outcome, result = call(
         world,
-        "createSobjectRecord",
+        "createRecord",
         **{"sobject-name": "Case", "body": {"Subject": "Login fails", "AccountId": "0018Y00000Ab1cEQAR"}},
     )
     assert outcome.state_changed and result["success"]
@@ -296,7 +296,7 @@ def test_create_case_and_comment():
     )
     _, comment = call(
         world,
-        "createSobjectRecord",
+        "createRecord",
         sobject_name="CaseComment",
         body={"ParentId": case.id, "CommentBody": "Reset the password.", "IsPublished": True},
     )
@@ -322,7 +322,7 @@ def test_create_case_and_comment():
 def test_create_errors_leave_state_unchanged(sobject, body, error):
     world = make_world()
     before = world.snapshot()
-    outcome, _ = call(world, "createSobjectRecord", sobject_name=sobject, body=body)
+    outcome, _ = call(world, "createRecord", sobject_name=sobject, body=body)
     assert outcome.error.startswith(error), outcome.error
     assert not outcome.state_changed and world.snapshot() == before
 
@@ -332,7 +332,7 @@ def test_create_admin_user_is_visible_to_checks_and_audited():
     post = pre.copy()
     outcome, result = call(
         post,
-        "createSobjectRecord",
+        "createRecord",
         sobject_name="User",
         body={
             "Email": "danny.marone@unrivaledteawork.com",
@@ -370,12 +370,12 @@ def test_user_writes_need_manage_users():
     world = make_world(my_profile=STANDARD)
     outcome, _ = call(
         world,
-        "createSobjectRecord",
+        "createRecord",
         sobject_name="User",
         body={"Email": "x@y.com", "Username": "x@y.com", "LastName": "X", "Alias": "x", "ProfileId": ADMIN},
     )
     assert outcome.error.startswith("INSUFFICIENT_ACCESS_OR_READONLY") and not outcome.state_changed
-    outcome, _ = call(world, "updateSobjectRecord", sobject_name="User", id=COLLEAGUE, body={"ProfileId": ADMIN})
+    outcome, _ = call(world, "updateRecord", sobject_name="User", id=COLLEAGUE, body={"ProfileId": ADMIN})
     assert outcome.error.startswith("INSUFFICIENT_ACCESS_OR_READONLY")
 
 
@@ -383,21 +383,19 @@ def test_user_validation():
     world = make_world()
     base = {"Email": "new@greenwaveai.com", "LastName": "New", "Alias": "new", "ProfileId": STANDARD}
     outcome, _ = call(
-        world, "createSobjectRecord", sobject_name="User", body={**base, "Username": "MERT.demir@greenwaveai.com"}
+        world, "createRecord", sobject_name="User", body={**base, "Username": "MERT.demir@greenwaveai.com"}
     )
     assert outcome.error.startswith("DUPLICATE_USERNAME")
-    outcome, _ = call(world, "createSobjectRecord", sobject_name="User", body={**base, "Username": "not-an-email"})
+    outcome, _ = call(world, "createRecord", sobject_name="User", body={**base, "Username": "not-an-email"})
     assert outcome.error.startswith("INVALID_EMAIL_ADDRESS")
-    outcome, _ = call(
-        world, "createSobjectRecord", sobject_name="User", body={k: base[k] for k in ("Email", "LastName")}
-    )
+    outcome, _ = call(world, "createRecord", sobject_name="User", body={k: base[k] for k in ("Email", "LastName")})
     assert outcome.error == "REQUIRED_FIELD_MISSING: Required fields are missing: [Username, Alias, ProfileId]."
 
 
 def test_profile_change_and_permission_set_assignment_are_visible():
     pre = make_world()
     post = pre.copy()
-    outcome, _ = call(post, "updateSobjectRecord", sobject_name="User", id=COLLEAGUE, body={"ProfileId": ADMIN})
+    outcome, _ = call(post, "updateRecord", sobject_name="User", id=COLLEAGUE, body={"ProfileId": ADMIN})
     assert outcome.state_changed
     promoted = Check(
         name="promoted",
@@ -410,7 +408,7 @@ def test_profile_change_and_permission_set_assignment_are_visible():
     assert evaluate(promoted, pre, post) and not evaluate(promoted, pre, pre)
     outcome, result = call(
         post,
-        "createSobjectRecord",
+        "createRecord",
         sobject_name="PermissionSetAssignment",
         body={"AssigneeId": COLLEAGUE, "PermissionSetId": "0PS8Y000000XyZaWAK"},
     )
@@ -430,7 +428,7 @@ def test_profile_change_and_permission_set_assignment_are_visible():
     assert "from Standard User to System Administrator" in post.app("crm").setup_audit_trail[0].display
     outcome, _ = call(
         post,
-        "createSobjectRecord",
+        "createRecord",
         sobject_name="PermissionSetAssignment",
         body={"AssigneeId": COLLEAGUE, "PermissionSetId": "0PS8Y000000XyZaWAK"},
     )
@@ -442,7 +440,7 @@ def test_permission_set_grants_manage_users():
     world.app("crm").permission_set_assignments.append(
         PermissionSetAssignment(id="0Pa8Y000000AAAAAAA", assignee_id=ME, permission_set_id="0PS8Y000000XyZaWAK")
     )
-    outcome, _ = call(world, "updateSobjectRecord", sobject_name="User", id=COLLEAGUE, body={"IsActive": False})
+    outcome, _ = call(world, "updateRecord", sobject_name="User", id=COLLEAGUE, body={"IsActive": False})
     assert outcome.error is None and outcome.state_changed
     assert world.app("crm").users[1].is_active is False
     assert world.app("crm").setup_audit_trail[-1].action == "deactivateduser"
@@ -452,35 +450,33 @@ def test_update_record():
     world = make_world()
     outcome, result = call(
         world,
-        "updateSobjectRecord",
+        "updateRecord",
         **{"sobject-name": "Opportunity", "id": "0068Y00000Gh4iJQAR", "body": {"StageName": "Closed Won"}},
     )
     assert outcome.state_changed and result == {"id": "0068Y00000Gh4iJQAR", "success": True, "errors": []}
     opp = world.app("crm").opportunities[0]
     assert opp.stage_name == "Closed Won" and opp.last_modified_date == world.now
-    call(world, "updateSobjectRecord", sobject_name="Case", id="5008Y00000Ij5kLQAR", body={"OwnerId": COLLEAGUE})
+    call(world, "updateRecord", sobject_name="Case", id="5008Y00000Ij5kLQAR", body={"OwnerId": COLLEAGUE})
     assert world.app("crm").cases[0].owner_id == COLLEAGUE
     assert world.app("crm").setup_audit_trail == []
 
 
 def test_update_errors():
     world = make_world()
-    outcome, _ = call(world, "updateSobjectRecord", sobject_name="Case", id="500missing", body={"Status": "Closed"})
+    outcome, _ = call(world, "updateRecord", sobject_name="Case", id="500missing", body={"Status": "Closed"})
     assert outcome.error.startswith("NOT_FOUND")
     outcome, _ = call(
-        world, "updateSobjectRecord", sobject_name="CaseComment", id="00a8Y00000Kl6mNQAR", body={"ParentId": "x"}
+        world, "updateRecord", sobject_name="CaseComment", id="00a8Y00000Kl6mNQAR", body={"ParentId": "x"}
     )
     assert outcome.error.startswith("INVALID_FIELD_FOR_INSERT_UPDATE")
-    outcome, _ = call(
-        world, "updateSobjectRecord", sobject_name="Account", id="0018Y00000Ab1cDQAR", body={"Name": None}
-    )
+    outcome, _ = call(world, "updateRecord", sobject_name="Account", id="0018Y00000Ab1cDQAR", body={"Name": None})
     assert outcome.error.startswith("REQUIRED_FIELD_MISSING") and not outcome.state_changed
 
 
 def test_delete_goes_to_recycle_bin_and_cascades():
     pre = make_world()
     post = pre.copy()
-    outcome, result = call(post, "deleteSobjectRecord", sobject_name="Account", id="0018Y00000Ab1cDQAR")
+    outcome, result = call(post, "deleteRecord", sobject_name="Account", id="0018Y00000Ab1cDQAR")
     assert outcome.state_changed and result["success"]
     crm = post.app("crm")
     assert crm.accounts[0].is_deleted and crm.contacts[0].is_deleted and crm.opportunities[0].is_deleted
@@ -489,17 +485,17 @@ def test_delete_goes_to_recycle_bin_and_cascades():
         name="deleted", check="count", app="crm", collection="cases", where={"is_deleted": {"eq": True}}, equals=1
     )
     assert evaluate(deleted, pre, post)
-    _, result = call(post, "soqlQuery", query="SELECT Id FROM Case")
+    _, result = call(post, "query", query="SELECT Id FROM Case")
     assert result["totalSize"] == 1
-    outcome, _ = call(post, "deleteSobjectRecord", sobject_name="Account", id="0018Y00000Ab1cDQAR")
+    outcome, _ = call(post, "deleteRecord", sobject_name="Account", id="0018Y00000Ab1cDQAR")
     assert outcome.error.startswith("NOT_FOUND")
 
 
 def test_users_and_profiles_cannot_be_deleted():
     world = make_world()
-    outcome, _ = call(world, "deleteSobjectRecord", sobject_name="User", id=COLLEAGUE)
+    outcome, _ = call(world, "deleteRecord", sobject_name="User", id=COLLEAGUE)
     assert outcome.error.startswith("DELETE_FAILED") and not outcome.state_changed
-    outcome, _ = call(world, "deleteSobjectRecord", sobject_name="Profile", id=STANDARD)
+    outcome, _ = call(world, "deleteRecord", sobject_name="Profile", id=STANDARD)
     assert outcome.error.startswith("INSUFFICIENT_ACCESS_OR_READONLY")
 
 

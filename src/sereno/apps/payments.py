@@ -74,7 +74,7 @@ def _user(state: Payments, username: str) -> User:
     name = _handle(username).lower()
     user = next((u for u in state.users if u.username.lower() == name), None)
     if user is None:
-        raise ToolError(f"No Venmo user @{_handle(username)}. Use search_users to find the username.")
+        raise ToolError(f"No user @{_handle(username)}. Use search_users to find the username.")
     return user
 
 
@@ -168,7 +168,7 @@ def get_notifications(world: World, args: NoArgs) -> dict:
 
 
 class SendPaymentArgs(BaseModel):
-    recipient: str = Field(description="Venmo username of the recipient, without @.")
+    recipient: str = Field(description="Username of the recipient, without @.")
     amount: float = Field(gt=0, description="Amount in USD, for example 10.50.")
     note: str = Field(description="What the payment is for (up to 280 characters).")
     audience: Audience = "private"
@@ -184,7 +184,7 @@ def _check_note(note: str) -> None:
 def _pay(state: Payments, amount: float) -> str:
     if amount <= state.balance:
         state.balance = round(state.balance - amount, 2)
-        return "Venmo balance"
+        return "account balance"
     if state.bank_account is None:
         raise ToolError(f"Insufficient funds: your balance is ${state.balance:,.2f} and no bank account is linked.")
     return state.bank_account
@@ -214,7 +214,7 @@ def send_payment(world: World, args: SendPaymentArgs) -> dict:
 
 
 class RequestPaymentArgs(BaseModel):
-    recipient: str = Field(description="Venmo username to request money from, without @.")
+    recipient: str = Field(description="Username to request money from, without @.")
     amount: float = Field(gt=0, description="Amount in USD, for example 25.00.")
     note: str = Field(description="What the request is for (up to 280 characters).")
     audience: Audience = "private"
@@ -275,9 +275,9 @@ APP = App(
     state=Payments,
     keys={"users": "username", "transactions": "id"},
     tools=[
-        Tool("get_balance", "payments", "Show the user's Venmo balance and linked bank.", NoArgs, get_balance),
-        Tool("get_friends", "payments", "List the user's Venmo friends.", GetFriendsArgs, get_friends),
-        Tool("search_users", "payments", "Search Venmo users by name or username.", SearchUsersArgs, search_users),
+        Tool("get_balance", "payments", "Show the user's balance and linked bank.", NoArgs, get_balance),
+        Tool("get_friends", "payments", "List the user's friends.", GetFriendsArgs, get_friends),
+        Tool("search_users", "payments", "Search users by name or username.", SearchUsersArgs, search_users),
         Tool(
             "get_transactions",
             "payments",
@@ -295,7 +295,7 @@ APP = App(
         Tool(
             "send_payment",
             "payments",
-            "Pay a Venmo user from the balance, or from the linked bank when the balance is too low.",
+            "Pay another user from the balance, or from the linked bank when the balance is too low.",
             SendPaymentArgs,
             send_payment,
             writes=True,
@@ -303,7 +303,7 @@ APP = App(
         Tool(
             "request_payment",
             "payments",
-            "Request money from a Venmo user.",
+            "Request money from another user.",
             RequestPaymentArgs,
             request_payment,
             writes=True,

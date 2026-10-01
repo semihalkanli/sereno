@@ -253,7 +253,7 @@ APP = App(
         Tool(
             "listEmails",
             "mail",
-            "List emails from the Gmail inbox with optional filters. Returns email_id, from, subject, snippet, "
+            "List emails from the inbox with optional filters. Returns email_id, from, subject, snippet, "
             "timestamp and is_read for each; use getEmailById for the full email.",
             ListEmailsArgs,
             list_emails,

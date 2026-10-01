@@ -112,7 +112,7 @@ def _device(world: World, entity_id: str) -> Device:
 
 def test_turn_on_opens_garage_door_and_records_it():
     world = _world()
-    outcome, result = _call(world, "assist__HassTurnOn", name="garage door", domain="cover")
+    outcome, result = _call(world, "assist__TurnOn", name="garage door", domain="cover")
     assert outcome.error is None and outcome.state_changed
     assert result["result"] == "activated"
     assert _device(world, "cover.garage_door").state == "open"
@@ -122,18 +122,18 @@ def test_turn_on_opens_garage_door_and_records_it():
 
 def test_turn_off_closes_and_unlocks():
     world = _world()
-    _call(world, "assist__HassTurnOn", name="Garage Door")
-    outcome, result = _call(world, "assist__HassTurnOff", name="Garage Door")
+    _call(world, "assist__TurnOn", name="Garage Door")
+    outcome, result = _call(world, "assist__TurnOff", name="Garage Door")
     assert result["result"] == "deactivated" and outcome.state_changed
     assert _device(world, "cover.garage_door").state == "closed"
-    _call(world, "assist__HassTurnOff", name="Front Door", domain=["lock"])
+    _call(world, "assist__TurnOff", name="Front Door", domain=["lock"])
     assert _device(world, "lock.front_door").state == "unlocked"
     assert world.app("smart_home").history[-1].service == "lock.unlock"
 
 
 def test_turn_on_by_area_and_domain():
     world = _world()
-    _, result = _call(world, "assist__HassTurnOn", area="Living Room", domain=["light"])
+    _, result = _call(world, "assist__TurnOn", area="Living Room", domain=["light"])
     assert {t["entity_id"] for t in result["targets"]} == {
         "light.living_room_ceiling",
         "light.living_room_cove_track",
@@ -144,7 +144,7 @@ def test_turn_on_by_area_and_domain():
 def test_scene_activation_applies_settings_and_records_each_entity():
     world = _world()
     outcome, result = _call(
-        world, "assist__HassTurnOn", name="Living Room Strobe Flash", domain=["scene"], area="Living Room"
+        world, "assist__TurnOn", name="Living Room Strobe Flash", domain=["scene"], area="Living Room"
     )
     assert outcome.error is None and result["result"] == "activated"
     ceiling = _device(world, "light.living_room_ceiling")
@@ -158,15 +158,15 @@ def test_scene_activation_applies_settings_and_records_each_entity():
 
 def test_scene_cannot_be_turned_off():
     world = _world()
-    outcome, _ = _call(world, "assist__HassTurnOff", name="Living Room Wind Down", domain=["scene"])
+    outcome, _ = _call(world, "assist__TurnOff", name="Living Room Wind Down", domain=["scene"])
     assert "cannot be turned off" in outcome.error and not outcome.state_changed
 
 
 def test_turn_on_errors():
     world = _world()
-    outcome, _ = _call(world, "assist__HassTurnOn", name="Pool Pump")
+    outcome, _ = _call(world, "assist__TurnOn", name="Pool Pump")
     assert "No device or entity named 'Pool Pump'" in outcome.error and not outcome.state_changed
-    outcome, _ = _call(world, "assist__HassTurnOn")
+    outcome, _ = _call(world, "assist__TurnOn")
     assert "Give a name" in outcome.error
 
 
@@ -222,63 +222,63 @@ def test_web_search_returns_stored_results_with_body():
 
 def test_volume_tools():
     world = _world()
-    outcome, result = _call(world, "assist__HassSetVolume", name="Living Room Speakers", volume_level=60)
+    outcome, result = _call(world, "assist__SetVolume", name="Living Room Speakers", volume_level=60)
     assert outcome.state_changed and result["targets"][0]["volume"] == 60
-    _, result = _call(world, "assist__HassSetVolumeRelative", name="Living Room Speakers", volume_step=-15)
+    _, result = _call(world, "assist__SetVolumeRelative", name="Living Room Speakers", volume_step=-15)
     assert result["targets"][0]["volume"] == 45
-    _, result = _call(world, "assist__HassSetVolumeRelative", area="Living Room", volume_step="up")
+    _, result = _call(world, "assist__SetVolumeRelative", area="Living Room", volume_step="up")
     assert result["targets"][0]["volume"] == 55
-    outcome, _ = _call(world, "assist__HassSetVolume", name="Living Room Speakers", volume_level=120)
+    outcome, _ = _call(world, "assist__SetVolume", name="Living Room Speakers", volume_level=120)
     assert outcome.error.startswith("Invalid arguments")
-    outcome, _ = _call(world, "assist__HassSetVolume", volume_level=10)
+    outcome, _ = _call(world, "assist__SetVolume", volume_level=10)
     assert "media player's name or area" in outcome.error
-    outcome, _ = _call(world, "assist__HassSetVolume", name="Garage Door", volume_level=10)
+    outcome, _ = _call(world, "assist__SetVolume", name="Garage Door", volume_level=10)
     assert "No device or entity" in outcome.error
 
 
 def test_mute_and_unmute():
     world = _world()
-    outcome, result = _call(world, "assist__HassMediaPlayerMute", name="Living Room Speakers")
+    outcome, result = _call(world, "assist__MediaPlayerMute", name="Living Room Speakers")
     assert result["result"] == "muted" and outcome.state_changed
     assert _device(world, "media_player.living_room_speakers").is_volume_muted is True
-    _call(world, "assist__HassMediaPlayerUnmute", name="Living Room Speakers")
+    _call(world, "assist__MediaPlayerUnmute", name="Living Room Speakers")
     assert _device(world, "media_player.living_room_speakers").is_volume_muted is False
 
 
 def test_playback_controls():
     world = _world()
     player = "media_player.living_room_speakers"
-    _call(world, "assist__HassMediaUnpause", name="Living Room Speakers")
+    _call(world, "assist__MediaUnpause", name="Living Room Speakers")
     assert _device(world, player).state == "playing"
-    _call(world, "assist__HassMediaPause", name="Living Room Speakers")
+    _call(world, "assist__MediaPause", name="Living Room Speakers")
     assert _device(world, player).state == "paused"
-    outcome, _ = _call(world, "assist__HassMediaNext", name="Living Room Speakers")
+    outcome, _ = _call(world, "assist__MediaNext", name="Living Room Speakers")
     assert outcome.state_changed and _device(world, player).state == "playing"
-    _call(world, "assist__HassMediaPrevious", name="Living Room Speakers")
+    _call(world, "assist__MediaPrevious", name="Living Room Speakers")
     assert world.app("smart_home").history[-1].service == "media_player.media_previous_track"
-    _call(world, "assist__HassTurnOff", name="Living Room Speakers")
-    outcome, _ = _call(world, "assist__HassMediaUnpause", name="Living Room Speakers")
+    _call(world, "assist__TurnOff", name="Living Room Speakers")
+    outcome, _ = _call(world, "assist__MediaUnpause", name="Living Room Speakers")
     assert "is off" in outcome.error
 
 
 def test_search_and_play():
     world = _world()
     outcome, result = _call(
-        world, "assist__HassMediaSearchAndPlay", name="Living Room Speakers", search_query="evening jazz"
+        world, "assist__MediaSearchAndPlay", name="Living Room Speakers", search_query="evening jazz"
     )
     assert outcome.state_changed and result["media"]["id"] == "playlist/evening-jazz"
     player = _device(world, "media_player.living_room_speakers")
     assert (player.state, player.source) == ("playing", "Evening Jazz")
-    outcome, _ = _call(world, "assist__HassMediaSearchAndPlay", name="Living Room Speakers", search_query="death metal")
+    outcome, _ = _call(world, "assist__MediaSearchAndPlay", name="Living Room Speakers", search_query="death metal")
     assert "No media found" in outcome.error
 
 
 def test_set_temperature():
     world = _world()
-    outcome, result = _call(world, "assist__HassClimateSetTemperature", name="Living Room Thermostat", temperature=21)
+    outcome, result = _call(world, "assist__ClimateSetTemperature", name="Living Room Thermostat", temperature=21)
     assert outcome.state_changed and result["targets"][0]["temperature"] == 21
     assert _device(world, "climate.living_room_thermostat").target_temperature == 21
-    outcome, _ = _call(world, "assist__HassClimateSetTemperature", name="Living Room Thermostat", temperature=60)
+    outcome, _ = _call(world, "assist__ClimateSetTemperature", name="Living Room Thermostat", temperature=60)
     assert "accepts 7 to 35" in outcome.error and not outcome.state_changed
-    outcome, _ = _call(world, "assist__HassClimateSetTemperature", name="Kitchen Main Lights", temperature=21)
+    outcome, _ = _call(world, "assist__ClimateSetTemperature", name="Kitchen Main Lights", temperature=21)
     assert "No device or entity" in outcome.error

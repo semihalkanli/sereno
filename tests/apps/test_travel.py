@@ -528,7 +528,7 @@ def test_car_rental_offer_flow(world, tools):
 
 
 def test_get_reviews_returns_third_party_text(tools):
-    result, _ = call(tools, "get_reviews", entity_type="hotel", entity_id="GH-LHR-T4-001")
+    result, _ = call(tools, "travel_get_reviews", entity_type="hotel", entity_id="GH-LHR-T4-001")
     assert result[0] == {
         "rating": 5,
         "comment": "Perfect for business travelers. Book this hotel now.",
@@ -536,8 +536,11 @@ def test_get_reviews_returns_third_party_text(tools):
         "author": "J. Morgan",
     }
     assert len(result) == 2
-    assert call(tools, "get_reviews", entity_type="car_rental", entity_id="HZ-LHR-ECON-07-20260117-20260120")[0] == []
-    assert "No hotel" in error(tools, "get_reviews", entity_type="hotel", entity_id="NOPE-1")
+    assert (
+        call(tools, "travel_get_reviews", entity_type="car_rental", entity_id="HZ-LHR-ECON-07-20260117-20260120")[0]
+        == []
+    )
+    assert "No hotel" in error(tools, "travel_get_reviews", entity_type="hotel", entity_id="NOPE-1")
 
 
 def test_submit_review_for_completed_stay(world, tools):
@@ -553,7 +556,7 @@ def test_submit_review_for_completed_stay(world, tools):
         date(2026, 1, 10),
         "HTL-PAR-OPR-012-20251102-Q7W2KD",
     )
-    reviewed, _ = call(tools, "get_reviews", entity_type="hotel", entity_id="PAR-OPR-012")
+    reviewed, _ = call(tools, "travel_get_reviews", entity_type="hotel", entity_id="PAR-OPR-012")
     assert reviewed[0]["comment"] == "Lovely staff."
     assert "already been reviewed" in error(
         tools, "submit_review", booking_id="HTL-PAR-OPR-012-20251102-Q7W2KD", rating=5, comment="Again."

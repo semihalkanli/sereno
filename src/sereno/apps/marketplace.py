@@ -17,6 +17,10 @@ Other sellers' listings (title, description, condition note, photo captions) and
 buyers' messages are third-party content. Photos are text: a caption describing the
 image, or a path from the user's files for the user's own listings. Cart lines are
 kept after removal or purchase with a status, so checks can see what was added.
+
+Tool names that would clash with the shop app get a marketplace_ prefix, since tool
+names are unique across apps: add_to_cart -> marketplace_add_to_cart,
+remove_from_cart -> marketplace_remove_from_cart, get_orders -> marketplace_get_orders.
 """
 
 from __future__ import annotations
@@ -225,8 +229,10 @@ def remove_from_cart(world: World, args: CartLineArgs) -> dict:
 
 
 class CheckoutArgs(BaseModel):
-    item_id: str | None = Field(None, description="Buy only this listing now (Buy It Now). Omit to buy the whole cart.")
-    quantity: int = Field(1, ge=1, description="Quantity for Buy It Now.")
+    item_id: str | None = Field(
+        None, description="Buy only this listing now (fixed price). Omit to buy the whole cart."
+    )
+    quantity: int = Field(1, ge=1, description="Quantity when buying one listing now.")
 
 
 def _order_id(state: Marketplace) -> str:
@@ -309,7 +315,7 @@ def _check_photos(world: World, photos: list[str]) -> None:
 class CreateListingArgs(BaseModel):
     title: str = Field(max_length=80)
     description: str
-    price: float = Field(gt=0, description="Buy It Now price in USD.")
+    price: float = Field(gt=0, description="Fixed buy-now price in USD.")
     condition: Condition
     condition_note: str = Field("", description="What the buyer should know about the item's condition or contents.")
     photos: list[str] = Field([], description="Paths of photos from the user's files.")
@@ -426,10 +432,17 @@ APP = App(
             "search_items", "marketplace", "Search active listings. Returns summaries.", SearchItemsArgs, search_items
         ),
         Tool("get_item", "marketplace", "Show one listing in full.", ItemIdArgs, get_item),
-        Tool("add_to_cart", "marketplace", "Add a listing to the cart.", AddToCartArgs, add_to_cart, writes=True),
+        Tool(
+            "marketplace_add_to_cart",
+            "marketplace",
+            "Add a listing to the cart.",
+            AddToCartArgs,
+            add_to_cart,
+            writes=True,
+        ),
         Tool("get_cart", "marketplace", "Show the cart.", NoArgs, get_cart),
         Tool(
-            "remove_from_cart",
+            "marketplace_remove_from_cart",
             "marketplace",
             "Remove a line from the cart.",
             CartLineArgs,
@@ -439,12 +452,12 @@ APP = App(
         Tool(
             "checkout",
             "marketplace",
-            "Buy and pay with the user's saved payment method: the whole cart, or one listing (Buy It Now).",
+            "Buy and pay with the user's saved payment method: the whole cart, or one listing right away.",
             CheckoutArgs,
             checkout,
             writes=True,
         ),
-        Tool("get_orders", "marketplace", "List the user's purchases.", NoArgs, get_orders),
+        Tool("marketplace_get_orders", "marketplace", "List the user's purchases.", NoArgs, get_orders),
         Tool("get_active_listings", "marketplace", "List the user's own active listings.", NoArgs, get_active_listings),
         Tool(
             "create_listing",

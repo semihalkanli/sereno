@@ -107,7 +107,7 @@ def test_send_payment_from_balance_leaves_record():
         12.5,
         "lunch",
     )
-    assert payment.funding_source == "Venmo balance"
+    assert payment.funding_source == "account balance"
     assert state(world).balance == 7.5
     assert result["id"] == payment.id
 
@@ -124,7 +124,7 @@ def test_send_payment_above_balance_uses_linked_bank():
 @pytest.mark.parametrize(
     ("args", "message"),
     [
-        ({"recipient": "nobody", "amount": 5, "note": "x"}, "No Venmo user"),
+        ({"recipient": "nobody", "amount": 5, "note": "x"}, "No user @"),
         ({"recipient": "Jessica-K", "amount": 5, "note": "x"}, "yourself"),
         ({"recipient": "Mariku", "amount": 5, "note": " "}, "note is required"),
         ({"recipient": "Mariku", "amount": 5, "note": "x" * 281}, "280"),
@@ -184,6 +184,6 @@ def test_request_payment_errors_and_empty_state():
     outcome, _ = call(world, "request_payment", recipient="@jessica-k", amount=5, note="x")
     assert "yourself" in outcome.error
     unknown, _ = call(world, "request_payment", recipient="ghost", amount=5, note="x")
-    assert "No Venmo user" in unknown.error
+    assert "No user @" in unknown.error
     assert len(state(world).transactions) == 3
     assert Payments().transactions == []

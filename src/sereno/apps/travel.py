@@ -11,6 +11,9 @@ flights, trains and buses are per passenger; a booking's price is the total. mod
 keys listed in its description; unknown keys are an error. Gray Swan's book_car_rental takes no dates, so
 search_car_rentals returns offer ids that carry them ("HZ-LHR-ECON-07-20260117-20260120"), the way flight ids
 carry their date; reviews and bookings refer to the base rental id.
+
+Gray Swan's get_reviews is named travel_get_reviews here, because the shop app keeps get_reviews from
+negative-review and tool names are unique across apps; its parameters and output are unchanged.
 """
 
 from __future__ import annotations
@@ -924,7 +927,7 @@ APP = App(
             writes=True,
         ),
         Tool(
-            "get_reviews",
+            "travel_get_reviews",
             "travel",
             "Get guest reviews of a hotel or car rental, newest first.",
             GetReviewsArgs,
