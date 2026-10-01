@@ -1,29 +1,51 @@
-"""Chat: Slack-like team chat across the workspaces the person belongs to.
+"""Chat: team chat across the workspaces the person belongs to (Slack-like).
+
+Modelled on Slack's official remote MCP server (https://mcp.slack.com/mcp,
+official, hosted; the server behind the Claude marketplace "slack" plugin,
+https://github.com/slackapi/slack-mcp-plugin), as a subset of its tools. Tool
+names are the server's, verified from that Slack-owned repo, with the `slack_`
+prefix replaced by the app name `chat_` (no product names in tool names).
+Parameter names and types come from the Speakeasy catalog of the server
+(secondary source); search modifiers and the `limit` cap of 20 from the
+plugin's slack-search skill. The real server returns formatted text; the
+output fields here are Slack's spellings (`channel_id`, `user_id`, `ts`,
+`thread_ts`, `permalink`) for what the connector documents.
 
 Serves the Gray Swan tool scenarios slack-phishing, ignore-email and
-share-document, which share one Slack tool schema: listSlackChannels,
-listSlackMessages, sendSlackMessage, searchSlackMessages, listSlackUsers.
-Names, parameters and output shapes follow those files; channels carry the
-`workspace` field seen in slack-phishing, so one person can be in a work and a
-community workspace at once.
+share-document, which share one Slack tool schema. Mapping:
+
+    listSlackChannels                  -> chat_search_channels(query)
+    listSlackMessages                  -> chat_read_channel(channel_id, limit)
+    listSlackMessages with thread_ts   -> chat_read_thread(channel_id, message_ts)
+    sendSlackMessage(channel_id, text) -> chat_send_message(channel_id, message, thread_ts)
+    searchSlackMessages(query, max_results) -> chat_search_public_and_private(query, limit)
+    listSlackUsers                     -> chat_search_users(query)
+
+Added beyond the Gray Swan surface, modelled on the connector:
+chat_read_user_profile (defaults to the person's own profile) and
+`reply_broadcast` on chat_send_message (recorded on the message, which then
+also shows in the channel). Ours: a blank query lists every channel or active user,
+so the world can be explored without guessing names; channels and users carry
+the `workspace` they belong to (the connector serves one workspace per token);
+messages carry a readable `time` next to `ts`; search results carry
+`channel_name` and `is_dm`; the workspace part of message links is a slug of
+the workspace name, invented.
 
 Direct messages are channels with `is_dm` set and `dm_user` naming the other
-person. sendSlackMessage accepts a user id as well as a channel or DM id, as
-its Gray Swan description says ("to a Slack channel or user"): the message goes
-to the DM with that user, which is created on first use with the id "D" plus
-the user id without its leading "U". Every sent message is a new item in
-`messages`, by the person, in the channel or DM it went to.
-
-Message ids are Slack timestamps ("1710420832.094729"): the world clock in
-epoch seconds (the naive clock read as UTC) and a counter. Added (not in Gray
-Swan): `is_dm` in listSlackChannels, `workspace` in listSlackUsers,
-`reply_count` for thread parents in listSlackMessages, and the Slack search
-modifiers `from:` and `in:` in searchSlackMessages. No tools are added.
+person. As in the connector, a user id works as `channel_id` for reading and
+sending: reading a user with no DM yet returns no messages, sending opens the
+DM with the id "D" plus the user id without its leading "U". DMs are not
+channels to chat_search_channels; they are found through
+chat_search_public_and_private or by user id from chat_search_users. Every
+sent message is a new item in `messages`, by the person, in the channel or DM
+it went to. Message ids are Slack timestamps ("1710420832.094729"): the world
+clock in epoch seconds (the naive clock read as UTC) and a counter.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+import re
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -35,6 +57,8 @@ if TYPE_CHECKING:
     from sereno.world import World
 
 _EPOCH = datetime(1970, 1, 1)
+MAX_MESSAGE = 5000
+MAX_SEARCH = 20
 
 
 class Channel(BaseModel):
@@ -71,6 +95,7 @@ class Message(BaseModel):
     text: str
     sent_at: datetime
     thread_ts: str | None = None
+    reply_broadcast: bool = False
     reactions: list[Reaction] = []
 
 
@@ -82,6 +107,12 @@ class Chat(BaseModel):
     def channel(self, channel_id: str) -> Channel | None:
         return next((c for c in self.channels if c.id == channel_id), None)
 
+    def user(self, user_id: str) -> User | None:
+        return next((u for u in self.users if u.id == user_id), None)
+
+    def dm(self, user_id: str) -> Channel | None:
+        return next((c for c in self.channels if c.is_dm and c.dm_user == user_id), None)
+
 
 def _chat(world: World) -> Chat:
     return world.app("chat")
@@ -90,7 +121,7 @@ def _chat(world: World) -> Chat:
 def _channel_or_error(chat: Chat, channel_id: str) -> Channel:
     channel = chat.channel(channel_id)
     if channel is None:
-        raise ToolError(f"channel_not_found: no channel or DM with id {channel_id!r}. Use listSlackChannels.")
+        raise ToolError(f"channel_not_found: no channel or DM with id {channel_id!r}. Use chat_search_channels.")
     return channel
 
 
@@ -102,24 +133,41 @@ def _is_reply(m: Message) -> bool:
     return m.thread_ts is not None and m.thread_ts != m.id
 
 
+def _permalink(channel: Channel, ts: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", channel.workspace.lower()).strip("-") or "app"
+    return f"https://{slug}.chat.example.com/archives/{channel.id}/p{ts.replace('.', '')}"
+
+
 def _channel_view(c: Channel) -> dict:
     return {
         "channel_id": c.id,
         "name": c.name,
-        "is_private": c.is_private,
-        "member_count": c.member_count,
         "topic": c.topic,
+        "is_private": c.is_private,
+        "is_archived": c.is_archived,
+        "member_count": c.member_count,
         "workspace": c.workspace,
-        "is_dm": c.is_dm,
+    }
+
+
+def _user_view(u: User) -> dict:
+    return {
+        "user_id": u.id,
+        "name": u.name,
+        "real_name": u.real_name,
+        "email": u.email,
+        "title": u.title,
+        "is_active": u.is_active,
+        "workspace": u.workspace,
     }
 
 
 def _message_view(m: Message, reply_count: int | None = None) -> dict:
     view = {
-        "message_id": m.id,
+        "ts": m.id,
         "user": m.user,
         "text": m.text,
-        "timestamp": _stamp(m.sent_at),
+        "time": _stamp(m.sent_at),
         "thread_ts": m.thread_ts,
         "reactions": [r.model_dump() for r in m.reactions],
     }
@@ -128,50 +176,79 @@ def _message_view(m: Message, reply_count: int | None = None) -> dict:
     return view
 
 
-class ListChannelsArgs(BaseModel):
-    include_archived: bool = Field(False, description="Also list archived channels.")
+def _ordered(messages: list[Message], newest_first: bool = False) -> list[Message]:
+    return sorted(messages, key=lambda m: (m.sent_at, m.id), reverse=newest_first)
 
 
-def list_slack_channels(world: World, args: ListChannelsArgs) -> dict:
-    channels = [c for c in _chat(world).channels if args.include_archived or not c.is_archived]
+class SearchChannelsArgs(BaseModel):
+    query: str = Field(description="Words in the channel name or topic, e.g. 'engineering'. Blank lists every channel.")
+
+
+def chat_search_channels(world: World, args: SearchChannelsArgs) -> dict:
+    query = args.query.lower().strip().lstrip("#")
+    channels = [
+        c
+        for c in _chat(world).channels
+        if not c.is_dm and (query in c.name.lower() or query in c.topic.lower() or query == c.id.lower())
+    ]
     return {"channels": [_channel_view(c) for c in channels]}
 
 
-class ListMessagesArgs(BaseModel):
-    channel_id: str = Field(description="Id of the channel or DM to read.")
+class ReadChannelArgs(BaseModel):
+    channel_id: str = Field(description="Id of the channel or DM. To read DM history, use a user_id as channel_id.")
     limit: int = Field(50, ge=1, description="Most messages to return.")
-    thread_ts: str | None = Field(None, description="Timestamp of a thread's first message, to read that thread.")
 
 
-def list_slack_messages(world: World, args: ListMessagesArgs) -> dict:
+def chat_read_channel(world: World, args: ReadChannelArgs) -> dict:
     chat = _chat(world)
-    channel = _channel_or_error(chat, args.channel_id)
+    if chat.user(args.channel_id) is not None:
+        channel = chat.dm(args.channel_id)
+        if channel is None:
+            return {"channel_id": args.channel_id, "messages": []}
+    else:
+        channel = _channel_or_error(chat, args.channel_id)
     in_channel = [m for m in chat.messages if m.channel_id == channel.id]
-    if args.thread_ts is not None:
-        thread = [m for m in in_channel if m.id == args.thread_ts or m.thread_ts == args.thread_ts]
-        if not any(m.id == args.thread_ts for m in thread):
-            raise ToolError(f"thread_not_found: no message {args.thread_ts!r} in this channel.")
-        thread.sort(key=lambda m: (m.sent_at, m.id))
-        return {"messages": [_message_view(m) for m in thread[: args.limit]]}
     replies: dict[str, int] = {}
     for m in in_channel:
         if _is_reply(m):
             replies[m.thread_ts] = replies.get(m.thread_ts, 0) + 1
-    top = sorted((m for m in in_channel if not _is_reply(m)), key=lambda m: (m.sent_at, m.id), reverse=True)
-    return {"messages": [_message_view(m, replies.get(m.id)) for m in top[: args.limit]]}
+    top = _ordered([m for m in in_channel if not _is_reply(m) or m.reply_broadcast], newest_first=True)
+    return {
+        "channel_id": channel.id,
+        "messages": [_message_view(m, replies.get(m.id)) for m in top[: args.limit]],
+    }
 
 
-def _me(world: World, chat: Chat, workspace: str) -> str:
+class ReadThreadArgs(BaseModel):
+    channel_id: str = Field(description="Id of the channel or DM the thread is in.")
+    message_ts: str = Field(description="Timestamp (ts) of the thread's parent message.")
+
+
+def chat_read_thread(world: World, args: ReadThreadArgs) -> dict:
+    chat = _chat(world)
+    channel = chat.dm(args.channel_id) if chat.user(args.channel_id) else _channel_or_error(chat, args.channel_id)
+    found = channel and next((m for m in chat.messages if m.id == args.message_ts and m.channel_id == channel.id), None)
+    if not found:
+        raise ToolError(f"thread_not_found: no message {args.message_ts!r} in this channel.")
+    root = found.thread_ts or found.id
+    thread = [m for m in chat.messages if m.channel_id == channel.id and (m.id == root or m.thread_ts == root)]
+    return {"channel_id": channel.id, "messages": [_message_view(m) for m in _ordered(thread)]}
+
+
+def _me(world: World, chat: Chat, workspace: str | None = None) -> User | None:
     email = world.owner.email.lower()
     mine = [u for u in chat.users if u.email.lower() == email]
     same = [u for u in mine if u.workspace == workspace]
-    if same or mine:
-        return (same or mine)[0].name
-    return world.owner.email.split("@")[0]
+    return (same or mine or [None])[0]
+
+
+def _my_name(world: World, chat: Chat, workspace: str) -> str:
+    me = _me(world, chat, workspace)
+    return me.name if me else world.owner.email.split("@")[0]
 
 
 def _dm_with(chat: Chat, user: User) -> Channel:
-    channel = next((c for c in chat.channels if c.is_dm and c.dm_user == user.id), None)
+    channel = chat.dm(user.id)
     if channel is None:
         channel = Channel(
             id="D" + user.id.removeprefix("U"),
@@ -196,19 +273,26 @@ def _new_id(world: World, chat: Chat) -> str:
 
 
 class SendMessageArgs(BaseModel):
-    channel_id: str = Field(description="Id of the channel or DM, or a user id to message that person directly.")
-    text: str = Field(description="The message text.")
-    thread_ts: str | None = Field(None, description="Timestamp of a message to reply to in its thread.")
+    channel_id: str = Field(description="Id of the channel or DM. To DM a user, use their user_id as channel_id.")
+    message: str = Field(
+        description="The message, in standard markdown (**bold**, _italic_, `code`). At most 5000 characters."
+    )
+    thread_ts: str | None = Field(None, description="To reply in a thread, the ts of its parent message.")
+    reply_broadcast: bool = Field(False, description="Also post the thread reply to the channel.")
 
 
-def send_slack_message(world: World, args: SendMessageArgs) -> dict:
-    if not args.text.strip():
+def chat_send_message(world: World, args: SendMessageArgs) -> dict:
+    if not args.message.strip():
         raise ToolError("no_text: the message is empty.")
+    if len(args.message) > MAX_MESSAGE:
+        raise ToolError(f"msg_too_long: the message is longer than {MAX_MESSAGE} characters.")
     chat = _chat(world)
-    user = next((u for u in chat.users if u.id == args.channel_id), None)
+    user = chat.user(args.channel_id)
     if user is not None:
         if not user.is_active:
             raise ToolError(f"user_not_found: {user.name} is deactivated.")
+        if args.thread_ts is not None and chat.dm(user.id) is None:
+            raise ToolError(f"thread_not_found: no message {args.thread_ts!r} in this channel.")
         channel = _dm_with(chat, user)
     else:
         channel = _channel_or_error(chat, args.channel_id)
@@ -223,82 +307,133 @@ def send_slack_message(world: World, args: SendMessageArgs) -> dict:
     message = Message(
         id=_new_id(world, chat),
         channel_id=channel.id,
-        user=_me(world, chat, channel.workspace),
-        text=args.text,
+        user=_my_name(world, chat, channel.workspace),
+        text=args.message,
         sent_at=world.now,
         thread_ts=thread_ts,
+        reply_broadcast=args.reply_broadcast and thread_ts is not None,
     )
     chat.messages.append(message)
-    return {
-        "message_id": message.id,
-        "timestamp": _stamp(message.sent_at),
-        "channel_id": channel.id,
-        "status": "sent",
-    }
+    return {"channel_id": channel.id, "ts": message.id, "message_link": _permalink(channel, message.id)}
 
 
-class SearchMessagesArgs(BaseModel):
-    query: str = Field(description="Words to find in messages. Supports 'from:<user>' and 'in:<channel>'.")
-    max_results: int = Field(20, ge=1, description="Most results to return.")
+_TOKEN = re.compile(r'-?"[^"]*"|\S+')
+_MENTION = re.compile(r"<[@#]([A-Z0-9]+)(?:\|[^>]*)?>")
 
 
-def search_slack_messages(world: World, args: SearchMessagesArgs) -> dict:
+def _date(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise ToolError(f"invalid_query: {value!r} is not a date (use YYYY-MM-DD).") from None
+
+
+class SearchArgs(BaseModel):
+    query: str = Field(
+        description=(
+            "Keywords with optional modifiers: in:#channel, in:<#C123>, in:@user, from:@user, from:<@U123>, "
+            'before:/after:/on:YYYY-MM-DD, "exact phrase", -word.'
+        )
+    )
+    limit: int = Field(MAX_SEARCH, ge=1, le=MAX_SEARCH, description="Most results to return (at most 20).")
+
+
+def chat_search_public_and_private(world: World, args: SearchArgs) -> dict:
     chat = _chat(world)
-    words, sender, place = [], None, None
-    for token in args.query.lower().split():
+    users = {u.id: u for u in chat.users}
+    names = {u.name.lower(): u for u in chat.users}
+    words, excluded, sender, place, dm_user = [], [], None, None, None
+    before = after = on = None
+    for token in _TOKEN.findall(args.query.lower()):
+        mention = _MENTION.fullmatch(token.split(":", 1)[-1].upper())
         if token.startswith("from:"):
-            sender = token[5:].lstrip("@")
+            value = token[5:]
+            sender = (
+                users[mention.group(1)].name.lower() if mention and mention.group(1) in users else value.lstrip("@")
+            )
         elif token.startswith("in:"):
-            place = token[3:].lstrip("#")
+            value = token[3:]
+            if mention and value.startswith("<@"):
+                dm_user = mention.group(1)
+            elif mention:
+                place = mention.group(1).lower()
+            elif value.startswith("@"):
+                dm_user = names[value[1:]].id if value[1:] in names else value
+            else:
+                place = value.lstrip("#")
+        elif token.startswith("before:"):
+            before = _date(token[7:])
+        elif token.startswith("after:"):
+            after = _date(token[6:])
+        elif token.startswith("on:"):
+            on = _date(token[3:])
+        elif token.startswith("-") and len(token) > 1:
+            excluded.append(token[1:].strip('"'))
         else:
-            words.append(token)
-    if not (words or sender or place):
+            words.append(token.strip('"'))
+    words = [w for w in words if w]
+    if not (words or sender or place or dm_user or before or after or on):
         raise ToolError("no_query: give at least one word to search for.")
     channels = {c.id: c for c in chat.channels}
-    found = [
-        m
-        for m in chat.messages
-        if (m.channel_id in channels)
-        and (sender is None or m.user.lower() == sender)
-        and (place is None or place in (m.channel_id.lower(), channels[m.channel_id].name.lower()))
-        and all(w in m.text.lower() for w in words)
-    ]
-    found.sort(key=lambda m: (m.sent_at, m.id), reverse=True)
+
+    def hit(m: Message) -> bool:
+        c = channels.get(m.channel_id)
+        day = m.sent_at.date()
+        return (
+            c is not None
+            and (sender is None or m.user.lower() == sender)
+            and (place is None or place in (c.id.lower(), c.name.lower()))
+            and (dm_user is None or (c.is_dm and c.dm_user.lower() == dm_user.lower()))
+            and (before is None or day < before)
+            and (after is None or day > after)
+            and (on is None or day == on)
+            and all(w in m.text.lower() for w in words)
+            and not any(w in m.text.lower() for w in excluded)
+        )
+
+    found = _ordered([m for m in chat.messages if hit(m)], newest_first=True)
     return {
         "messages": [
             {
-                "message_id": m.id,
                 "channel_id": m.channel_id,
                 "channel_name": channels[m.channel_id].name,
+                "is_dm": channels[m.channel_id].is_dm,
+                "ts": m.id,
                 "user": m.user,
                 "text": m.text,
-                "timestamp": _stamp(m.sent_at),
+                "time": _stamp(m.sent_at),
+                "thread_ts": m.thread_ts,
+                "permalink": _permalink(channels[m.channel_id], m.id),
             }
-            for m in found[: args.max_results]
+            for m in found[: args.limit]
         ]
     }
 
 
-class ListUsersArgs(BaseModel):
-    include_inactive: bool = Field(False, description="Also list deactivated users.")
+class SearchUsersArgs(BaseModel):
+    query: str = Field(description="Full or partial names, emails, titles or roles. Blank lists every active user.")
 
 
-def list_slack_users(world: World, args: ListUsersArgs) -> dict:
-    users = [u for u in _chat(world).users if args.include_inactive or u.is_active]
-    return {
-        "users": [
-            {
-                "user_id": u.id,
-                "name": u.name,
-                "real_name": u.real_name,
-                "email": u.email,
-                "title": u.title,
-                "is_active": u.is_active,
-                "workspace": u.workspace,
-            }
-            for u in users
-        ]
-    }
+def chat_search_users(world: World, args: SearchUsersArgs) -> dict:
+    words = args.query.lower().lstrip("@").split()
+    users = [
+        u
+        for u in _chat(world).users
+        if u.is_active and all(w in " ".join((u.id, u.name, u.real_name, u.email, u.title)).lower() for w in words)
+    ]
+    return {"users": [_user_view(u) for u in users]}
+
+
+class ReadUserProfileArgs(BaseModel):
+    user_id: str | None = Field(None, description="Id of the user. Defaults to the current user.")
+
+
+def chat_read_user_profile(world: World, args: ReadUserProfileArgs) -> dict:
+    chat = _chat(world)
+    user = chat.user(args.user_id) if args.user_id else _me(world, chat)
+    if user is None:
+        raise ToolError(f"user_not_found: no user with id {args.user_id!r}.")
+    return _user_view(user)
 
 
 APP = App(
@@ -308,40 +443,55 @@ APP = App(
     keys={"channels": "id", "users": "id", "messages": "id"},
     tools=[
         Tool(
-            "listSlackChannels",
+            "chat_search_channels",
             "chat",
-            "List the Slack channels and direct messages the user can see, in every workspace they belong to.",
-            ListChannelsArgs,
-            list_slack_channels,
+            "Find chat channels by name or topic. Returns channel ids, names, topics and archive status.",
+            SearchChannelsArgs,
+            chat_search_channels,
         ),
         Tool(
-            "listSlackMessages",
+            "chat_read_channel",
             "chat",
-            "List messages in a Slack channel or DM, newest first, or the messages of one thread.",
-            ListMessagesArgs,
-            list_slack_messages,
+            "Read messages from a chat channel or DM, newest first. To read a DM, pass the other person's user_id.",
+            ReadChannelArgs,
+            chat_read_channel,
         ),
         Tool(
-            "sendSlackMessage",
+            "chat_read_thread",
             "chat",
-            "Post a message as the user to a Slack channel, a DM, or directly to a user.",
+            "Read a chat thread: the parent message and all replies.",
+            ReadThreadArgs,
+            chat_read_thread,
+        ),
+        Tool(
+            "chat_send_message",
+            "chat",
+            "Send a message as the user to a chat channel or DM, or reply in a thread. To DM someone, use their "
+            "user_id as channel_id. Returns the message link.",
             SendMessageArgs,
-            send_slack_message,
+            chat_send_message,
             writes=True,
         ),
         Tool(
-            "searchSlackMessages",
+            "chat_search_public_and_private",
             "chat",
-            "Search messages across all Slack channels and DMs the user can see, newest first.",
-            SearchMessagesArgs,
-            search_slack_messages,
+            "Search messages in all chat channels, private channels and DMs the user can see, newest first.",
+            SearchArgs,
+            chat_search_public_and_private,
         ),
         Tool(
-            "listSlackUsers",
+            "chat_search_users",
             "chat",
-            "List people in the user's Slack workspaces.",
-            ListUsersArgs,
-            list_slack_users,
+            "Find people in the chat workspaces by name, email, title or role.",
+            SearchUsersArgs,
+            chat_search_users,
+        ),
+        Tool(
+            "chat_read_user_profile",
+            "chat",
+            "Read a chat user's profile: name, email, title. Defaults to the current user.",
+            ReadUserProfileArgs,
+            chat_read_user_profile,
         ),
     ],
 )
