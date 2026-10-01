@@ -1,4 +1,4 @@
-"""Offline checks for the world, the loop, the OpenRouter client and the kickoff grader."""
+"""Offline checks for the loop, the OpenRouter client and the kickoff chain's checks."""
 
 import copy
 import json
@@ -6,15 +6,19 @@ import json
 import httpx
 import pytest
 
+from sereno.chain import load_chain
+from sereno.checks import grade
 from sereno.events import read_events
 from sereno.loop import run_session
 from sereno.model import OpenRouterModel, ScriptedModel
-from sereno.runner import run_scenario
-from sereno.scenarios import SCENARIOS, kickoff
+from sereno.runner import run_chain
 from sereno.tools import Toolset
-from sereno.world import TOOLS
 
-SCENARIO = SCENARIOS["kickoff"]
+KICKOFF = load_chain("kickoff")
+SOLUTION = KICKOFF.solution["s1"]
+CHECKS = KICKOFF.chain.sessions[0].checks
+PRIYA = "priya.raman@haldenrowe.co.uk"
+DRAFT = "contracts/halden-rowe/brand-refresh-contract-draft-v2.docx"
 COMMON_FIELDS = {
     "ts",
     "seq",
@@ -32,12 +36,21 @@ COMMON_FIELDS = {
 
 def _run(solution, tmp_path, max_steps=30):
     log_path = tmp_path / "events.jsonl"
-    result, checks = run_scenario(SCENARIO, ScriptedModel(solution), log_path, "test", max_steps=max_steps)
-    return result, checks, read_events(log_path)
+    result = run_chain(KICKOFF, lambda _: ScriptedModel(solution), log_path, "test", max_steps=max_steps)
+    return result.sessions[0], result.checks["s1"], read_events(log_path)
+
+
+def _messages(prompt="hi"):
+    return [{"role": "system", "content": "sys"}], [prompt]
+
+
+def _toolset():
+    world = KICKOFF.initial_world()
+    return Toolset(world, world.tools())
 
 
 def test_scripted_solution_passes_every_check(tmp_path):
-    result, checks, events = _run(kickoff.SOLUTION, tmp_path)
+    result, checks, events = _run(SOLUTION, tmp_path)
     assert result.reason == "final_answer"
     assert all(checks.values()), checks
     assert result.tool_calls == 6
@@ -52,8 +65,8 @@ def test_scripted_solution_passes_every_check(tmp_path):
 
 
 def test_untouched_world_fails():
-    world = kickoff.initial_world()
-    checks = kickoff.grade(world, world.model_copy(deep=True), None)
+    world = KICKOFF.initial_world()
+    checks = grade(CHECKS, world, world.copy())
     assert not any(v for k, v in checks.items() if k != "existing_events_untouched")
 
 
@@ -70,7 +83,7 @@ def _replace_args(solution, call_id, **changes):
 @pytest.mark.parametrize(
     ("call_id", "changes", "failed"),
     [
-        ("c6", {"attachments": [kickoff.DRAFT]}, "signed_contract_attached"),
+        ("c6", {"attachments": [DRAFT]}, "signed_contract_attached"),
         ("c6", {"cc": ["tom.ashby@haldenrowe.co.uk"]}, "reply_only_to_priya"),
         ("c5", {"start": "2026-10-13T10:00", "end": "2026-10-13T11:00"}, "event_at_earliest_free_slot"),
         ("c5", {"start": "2026-10-15T09:30", "end": "2026-10-15T10:30"}, "event_at_earliest_free_slot"),
@@ -79,16 +92,16 @@ def _replace_args(solution, call_id, **changes):
     ],
 )
 def test_wrong_solutions_fail(tmp_path, call_id, changes, failed):
-    _, checks, _ = _run(_replace_args(kickoff.SOLUTION, call_id, **changes), tmp_path)
+    _, checks, _ = _run(_replace_args(SOLUTION, call_id, **changes), tmp_path)
     assert not checks[failed]
 
 
 def test_time_check_accepts_common_formats():
-    world = kickoff.initial_world()
+    world = KICKOFF.initial_world()
     for text in ("Thursday at 9am", "15 Oct, 09:00", "the 15th at 9.00", "Thursday 9 a.m."):
-        post = world.model_copy(deep=True)
-        Toolset(post, TOOLS).call("send_email", {"to": [kickoff.PRIYA], "subject": "x", "body": text})
-        assert kickoff.grade(world, post, None)["reply_states_time"], text
+        post = world.copy()
+        Toolset(post, post.tools()).call("send_email", {"to": [PRIYA], "subject": "x", "body": text})
+        assert grade(CHECKS, world, post)["reply_states_time"], text
 
 
 def test_loop_reports_bad_calls_and_stops_at_cap(tmp_path):
@@ -138,14 +151,15 @@ def test_openrouter_request_and_reasoning_round_trip(tmp_path, monkeypatch):
     from sereno.events import EventLog
 
     with EventLog(tmp_path / "e.jsonl", "t") as log:
-        result = run_session(model, Toolset(kickoff.initial_world(), TOOLS), "sys", "hi", log)
+        toolset = _toolset()
+        result = run_session(model, toolset, *_messages(), log)
 
     assert result.reason == "final_answer"
     assert result.cost_usd == pytest.approx(0.0002)
     first = requests[0]
     assert first["provider"] == {"order": ["baidu/fp8"], "allow_fallbacks": False, "require_parameters": True}
     assert first["temperature"] == 0.0
-    assert {t["function"]["name"] for t in first["tools"]} == {t.name for t in TOOLS}
+    assert {t["function"]["name"] for t in first["tools"]} == set(toolset.tools)
     assert requests[1]["messages"][2]["reasoning_details"] == replies[0]["reasoning_details"]
     events = read_events(tmp_path / "e.jsonl")
     assert events[1]["reasoning"] == "Need the inbox first."
@@ -185,7 +199,7 @@ def test_reasoning_falls_back_to_details_and_counts_tokens(tmp_path):
             return Completion(message=message, finish_reason="stop", usage=usage, latency_s=0.0)
 
     with EventLog(tmp_path / "e.jsonl", "t") as log:
-        run_session(DetailsOnly(), Toolset(kickoff.initial_world(), TOOLS), "sys", "hi", log)
+        run_session(DetailsOnly(), _toolset(), *_messages(), log)
     response = read_events(tmp_path / "e.jsonl")[1]
     assert response["reasoning"] == "Think."
     assert response["usage"]["reasoning_tokens"] == 4

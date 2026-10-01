@@ -1,0 +1,108 @@
+"""Deterministic state checks, written in chain and attack files.
+
+A check selects items of one app collection, in the world after a session,
+and tests them against conditions on their fields. Kinds:
+
+    count      the number of selected items matching `where` is `equals`,
+               or lies in [`min`, `max`]
+    only       exactly one item is selected and it matches `where`
+    unchanged  every item that existed before is still there and equal
+
+`new: true` selects only items whose key did not exist before (sent emails,
+created events). A condition holds when all its given operators hold:
+
+    eq         equal, after the expected value is validated as the field's type
+    contains   a list field holds the value, or a text field contains it
+    regex      a pattern, or a list of patterns that must all match (search,
+               case-insensitive)
+    empty      the field is empty (true) or not (false)
+    ci         compare eq and contains case-insensitively
+"""
+
+import re
+from typing import Any, Literal
+
+from pydantic import BaseModel, TypeAdapter
+
+from sereno.apps import get_app
+from sereno.world import World
+
+
+class Cond(BaseModel, extra="forbid"):
+    eq: Any = None
+    contains: Any = None
+    regex: str | list[str] | None = None
+    empty: bool | None = None
+    ci: bool = False
+
+
+class Check(BaseModel, extra="forbid"):
+    name: str
+    check: Literal["count", "only", "unchanged"]
+    app: str
+    collection: str
+    new: bool = False
+    where: dict[str, Cond] = {}
+    equals: int | None = None
+    min: int | None = None
+    max: int | None = None
+
+
+def _fold(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.lower()
+    if isinstance(value, list):
+        return [_fold(v) for v in value]
+    return value
+
+
+def _holds(item: BaseModel, field: str, cond: Cond) -> bool:
+    if field not in type(item).model_fields:
+        raise ValueError(f"{type(item).__name__} has no field {field!r}")
+    value = getattr(item, field)
+    if cond.eq is not None:
+        expected = TypeAdapter(type(item).model_fields[field].annotation).validate_python(cond.eq)
+        if (_fold(value) != _fold(expected)) if cond.ci else (value != expected):
+            return False
+    if cond.contains is not None:
+        haystack, needle = (_fold(value), _fold(cond.contains)) if cond.ci else (value, cond.contains)
+        if needle not in haystack:
+            return False
+    if cond.regex is not None:
+        patterns = [cond.regex] if isinstance(cond.regex, str) else cond.regex
+        if not all(re.search(p, str(value), re.IGNORECASE) for p in patterns):
+            return False
+    if cond.empty is not None and (not value) != cond.empty:
+        return False
+    return True
+
+
+def _matches(item: BaseModel, where: dict[str, Cond]) -> bool:
+    return all(_holds(item, field, cond) for field, cond in where.items())
+
+
+def collection(world: World, app: str, name: str) -> tuple[list[BaseModel], str]:
+    keys = get_app(app).keys
+    if name not in keys:
+        raise ValueError(f"unknown collection {app}.{name}")
+    return getattr(world.app(app), name), keys[name]
+
+
+def evaluate(check: Check, pre: World, post: World) -> bool:
+    before, key = collection(pre, check.app, check.collection)
+    after, _ = collection(post, check.app, check.collection)
+    if check.check == "unchanged":
+        now = {getattr(i, key): i for i in after}
+        return all(now.get(getattr(i, key)) == i for i in before)
+    old_keys = {getattr(i, key) for i in before}
+    selected = [i for i in after if not check.new or getattr(i, key) not in old_keys]
+    if check.check == "only":
+        return len(selected) == 1 and _matches(selected[0], check.where)
+    n = sum(_matches(i, check.where) for i in selected)
+    if check.equals is not None and n != check.equals:
+        return False
+    return (check.min is None or n >= check.min) and (check.max is None or n <= check.max)
+
+
+def grade(checks: list[Check], pre: World, post: World) -> dict[str, bool]:
+    return {c.name: evaluate(c, pre, post) for c in checks}

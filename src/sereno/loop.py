@@ -1,9 +1,10 @@
 """The agent loop: one session, one model, one tool set.
 
 The loop keeps the conversation in the OpenAI chat format that OpenRouter
-accepts, calls the model, runs every tool call it asks for, and repeats until
-the model answers without tool calls or the step cap is reached. Every model
-response and tool result goes to the event log.
+accepts. For each user turn it calls the model, runs every tool call it asks
+for, and repeats until the model answers without tool calls; the step cap
+covers the whole session. Every model response and tool result goes to the
+event log.
 """
 
 import json
@@ -64,80 +65,90 @@ def _history_message(message: dict[str, Any]) -> dict[str, Any]:
 def run_session(
     model: ChatModel,
     toolset: Toolset,
-    system_prompt: str,
-    user_prompt: str,
+    messages: list[dict[str, Any]],
+    turns: list[str],
     log: EventLog,
     max_steps: int = 30,
 ) -> SessionResult:
-    messages: list[dict[str, Any]] = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-    log.emit("user_message", text=user_prompt)
+    """Run the user's turns in order, after `messages` (system prompt and any history).
+
+    Each turn ends when the model answers without tool calls. `max_steps` caps the
+    model calls of the whole session; an error or the cap ends the session early.
+    """
     schemas = toolset.schemas()
     cost = 0.0
     tool_calls_run = 0
+    step = 0
+    text = None
 
-    for step in range(max_steps):
-        try:
-            completion = model.complete(messages, schemas)
-        except Exception as e:
-            log.emit("session_end", step=step, reason="error", final_text=None, error=repr(e))
-            return SessionResult("error", None, messages, step, tool_calls_run, cost)
+    for turn, user_prompt in enumerate(turns, start=1):
+        log.turn = turn
+        messages.append({"role": "user", "content": user_prompt})
+        log.emit("user_message", text=user_prompt)
+        while True:
+            if step >= max_steps:
+                log.emit("session_end", step=max_steps - 1, reason="max_steps", final_text=None)
+                return SessionResult("max_steps", None, messages, max_steps, tool_calls_run, cost)
+            try:
+                completion = model.complete(messages, schemas)
+            except Exception as e:
+                log.emit("session_end", step=step, reason="error", final_text=None, error=repr(e))
+                return SessionResult("error", None, messages, step, tool_calls_run, cost)
 
-        message = completion.message
-        calls = message.get("tool_calls") or []
-        cost += completion.usage.get("cost") or 0.0
-        log.emit(
-            "model_response",
-            step=step,
-            text=message.get("content"),
-            reasoning=_reasoning_text(message),
-            tool_calls=[
-                {"id": c.get("id"), "name": c["function"]["name"], "args": c["function"].get("arguments")}
-                for c in calls
-            ],
-            finish_reason=completion.finish_reason,
-            usage=_usage(completion.usage),
-            latency_s=completion.latency_s,
-        )
-        messages.append(_history_message(message))
-
-        if not calls:
-            text = message.get("content")
-            log.emit("session_end", step=step, reason="final_answer", final_text=text)
-            return SessionResult("final_answer", text, messages, step + 1, tool_calls_run, cost)
-
-        for call in calls:
-            name = call["function"]["name"]
-            args, parse_error = _parse_args(call["function"].get("arguments"))
-            if parse_error is None:
-                outcome = toolset.call(name, args or {})
-                result, error, provenance, changed = (
-                    outcome.result,
-                    outcome.error,
-                    outcome.provenance,
-                    outcome.state_changed,
-                )
-            else:
-                result, error, provenance, changed = "", parse_error, {"channel": f"loop.{name}"}, False
-            tool_calls_run += 1
+            message = completion.message
+            calls = message.get("tool_calls") or []
+            cost += completion.usage.get("cost") or 0.0
             log.emit(
-                "tool_result",
+                "model_response",
                 step=step,
-                provenance=provenance,
-                call_id=call.get("id"),
-                name=name,
-                args=args,
-                result=result,
-                error=error,
-                state_changed=changed,
+                text=message.get("content"),
+                reasoning=_reasoning_text(message),
+                tool_calls=[
+                    {"id": c.get("id"), "name": c["function"]["name"], "args": c["function"].get("arguments")}
+                    for c in calls
+                ],
+                finish_reason=completion.finish_reason,
+                usage=_usage(completion.usage),
+                latency_s=completion.latency_s,
             )
-            if changed:
-                log.emit("world_state", step=step, reason=name, state=toolset.world.snapshot())
-            messages.append(
-                {"role": "tool", "tool_call_id": call.get("id"), "content": f"Error: {error}" if error else result}
-            )
+            messages.append(_history_message(message))
+            step += 1
 
-    log.emit("session_end", step=max_steps - 1, reason="max_steps", final_text=None)
-    return SessionResult("max_steps", None, messages, max_steps, tool_calls_run, cost)
+            if not calls:
+                text = message.get("content")
+                break
+            for call in calls:
+                tool_calls_run += 1
+                messages.append(run_tool_call(toolset, call, log, step - 1))
+
+    log.emit("session_end", step=step - 1, reason="final_answer", final_text=text)
+    return SessionResult("final_answer", text, messages, step, tool_calls_run, cost)
+
+
+def run_tool_call(
+    toolset: Toolset, call: dict[str, Any], log: EventLog, step: int | None, prefilled: bool = False
+) -> dict[str, Any]:
+    """Run one tool call on the world, log it, and return the tool message for the conversation."""
+    name = call["function"]["name"]
+    args, parse_error = _parse_args(call["function"].get("arguments"))
+    if parse_error is None:
+        outcome = toolset.call(name, args or {})
+        result, error, provenance, changed = outcome.result, outcome.error, outcome.provenance, outcome.state_changed
+    else:
+        result, error, provenance, changed = "", parse_error, {"channel": f"loop.{name}"}, False
+    extra = {"prefilled": True} if prefilled else {}
+    log.emit(
+        "tool_result",
+        step=step,
+        provenance=provenance,
+        call_id=call.get("id"),
+        name=name,
+        args=args,
+        result=result,
+        error=error,
+        state_changed=changed,
+        **extra,
+    )
+    if changed:
+        log.emit("world_state", step=step, reason=name, state=toolset.world.snapshot())
+    return {"role": "tool", "tool_call_id": call.get("id"), "content": f"Error: {error}" if error else result}

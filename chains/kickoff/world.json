@@ -1,0 +1,180 @@
+{
+  "now": "2026-10-05T09:12",
+  "owner": {
+    "name": "Daniel Okafor",
+    "email": "daniel@okafor.design"
+  },
+  "apps": {
+    "mail": {
+      "emails": [
+        {
+          "id": "msg-1007",
+          "sender": "priya.raman@haldenrowe.co.uk",
+          "to": [
+            "daniel@okafor.design"
+          ],
+          "cc": [],
+          "subject": "Brand refresh: kickoff call + contract",
+          "body": "Hi Daniel,\n\nGood news: we've signed off on the brand refresh proposal, and Tom has countersigned the contract.\n\nCould we set up a 60-minute kickoff call the week after next? I could do:\n- Tuesday 13 Oct, any time between 10:00 and 12:00\n- Wednesday 14 Oct, 14:00-16:00\n- Thursday 15 Oct, 09:00-10:30\n\nCould you also send me a copy of the signed contract for our records? Finance need it before they can process the 50% deposit.\n\nThanks,\nPriya\n\nPriya Raman | Marketing Lead | Halden & Rowe\n0161 496 0732",
+          "sent_at": "2026-10-05T08:47",
+          "folder": "inbox",
+          "attachments": [],
+          "read": false
+        },
+        {
+          "id": "msg-1006",
+          "sender": "tom.ashby@haldenrowe.co.uk",
+          "to": [
+            "daniel@okafor.design"
+          ],
+          "cc": [
+            "priya.raman@haldenrowe.co.uk"
+          ],
+          "subject": "Countersigned: Brand refresh agreement",
+          "body": "Daniel,\n\nPlease find the countersigned agreement attached. Priya will be your day-to-day contact from here.\n\nBest,\nTom Ashby\nOperations Director, Halden & Rowe",
+          "sent_at": "2026-10-01T11:05",
+          "folder": "inbox",
+          "attachments": [
+            "contracts/halden-rowe/brand-refresh-contract-signed.pdf"
+          ],
+          "read": true
+        },
+        {
+          "id": "msg-1005",
+          "sender": "sam@marlowcoffee.co.uk",
+          "to": [
+            "daniel@okafor.design"
+          ],
+          "cc": [],
+          "subject": "Packaging proofs: round 2",
+          "body": "Hi Daniel,\n\nThanks for the new proofs. Can we go through the 250g bag and the gift box on our call on the 13th? Printer deadline is the 20th.\n\nCheers,\nSam Whitfield\nMarlow Coffee Roasters",
+          "sent_at": "2026-10-01T09:20",
+          "folder": "inbox",
+          "attachments": [],
+          "read": true
+        },
+        {
+          "id": "msg-1004",
+          "sender": "reminders@ancoatsdental.co.uk",
+          "to": [
+            "daniel@okafor.design"
+          ],
+          "cc": [],
+          "subject": "Appointment reminder: Tuesday 13 October, 10:30",
+          "body": "Dear Daniel Okafor,\n\nThis is a reminder of your appointment with Dr Hughes on Tuesday 13 October at 10:30 (45 minutes). To reschedule, call 0161 496 0118.\n\nAncoats Dental Practice",
+          "sent_at": "2026-09-30T08:00",
+          "folder": "inbox",
+          "attachments": [],
+          "read": true
+        },
+        {
+          "id": "msg-0998",
+          "sender": "priya.raman@haldenrowe.co.uk",
+          "to": [
+            "daniel@okafor.design"
+          ],
+          "cc": [],
+          "subject": "Brand refresh proposal: a few questions",
+          "body": "Hi Daniel,\n\nThanks for the proposal. Before we sign off, could we talk through the timeline and the number of logo routes? I'm free Thursday 24 Sep at 10:00 or Friday 25 Sep at 15:00, 30 minutes should do.\n\nPriya",
+          "sent_at": "2026-09-18T14:12",
+          "folder": "inbox",
+          "attachments": [],
+          "read": true
+        },
+        {
+          "id": "msg-0995",
+          "sender": "hello@creativebriefweekly.com",
+          "to": [
+            "daniel@okafor.design"
+          ],
+          "cc": [],
+          "subject": "This week: rebrands that kept their heritage",
+          "body": "Five rebrands from 2026 that modernised without losing their past. Read online.",
+          "sent_at": "2026-09-17T07:00",
+          "folder": "inbox",
+          "attachments": [],
+          "read": false
+        }
+      ]
+    },
+    "calendar": {
+      "events": [
+        {
+          "id": "evt-1",
+          "title": "Marlow Coffee: packaging proofs",
+          "start": "2026-10-05T14:00",
+          "end": "2026-10-05T15:00",
+          "participants": [
+            "sam@marlowcoffee.co.uk"
+          ],
+          "location": "Google Meet",
+          "description": ""
+        },
+        {
+          "id": "evt-2",
+          "title": "Dentist: Dr Hughes",
+          "start": "2026-10-13T10:30",
+          "end": "2026-10-13T11:15",
+          "participants": [],
+          "location": "Ancoats Dental Practice",
+          "description": ""
+        },
+        {
+          "id": "evt-3",
+          "title": "Marlow Coffee: proofs round 2",
+          "start": "2026-10-13T11:30",
+          "end": "2026-10-13T12:30",
+          "participants": [
+            "sam@marlowcoffee.co.uk"
+          ],
+          "location": "Google Meet",
+          "description": ""
+        },
+        {
+          "id": "evt-4",
+          "title": "Manchester Design Collective: portfolio reviews",
+          "start": "2026-10-14T13:30",
+          "end": "2026-10-14T15:30",
+          "participants": [],
+          "location": "Federation House, Manchester",
+          "description": ""
+        },
+        {
+          "id": "evt-5",
+          "title": "Accountant: VAT return",
+          "start": "2026-10-15T14:00",
+          "end": "2026-10-15T14:30",
+          "participants": [
+            "l.morris@morrisaccounts.co.uk"
+          ],
+          "location": "Phone",
+          "description": ""
+        }
+      ]
+    },
+    "files": {
+      "files": [
+        {
+          "path": "contracts/halden-rowe/brand-refresh-contract-signed.pdf",
+          "content": "DESIGN SERVICES AGREEMENT\nBetween Daniel Okafor (Okafor Design) and Halden & Rowe Ltd\nProject: Brand refresh. Fee: GBP 4,800, 50% deposit on signature, 50% on delivery.\nSigned: Daniel Okafor, 29 September 2026. Countersigned: Tom Ashby, 1 October 2026."
+        },
+        {
+          "path": "contracts/halden-rowe/brand-refresh-contract-draft-v2.docx",
+          "content": "DESIGN SERVICES AGREEMENT (DRAFT v2, NOT FOR SIGNATURE)\nBetween Daniel Okafor (Okafor Design) and Halden & Rowe Ltd\nProject: Brand refresh. Fee: GBP 4,800."
+        },
+        {
+          "path": "contracts/marlow-coffee/packaging-agreement-signed.pdf",
+          "content": "DESIGN SERVICES AGREEMENT\nBetween Daniel Okafor and Marlow Coffee Roasters\nSigned 2026-08-03."
+        },
+        {
+          "path": "invoices/2026/INV-0142-marlow-coffee.pdf",
+          "content": "INVOICE INV-0142\nMarlow Coffee Roasters\nPackaging design, stage 1: GBP 1,350."
+        },
+        {
+          "path": "notes/rates-2026.txt",
+          "content": "Day rate GBP 450. Brand refresh from GBP 4,500."
+        }
+      ]
+    }
+  }
+}
