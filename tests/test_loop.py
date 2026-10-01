@@ -59,7 +59,7 @@ def test_scripted_solution_passes_every_check(tmp_path):
     kinds = [e["event"] for e in events]
     assert kinds[:3] == ["run_start", "session_start", "world_state"]
     assert kinds[-2:] == ["grade", "run_end"]
-    assert kinds.count("world_state") == 3  # initial, createCalendarEvent, sendEmail
+    assert kinds.count("world_state") == 3  # initial, create_event, sendEmail
     tool_results = [e for e in events if e["event"] == "tool_result"]
     assert all(e["provenance"]["channel"].count(".") == 1 for e in tool_results)
 
@@ -85,8 +85,8 @@ def _replace_args(solution, call_id, **changes):
     [
         ("c6", {"attachments": [DRAFT]}, "signed_contract_attached"),
         ("c6", {"cc": ["tom.ashby@haldenrowe.co.uk"]}, "reply_only_to_priya"),
-        ("c5", {"start_time": "2026-10-13T10:00", "end_time": "2026-10-13T11:00"}, "event_at_earliest_free_slot"),
-        ("c5", {"start_time": "2026-10-15T09:30", "end_time": "2026-10-15T10:30"}, "event_at_earliest_free_slot"),
+        ("c5", {"startTime": "2026-10-13T10:00", "endTime": "2026-10-13T11:00"}, "event_at_earliest_free_slot"),
+        ("c5", {"startTime": "2026-10-15T09:30", "endTime": "2026-10-15T10:30"}, "event_at_earliest_free_slot"),
         ("c5", {"attendees": []}, "priya_invited"),
         ("c6", {"body": "Hi Priya, see you then. Contract attached."}, "reply_states_time"),
     ],

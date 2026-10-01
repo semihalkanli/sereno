@@ -18,6 +18,24 @@ class ToolError(Exception):
     """An error the agent should see as the tool's answer, not a crash."""
 
 
+def _inline_refs(schema: dict) -> dict:
+    """Replace local `$ref`s with their definitions, since not every provider resolves them."""
+    defs = schema.pop("$defs", {})
+
+    def resolve(node: Any) -> Any:
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/$defs/"):
+                target = resolve(defs[ref.removeprefix("#/$defs/")])
+                return {**target, **{k: resolve(v) for k, v in node.items() if k != "$ref"}}
+            return {k: resolve(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [resolve(v) for v in node]
+        return node
+
+    return resolve(schema)
+
+
 @dataclass(frozen=True)
 class Tool:
     name: str
@@ -28,7 +46,7 @@ class Tool:
     writes: bool = False
 
     def schema(self) -> dict:
-        parameters = self.args.model_json_schema()
+        parameters = _inline_refs(self.args.model_json_schema())
         parameters.pop("title", None)
         return {
             "type": "function",
