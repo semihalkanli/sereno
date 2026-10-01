@@ -24,26 +24,10 @@ def _latest_log() -> Path:
     return logs[-1]
 
 
-def _cmd_run(args: argparse.Namespace) -> int:
-    from dotenv import load_dotenv
+def _run_once(scenario, model, run_id: str, args: argparse.Namespace):
+    from sereno.runner import RUNS_DIR, run_scenario
 
-    from sereno.model import OpenRouterModel, ScriptedModel
-    from sereno.runner import REPO, RUNS_DIR, new_run_id, run_scenario
-    from sereno.scenarios import SCENARIOS
-
-    scenario = SCENARIOS[args.scenario]
-    if args.scripted:
-        from importlib import import_module
-
-        solution = import_module(f"sereno.scenarios.{scenario.name}").SOLUTION
-        model, label = ScriptedModel(solution), "scripted"
-    else:
-        load_dotenv(REPO / ".env")
-        name, provider = MODELS[args.model]
-        model, label = OpenRouterModel(name, provider, temperature=args.temperature), args.model
-    run_id = new_run_id(scenario.name, label)
     log_path = RUNS_DIR / run_id / "events.jsonl"
-
     outcome: dict = {}
 
     def work() -> None:
@@ -74,7 +58,51 @@ def _cmd_run(args: argparse.Namespace) -> int:
     for check, ok in checks.items():
         print(f"  {'PASS' if ok else 'FAIL'}  {check}")
     print(f"log: {log_path}")
-    return 0 if all(checks.values()) else 1
+    return result, checks
+
+
+def _cmd_run(args: argparse.Namespace) -> int:
+    from dotenv import load_dotenv
+
+    from sereno.model import OpenRouterModel, ScriptedModel
+    from sereno.runner import REPO, new_run_id
+    from sereno.scenarios import SCENARIOS
+
+    if args.watch and args.repeats > 1:
+        sys.exit("--watch runs one repeat; use 'sereno watch --latest' alongside repeats")
+    scenario = SCENARIOS[args.scenario]
+    if args.scripted:
+        from importlib import import_module
+
+        solution = import_module(f"sereno.scenarios.{scenario.name}").SOLUTION
+        label = "scripted"
+
+        def make_model():
+            return ScriptedModel(solution)
+    else:
+        load_dotenv(REPO / ".env")
+        name, provider = MODELS[args.model]
+        label = f"{args.model}_t{args.temperature:g}"
+
+        def make_model():
+            return OpenRouterModel(name, provider, temperature=args.temperature)
+
+    base_id = new_run_id(scenario.name, label)
+    runs = []
+    for i in range(1, args.repeats + 1):
+        run_id = base_id if args.repeats == 1 else f"{base_id}_r{i}"
+        runs.append(_run_once(scenario, make_model(), run_id, args))
+
+    if args.repeats > 1:
+        k = len(runs)
+        passed = sum(all(checks.values()) for _, checks in runs)
+        print(
+            f"\nsummary over k={k}: {passed}/{k} runs passed every check, "
+            f"USD {sum(r.cost_usd for r, _ in runs):.6f}, model calls {[r.model_calls for r, _ in runs]}"
+        )
+        for check in runs[0][1]:
+            print(f"  {sum(c[check] for _, c in runs)}/{k}  {check}")
+    return 0 if all(all(c.values()) for _, c in runs) else 1
 
 
 def _cmd_watch(args: argparse.Namespace) -> int:
@@ -101,6 +129,7 @@ def main() -> None:
     run.add_argument("--temperature", type=float, default=0.0)
     run.add_argument("--max-steps", type=int, default=30)
     run.add_argument("--watch", action="store_true", help="open the live viewer while the run goes")
+    run.add_argument("--repeats", type=int, default=1, help="run the scenario k times and summarise")
 
     watch = sub.add_parser("watch", help="open the live viewer on an event log")
     watch.add_argument("path", nargs="?", type=Path)
