@@ -7,9 +7,9 @@ Fields present on every event:
     ts          wall-clock UNIX time
     seq         0-based position in the log
     run_id      the run this log belongs to
-    session     1-based session number within the run
+    session     1-based session number within the chain
     turn        1-based user turn within the session
-    step        0-based model call index within the turn (null outside the loop)
+    step        0-based model call index within the session (null outside the loop)
     agent_id    which agent produced or received the event ("main" for now)
     event       event type, see below
     provenance  source label of the content, set on tool results
@@ -17,16 +17,19 @@ Fields present on every event:
     gate        gate decision, null until a gate exists
 
 Event types and their own fields:
-    run_start       scenario, model, provider, temperature, max_steps, git
-    session_start   date, owner, tools (names), system_prompt
-    world_state     state (full world snapshot), reason ("initial" or a tool name)
-    user_message    text
+    run_start       chain (also as scenario), attack, marker, model, provider, temperature,
+                    max_steps, git
+    session_start   session_id, date, owner, tools (names), system_prompt, changes (outside
+                    changes applied when the session started)
+    world_state     state (full world snapshot), reason ("initial", "session_start" or a tool name)
+    user_message    text; prefilled true when it comes from the session's history
     model_response  text, reasoning, tool_calls [{id, name, args}], finish_reason,
                     usage {prompt_tokens, completion_tokens, reasoning_tokens, cost},
-                    latency_s
-    tool_result     call_id, name, args, result, error, state_changed
+                    latency_s; only text, tool_calls and prefilled when from the history
+    tool_result     call_id, name, args, result, error, state_changed; prefilled true when the
+                    call comes from the session's history
     session_end     reason ("final_answer", "max_steps", "error"), final_text
-    grade           checks {name: bool}, passed
+    grade           group (a session id, "final" or "attack"), checks {name: bool}, passed
     run_end         cost_usd, model_calls, tool_calls
 """
 
