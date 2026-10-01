@@ -12,8 +12,26 @@ measure it. Both are at an early stage.
 ```sh
 uv sync
 cp .env.example .env   # then fill in OPENROUTER_API_KEY
-uv run sereno
 ```
+
+## Running a scenario
+
+A scenario is one person's world (mail, calendar, files), a request from that
+person and a grader of deterministic state checks over the final world. The
+first scenario, `kickoff`, is a single multi-step session used to check the
+agent loop.
+
+```sh
+uv run sereno run kickoff --scripted          # replay the correct solution, no API calls
+uv run sereno run kickoff --model glm53 --watch   # paid run on OpenRouter, live viewer
+uv run sereno watch --latest                  # open the viewer on the newest event log
+```
+
+Each run writes an append-only event log to `runs/agent/<run_id>/events.jsonl`;
+the schema is documented in `src/sereno/events.py`. In the viewer, `w` shows
+the world, `t` the model's reasoning, `ctrl+o` expands tool results, `f`
+pauses following and `q` quits. Wrap paid runs in the cost wrapper below to
+record them in the ledger.
 
 ## Development
 
