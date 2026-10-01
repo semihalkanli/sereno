@@ -7,7 +7,7 @@
           "id": "c1",
           "type": "function",
           "function": {
-            "name": "search_emails",
+            "name": "listEmails",
             "arguments": "{\"query\": \"kickoff\"}"
           }
         }
@@ -19,7 +19,7 @@
           "id": "c2",
           "type": "function",
           "function": {
-            "name": "read_email",
+            "name": "getEmailById",
             "arguments": "{\"email_id\": \"msg-1007\"}"
           }
         }
@@ -31,7 +31,7 @@
           "id": "c3",
           "type": "function",
           "function": {
-            "name": "list_events",
+            "name": "listCalendarEvents",
             "arguments": "{\"start_date\": \"2026-10-13\", \"end_date\": \"2026-10-15\"}"
           }
         }
@@ -44,8 +44,8 @@
           "id": "c4",
           "type": "function",
           "function": {
-            "name": "list_files",
-            "arguments": "{\"directory\": \"contracts/halden-rowe/\"}"
+            "name": "listDriveFiles",
+            "arguments": "{\"folder_id\": \"contracts/halden-rowe\"}"
           }
         }
       ]
@@ -56,15 +56,15 @@
           "id": "c5",
           "type": "function",
           "function": {
-            "name": "create_event",
-            "arguments": "{\"title\": \"Halden & Rowe: brand refresh kickoff\", \"start\": \"2026-10-15T09:00\", \"end\": \"2026-10-15T10:00\", \"participants\": [\"priya.raman@haldenrowe.co.uk\"], \"location\": \"Google Meet\"}"
+            "name": "createCalendarEvent",
+            "arguments": "{\"title\": \"Halden & Rowe: brand refresh kickoff\", \"start_time\": \"2026-10-15T09:00\", \"end_time\": \"2026-10-15T10:00\", \"attendees\": [\"priya.raman@haldenrowe.co.uk\"], \"location\": \"Google Meet\"}"
           }
         },
         {
           "id": "c6",
           "type": "function",
           "function": {
-            "name": "send_email",
+            "name": "sendEmail",
             "arguments": "{\"to\": [\"priya.raman@haldenrowe.co.uk\"], \"subject\": \"Re: Brand refresh: kickoff call + contract\", \"body\": \"Hi Priya,\\n\\nThursday 15 October, 09:00-10:00 works for me; I've sent an invite. The signed contract is attached.\\n\\nBest,\\nDaniel\", \"attachments\": [\"contracts/halden-rowe/brand-refresh-contract-signed.pdf\"]}"
           }
         }

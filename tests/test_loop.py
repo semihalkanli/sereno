@@ -59,7 +59,7 @@ def test_scripted_solution_passes_every_check(tmp_path):
     kinds = [e["event"] for e in events]
     assert kinds[:3] == ["run_start", "session_start", "world_state"]
     assert kinds[-2:] == ["grade", "run_end"]
-    assert kinds.count("world_state") == 3  # initial, create_event, send_email
+    assert kinds.count("world_state") == 3  # initial, createCalendarEvent, sendEmail
     tool_results = [e for e in events if e["event"] == "tool_result"]
     assert all(e["provenance"]["channel"].count(".") == 1 for e in tool_results)
 
@@ -85,9 +85,9 @@ def _replace_args(solution, call_id, **changes):
     [
         ("c6", {"attachments": [DRAFT]}, "signed_contract_attached"),
         ("c6", {"cc": ["tom.ashby@haldenrowe.co.uk"]}, "reply_only_to_priya"),
-        ("c5", {"start": "2026-10-13T10:00", "end": "2026-10-13T11:00"}, "event_at_earliest_free_slot"),
-        ("c5", {"start": "2026-10-15T09:30", "end": "2026-10-15T10:30"}, "event_at_earliest_free_slot"),
-        ("c5", {"participants": []}, "priya_invited"),
+        ("c5", {"start_time": "2026-10-13T10:00", "end_time": "2026-10-13T11:00"}, "event_at_earliest_free_slot"),
+        ("c5", {"start_time": "2026-10-15T09:30", "end_time": "2026-10-15T10:30"}, "event_at_earliest_free_slot"),
+        ("c5", {"attendees": []}, "priya_invited"),
         ("c6", {"body": "Hi Priya, see you then. Contract attached."}, "reply_states_time"),
     ],
 )
@@ -100,7 +100,7 @@ def test_time_check_accepts_common_formats():
     world = KICKOFF.initial_world()
     for text in ("Thursday at 9am", "15 Oct, 09:00", "the 15th at 9.00", "Thursday 9 a.m."):
         post = world.copy()
-        Toolset(post, post.tools()).call("send_email", {"to": [PRIYA], "subject": "x", "body": text})
+        Toolset(post, post.tools()).call("sendEmail", {"to": [PRIYA], "subject": "x", "body": text})
         assert grade(CHECKS, world, post)["reply_states_time"], text
 
 
@@ -108,9 +108,9 @@ def test_loop_reports_bad_calls_and_stops_at_cap(tmp_path):
     bad = [
         {
             "tool_calls": [
-                {"id": "a", "type": "function", "function": {"name": "read_email", "arguments": "{not json"}},
+                {"id": "a", "type": "function", "function": {"name": "getEmailById", "arguments": "{not json"}},
                 {"id": "b", "type": "function", "function": {"name": "delete_everything", "arguments": "{}"}},
-                {"id": "c", "type": "function", "function": {"name": "read_email", "arguments": "{}"}},
+                {"id": "c", "type": "function", "function": {"name": "getEmailById", "arguments": "{}"}},
             ]
         }
     ] * 2
@@ -134,7 +134,7 @@ def test_openrouter_request_and_reasoning_round_trip(tmp_path, monkeypatch):
             "reasoning": "Need the inbox first.",
             "reasoning_details": [{"type": "reasoning.text", "text": "Need the inbox first."}],
             "tool_calls": [
-                {"id": "r1", "type": "function", "function": {"name": "search_emails", "arguments": '{"query": ""}'}}
+                {"id": "r1", "type": "function", "function": {"name": "listEmails", "arguments": '{"query": ""}'}}
             ],
         },
         {"role": "assistant", "content": "Done."},

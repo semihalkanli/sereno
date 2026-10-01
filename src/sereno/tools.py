@@ -54,6 +54,10 @@ class Toolset:
     def __init__(self, world: Any, tools: list[Tool]) -> None:
         self.world = world
         self.tools = {t.name: t for t in tools}
+        if len(self.tools) != len(tools):
+            names = [t.name for t in tools]
+            dupes = sorted({n for n in names if names.count(n) > 1})
+            raise ValueError(f"two linked apps define the same tool name: {', '.join(dupes)}")
 
     def schemas(self) -> list[dict]:
         return [t.schema() for t in self.tools.values()]
