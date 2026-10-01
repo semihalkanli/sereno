@@ -166,3 +166,26 @@ def test_openrouter_retries_then_raises(monkeypatch):
     with pytest.raises(RuntimeError, match="400"):
         model.complete([{"role": "user", "content": "x"}], [])
     assert len(calls) == 2
+
+
+def test_reasoning_falls_back_to_details_and_counts_tokens(tmp_path):
+    from sereno.events import EventLog
+    from sereno.model import Completion
+
+    class DetailsOnly:
+        name, provider, temperature = "m", "p", 0.0
+
+        def complete(self, messages, tools):
+            message = {
+                "role": "assistant",
+                "content": "Done.",
+                "reasoning_details": [{"type": "reasoning.text", "text": "Think."}, {"type": "reasoning.encrypted"}],
+            }
+            usage = {"completion_tokens": 9, "completion_tokens_details": {"reasoning_tokens": 4}, "cost": 0.0}
+            return Completion(message=message, finish_reason="stop", usage=usage, latency_s=0.0)
+
+    with EventLog(tmp_path / "e.jsonl", "t") as log:
+        run_session(DetailsOnly(), Toolset(kickoff.initial_world(), TOOLS), "sys", "hi", log)
+    response = read_events(tmp_path / "e.jsonl")[1]
+    assert response["reasoning"] == "Think."
+    assert response["usage"]["reasoning_tokens"] == 4

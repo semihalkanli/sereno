@@ -50,11 +50,11 @@ def initial_world() -> World:
             sender=PRIYA,
             to=[OWNER.email],
             subject="Brand refresh: kickoff call + contract",
-            sent_at=_dt("2026-10-02T16:41"),
+            sent_at=_dt("2026-10-05T08:47"),
             body=(
                 "Hi Daniel,\n\n"
                 "Good news: we've signed off on the brand refresh proposal, and Tom has countersigned the contract.\n\n"
-                "Could we set up a 60-minute kickoff call next week? I could do:\n"
+                "Could we set up a 60-minute kickoff call the week after next? I could do:\n"
                 "- Tuesday 13 Oct, any time between 10:00 and 12:00\n"
                 "- Wednesday 14 Oct, 14:00-16:00\n"
                 "- Thursday 15 Oct, 09:00-10:30\n\n"

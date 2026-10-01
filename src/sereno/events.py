@@ -22,7 +22,8 @@ Event types and their own fields:
     world_state     state (full world snapshot), reason ("initial" or a tool name)
     user_message    text
     model_response  text, reasoning, tool_calls [{id, name, args}], finish_reason,
-                    usage {prompt_tokens, completion_tokens, cost}, latency_s
+                    usage {prompt_tokens, completion_tokens, reasoning_tokens, cost},
+                    latency_s
     tool_result     call_id, name, args, result, error, state_changed
     session_end     reason ("final_answer", "max_steps", "error"), final_text
     grade           checks {name: bool}, passed

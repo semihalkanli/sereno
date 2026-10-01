@@ -47,7 +47,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
     outcome: dict = {}
 
     def work() -> None:
-        outcome["result"], outcome["checks"] = run_scenario(scenario, model, log_path, run_id, args.max_steps)
+        try:
+            outcome["result"], outcome["checks"] = run_scenario(scenario, model, log_path, run_id, args.max_steps)
+        except BaseException as e:
+            outcome["error"] = e
 
     if args.watch:
         from sereno.viewer import run_viewer
@@ -61,6 +64,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     else:
         work()
 
+    if "error" in outcome:
+        raise outcome["error"]
     result, checks = outcome["result"], outcome["checks"]
     print(
         f"run {run_id}: {result.reason}, {result.model_calls} model calls, {result.tool_calls} tool calls, "

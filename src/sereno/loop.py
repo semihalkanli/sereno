@@ -35,6 +35,23 @@ def _parse_args(raw: str | None) -> tuple[dict[str, Any] | None, str | None]:
     return args, None
 
 
+def _reasoning_text(message: dict[str, Any]) -> str | None:
+    if message.get("reasoning"):
+        return message["reasoning"]
+    parts = [d.get("text") for d in message.get("reasoning_details") or [] if d.get("type") == "reasoning.text"]
+    return "\n".join(p for p in parts if p) or None
+
+
+def _usage(usage: dict[str, Any]) -> dict[str, Any]:
+    details = usage.get("completion_tokens_details") or {}
+    return {
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": usage.get("completion_tokens"),
+        "reasoning_tokens": details.get("reasoning_tokens"),
+        "cost": usage.get("cost"),
+    }
+
+
 def _history_message(message: dict[str, Any]) -> dict[str, Any]:
     """The assistant message as it is sent back to the model on the next call."""
     kept = {"role": "assistant", "content": message.get("content")}
@@ -75,13 +92,13 @@ def run_session(
             "model_response",
             step=step,
             text=message.get("content"),
-            reasoning=message.get("reasoning"),
+            reasoning=_reasoning_text(message),
             tool_calls=[
                 {"id": c.get("id"), "name": c["function"]["name"], "args": c["function"].get("arguments")}
                 for c in calls
             ],
             finish_reason=completion.finish_reason,
-            usage={k: completion.usage.get(k) for k in ("prompt_tokens", "completion_tokens", "cost")},
+            usage=_usage(completion.usage),
             latency_s=completion.latency_s,
         )
         messages.append(_history_message(message))
