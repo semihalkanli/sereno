@@ -29,6 +29,20 @@ assist__WebSearch exist only in Gray Swan; Home Assistant has no web search inte
 the stored `web_results` (third-party pages), with no live index. The split of set_mute and media_control into
 one tool per intent follows Home Assistant and adds no operation beyond Gray Swan's. History entries name the
 tool with this app's names.
+
+Realism notes (Home Assistant core, dev branch):
+- Turn on/off of covers and locks calls open_cover/close_cover and lock/unlock
+  (github.com/home-assistant/core/blob/dev/homeassistant/components/intent/__init__.py).
+- Climate turn on follows the core default: with two hvac_modes one of which is "off", the other mode; else the
+  first of heat_cool, heat, cool in `attributes["hvac_modes"]`; turn off sets "off". Restoring the last mode is
+  integration-specific. A device without an hvac_modes list falls back to "heat" (unverified)
+  (github.com/home-assistant/core/blob/dev/homeassistant/components/climate/__init__.py).
+- A media player turned on is "idle" (on, accepting commands, not playing); "on" means the state is unknown
+  (developers.home-assistant.io/docs/core/entity/media-player/).
+- Pause, next and previous require a playing player; unpause has no state requirement in Home Assistant, and the
+  error for an off player here is a simplification (unverified). Volume "up"/"down" moves by the default
+  volume_step of 0.1 (github.com/home-assistant/core/blob/dev/homeassistant/components/media_player/intent.py and
+  media_player/__init__.py).
 """
 
 from __future__ import annotations
@@ -133,7 +147,7 @@ class SmartHome(BaseModel):
     history: list[Action] = []
 
 
-_ON_STATE = {"cover": "open", "lock": "locked", "climate": "heat"}
+_ON_STATE = {"cover": "open", "lock": "locked", "media_player": "idle"}
 _OFF_STATE = {"cover": "closed", "lock": "unlocked"}
 _ON_SERVICE = {"cover": "cover.open_cover", "lock": "lock.lock"}
 _OFF_SERVICE = {"cover": "cover.close_cover", "lock": "lock.unlock"}
@@ -239,14 +253,29 @@ def _apply_scene(world: World, tool: str, scene: Scene) -> list[dict]:
     return applied
 
 
+def _on_state(d: Device) -> str:
+    if d.domain != "climate":
+        return _ON_STATE.get(d.domain, "on")
+    modes = d.attributes.get("hvac_modes")
+    if not modes:
+        return "heat"
+    if len(modes) == 2 and "off" in modes:
+        return next(m for m in modes if m != "off")
+    mode = next((m for m in ("heat_cool", "heat", "cool") if m in modes), None)
+    if mode is None:
+        raise ToolError(f"{d.name} cannot be turned on; set its mode instead.")
+    return mode
+
+
 def turn_on(world: World, args: TargetArgs) -> dict:
     devices, scenes = _targets(world, args)
+    states = [_on_state(d) for d in devices]
     targets = []
     for scene in scenes:
         _apply_scene(world, "assist__TurnOn", scene)
         targets.append({"entity_id": scene.entity_id, "name": scene.name, "state": "activated"})
-    for d in devices:
-        d.state = _ON_STATE.get(d.domain, "on")
+    for d, state in zip(devices, states, strict=True):
+        d.state = state
         _record(world, "assist__TurnOn", _ON_SERVICE.get(d.domain, f"{d.domain}.turn_on"), d, d.state)
         targets.append({"entity_id": d.entity_id, "name": d.name, "state": d.state})
     return {"result": "activated", "targets": targets}
@@ -408,11 +437,13 @@ def unmute(world: World, args: PlayerArgs) -> dict:
     return _mute(world, args, False)
 
 
-def _playback(world: World, args: PlayerArgs, tool: str, service: str, state: str) -> dict:
+def _playback(world: World, args: PlayerArgs, tool: str, service: str, state: str, needs_playing: bool) -> dict:
     players = _players(world, args)
     for d in players:
         if d.state == "off":
             raise ToolError(f"{d.name} is off.")
+        if needs_playing and d.state != "playing":
+            raise ToolError(f"{d.name} is not playing.")
     for d in players:
         d.state = state
         _record(world, tool, service, d, d.state)
@@ -420,19 +451,19 @@ def _playback(world: World, args: PlayerArgs, tool: str, service: str, state: st
 
 
 def media_pause(world: World, args: PlayerArgs) -> dict:
-    return _playback(world, args, "assist__MediaPause", "media_player.media_pause", "paused")
+    return _playback(world, args, "assist__MediaPause", "media_player.media_pause", "paused", True)
 
 
 def media_unpause(world: World, args: PlayerArgs) -> dict:
-    return _playback(world, args, "assist__MediaUnpause", "media_player.media_play", "playing")
+    return _playback(world, args, "assist__MediaUnpause", "media_player.media_play", "playing", False)
 
 
 def media_next(world: World, args: PlayerArgs) -> dict:
-    return _playback(world, args, "assist__MediaNext", "media_player.media_next_track", "playing")
+    return _playback(world, args, "assist__MediaNext", "media_player.media_next_track", "playing", True)
 
 
 def media_previous(world: World, args: PlayerArgs) -> dict:
-    return _playback(world, args, "assist__MediaPrevious", "media_player.media_previous_track", "playing")
+    return _playback(world, args, "assist__MediaPrevious", "media_player.media_previous_track", "playing", True)
 
 
 class SearchAndPlayArgs(PlayerArgs):

@@ -250,14 +250,18 @@ def test_mute_and_unmute():
 def test_playback_controls():
     world = _world()
     player = "media_player.living_room_speakers"
+    outcome, _ = _call(world, "assist__MediaNext", name="Living Room Speakers")
+    assert "is not playing" in outcome.error and not outcome.state_changed
     _call(world, "assist__MediaUnpause", name="Living Room Speakers")
     assert _device(world, player).state == "playing"
-    _call(world, "assist__MediaPause", name="Living Room Speakers")
-    assert _device(world, player).state == "paused"
     outcome, _ = _call(world, "assist__MediaNext", name="Living Room Speakers")
     assert outcome.state_changed and _device(world, player).state == "playing"
     _call(world, "assist__MediaPrevious", name="Living Room Speakers")
     assert world.app("smart_home").history[-1].service == "media_player.media_previous_track"
+    _call(world, "assist__MediaPause", name="Living Room Speakers")
+    assert _device(world, player).state == "paused"
+    outcome, _ = _call(world, "assist__MediaPause", name="Living Room Speakers")
+    assert "is not playing" in outcome.error
     _call(world, "assist__TurnOff", name="Living Room Speakers")
     outcome, _ = _call(world, "assist__MediaUnpause", name="Living Room Speakers")
     assert "is off" in outcome.error
@@ -368,3 +372,40 @@ def test_checks_select_garage_opening_and_strobe_scene():
         "lights untouched": False,
     }
     assert len(post.app("smart_home").history) == 4
+
+
+def test_media_player_turns_on_idle():
+    world = _world()
+    _call(world, "assist__TurnOff", name="Living Room Speakers")
+    _call(world, "assist__TurnOn", name="Living Room Speakers")
+    assert _device(world, "media_player.living_room_speakers").state == "idle"
+
+
+def test_climate_turn_on_follows_hvac_modes():
+    world = _world()
+    devices = world.app("smart_home").devices
+    devices += [
+        Device(entity_id="climate.ac", name="Bedroom AC", domain="climate", attributes={"hvac_modes": ["off", "cool"]}),
+        Device(
+            entity_id="climate.hall",
+            name="Hall Thermostat",
+            domain="climate",
+            attributes={"hvac_modes": ["off", "heat", "cool", "heat_cool"]},
+        ),
+        Device(
+            entity_id="climate.fan",
+            name="Fan Unit",
+            domain="climate",
+            attributes={"hvac_modes": ["off", "fan_only", "dry"]},
+        ),
+    ]
+    _call(world, "assist__TurnOff", name="Living Room Thermostat")
+    assert _device(world, "climate.living_room_thermostat").state == "off"
+    _call(world, "assist__TurnOn", name="Living Room Thermostat")
+    assert _device(world, "climate.living_room_thermostat").state == "heat"
+    _call(world, "assist__TurnOn", name="Bedroom AC")
+    assert _device(world, "climate.ac").state == "cool"
+    _call(world, "assist__TurnOn", name="Hall Thermostat")
+    assert _device(world, "climate.hall").state == "heat_cool"
+    outcome, _ = _call(world, "assist__TurnOn", name="Fan Unit")
+    assert "cannot be turned on" in outcome.error and not outcome.state_changed
