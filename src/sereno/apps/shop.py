@@ -17,6 +17,16 @@ Order lines and chat messages are flat collections (`order_items`,
 
 Added (not in Gray Swan): `list_chats`, so a later session can find a chat it
 started earlier.
+
+Realism (Amazon.com, US consumer account):
+- A new order's estimate is Prime Two-Day Delivery, counted in business days
+  (assumes a Prime account): https://www.amazon.com/gp/help/customer/display.html?nodeId=GRPQFCNVUDYCBG24
+- Unverified: the pre-shipment location "Seller warehouse".
+- Returns are accepted within 30 days of delivery; a delivered order's
+  `estimated_delivery` is its delivery date:
+  https://www.amazon.com/gp/help/customer/display.html?nodeId=GKM69DUUYKQWKWX7
+- The cart reflects each item's most recent price and checkout charges it
+  (cart page wording, confirmed via secondary quotes only): https://www.amazon.com/gp/cart/view.html
 """
 
 from __future__ import annotations
@@ -36,6 +46,8 @@ if TYPE_CHECKING:
 
 CUSTOMER = "customer"
 PLATFORM = "platform"
+DELIVERY_BUSINESS_DAYS = 2
+RETURN_WINDOW_DAYS = 30
 
 
 class Category(BaseModel):
@@ -169,6 +181,20 @@ def _page(items: list, page: int, limit: int) -> list:
     return items[start : start + max(limit, 1)]
 
 
+def _add_business_days(start: date, days: int) -> date:
+    day = start
+    while days:
+        day += timedelta(days=1)
+        if day.weekday() < 5:
+            days -= 1
+    return day
+
+
+def _reprice_cart(shop: Shop) -> None:
+    for i in shop.cart_items:
+        i.price = _product(shop, i.product_id).price
+
+
 def _words(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", text.lower())
 
@@ -273,9 +299,16 @@ class ViewCartArgs(BaseModel):
 
 
 def view_cart(world: World, args: ViewCartArgs) -> list[dict]:
+    shop = _shop(world)
     return [
-        {"item_id": i.id, "product_id": i.product_id, "name": i.name, "quantity": i.quantity, "price": i.price}
-        for i in _shop(world).cart_items
+        {
+            "item_id": i.id,
+            "product_id": i.product_id,
+            "name": i.name,
+            "quantity": i.quantity,
+            "price": _product(shop, i.product_id).price,
+        }
+        for i in shop.cart_items
     ]
 
 
@@ -308,6 +341,7 @@ def place_order(world: World, args: PlaceOrderArgs) -> dict:
     if not args.payment_method.strip():
         raise ToolError("A payment method is required.")
     products = {i.product_id: _product(shop, i.product_id) for i in shop.cart_items}
+    _reprice_cart(shop)
     wanted = {pid: sum(i.quantity for i in shop.cart_items if i.product_id == pid) for pid in products}
     short = [p.name for pid, p in products.items() if wanted[pid] > p.stock]
     if short:
@@ -318,7 +352,7 @@ def place_order(world: World, args: PlaceOrderArgs) -> dict:
         total_amount=round(sum(i.price * i.quantity for i in shop.cart_items), 2),
         shipping_address=args.shipping_address,
         payment_method=args.payment_method,
-        estimated_delivery=world.today + timedelta(days=3),
+        estimated_delivery=_add_business_days(world.today, DELIVERY_BUSINESS_DAYS),
         current_location="Seller warehouse",
     )
     shop.orders.append(order)
@@ -419,6 +453,13 @@ def initiate_return(world: World, args: InitiateReturnArgs) -> dict:
     o = _order(shop, args.order_id)
     if o.status != "delivered":
         raise ToolError(f"Order {o.id} is {o.status}; only delivered orders can be returned.")
+    delivered = o.estimated_delivery or o.placed_at.date()
+    closes = delivered + timedelta(days=RETURN_WINDOW_DAYS)
+    if world.today > closes:
+        raise ToolError(
+            f"The return window for order {o.id} closed on {closes.isoformat()}; "
+            f"returns are accepted within {RETURN_WINDOW_DAYS} days of delivery."
+        )
     ordered = sum(i.quantity for i in shop.order_items if i.order_id == o.id and i.product_id == args.product_id)
     if not ordered:
         raise ToolError(f"Order {o.id} has no product {args.product_id!r}.")

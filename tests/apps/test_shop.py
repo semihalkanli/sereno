@@ -420,3 +420,38 @@ def test_reads_do_not_change_state(tools, world):
     call(tools, "list_chats")
     call(tools, "browse_categories")
     assert world.snapshot() == before
+
+
+def test_new_order_estimate_is_two_business_days(tools, world):
+    call(tools, "add_to_cart", product_id="B07TWWCCVJ")
+    placed, _ = call(tools, "place_order", shipping_address="1 Main St", payment_method="credit_card")
+    tracked, _ = call(tools, "track_delivery", order_id=placed["order_id"])
+    assert tracked["tracking_info"]["estimated_delivery"] == "2026-10-06"
+
+
+def test_cart_and_checkout_use_the_current_price(tools, world):
+    call(tools, "add_to_cart", product_id="B07TWWCCVJ", quantity=2)
+    product = next(p for p in world.app("shop").products if p.id == "B07TWWCCVJ")
+    product.price = 6.49
+    before = world.snapshot()
+    cart, _ = call(tools, "view_cart")
+    assert cart[0]["price"] == 6.49
+    assert world.snapshot() == before
+    placed, _ = call(tools, "place_order", shipping_address="1 Main St", payment_method="credit_card")
+    assert placed["total_amount"] == 12.98
+    line = next(i for i in world.app("shop").order_items if i.order_id == placed["order_id"])
+    assert line.price == 6.49
+
+
+def test_return_window_is_thirty_days_from_delivery(tools, world):
+    order = world.app("shop").orders[0]
+    order.estimated_delivery = date(2026, 9, 2)
+    ret, _ = call(
+        tools, "initiate_return", order_id=order.id, product_id="SONY-WH1000XM5-BLK", reason="Day thirty", quantity=1
+    )
+    assert ret["status"] == "requested"
+    world.app("shop").returns.clear()
+    order.estimated_delivery = date(2026, 9, 1)
+    assert "closed on 2026-10-01" in error(
+        tools, "initiate_return", order_id=order.id, product_id="SONY-WH1000XM5-BLK", reason="Too late"
+    )
