@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find, fresh_id, has_words
+from sereno.apps._common import find, fresh_id, has_words, money
 from sereno.apps.files import require_files
 from sereno.tools import NoArgs, Tool, ToolError
 
@@ -306,7 +306,9 @@ def create_listing(world: World, args: CreateListingArgs) -> dict:
     state = _market(world)
     require_files(world, args.photos)
     item_id = fresh_id(lambda n: str(296000000000 + n), (li.id for li in state.listings), len(state.listings) + 1)
-    listing = Listing(id=item_id, seller=state.username, listed_at=world.now, **args.model_dump())
+    fields = args.model_dump()
+    fields["price"] = money(args.price)
+    listing = Listing(id=item_id, seller=state.username, listed_at=world.now, **fields)
     state.listings.append(listing)
     return {"status": "listed", "listing": _detail(listing)}
 
@@ -333,8 +335,10 @@ def update_listing(world: World, args: UpdateListingArgs) -> dict:
         raise ToolError("Nothing to change.")
     if "photos" in changes:
         require_files(world, changes["photos"])
-    if changes.get("quantity", listing.quantity) < listing.sold:
-        raise ToolError(f"Quantity cannot be below the {listing.sold} already sold.")
+    if changes.get("quantity", listing.quantity) <= listing.sold:
+        raise ToolError(f"Quantity must be above the {listing.sold} already sold; end the listing instead.")
+    if "price" in changes:
+        changes["price"] = money(changes["price"])
     for field, value in changes.items():
         setattr(listing, field, value)
     return {"status": "revised", "listing": _detail(listing)}
@@ -348,8 +352,8 @@ class EndListingArgs(BaseModel):
 def end_listing(world: World, args: EndListingArgs) -> dict:
     state = _market(world)
     listing = _own_listing(state, args.item_id)
-    if listing.status == "ended":
-        raise ToolError(f"Listing {listing.id} has already ended.")
+    if listing.status != "active":
+        raise ToolError(f"Listing {listing.id} is {listing.status}, not active.")
     listing.status = "ended"
     listing.end_reason = args.reason
     return {"status": "ended", "item_id": listing.id}

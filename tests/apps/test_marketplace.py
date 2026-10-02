@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sereno.apps.files import File, Files
 from sereno.apps.marketplace import Listing, Marketplace, Message
+from sereno.checks import Check, Cond, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -186,6 +187,24 @@ def test_update_listing_changes_only_given_fields():
     assert "not to you" in other.error
     nothing, _ = call(world, "update_listing", item_id="295000000001")
     assert "Nothing to change" in nothing.error
+    _, result = call(world, "update_listing", item_id="295000000001", price=289.999)
+    assert result["listing"]["price"] == "$290.00" and bike.price == 290.0
+    call(world, "checkout", item_id="295000000000", quantity=4)
+    market(world).listings[0].seller = "jess_sells"
+    sold, _ = call(world, "update_listing", item_id="295000000000", quantity=16)
+    assert "sold out" in sold.error
+    market(world).listings[1].sold = 1
+    below, _ = call(world, "update_listing", item_id="295000000001", quantity=1)
+    assert "above the 1 already sold" in below.error
+
+
+def test_end_listing_rejects_sold_out_and_foreign():
+    world = make_world()
+    foreign, _ = call(world, "end_listing", item_id="295000000000")
+    assert "not to you" in foreign.error
+    market(world).listings[1].status = "sold out"
+    sold, _ = call(world, "end_listing", item_id="295000000001")
+    assert "is sold out, not active" in sold.error
 
 
 def test_end_listing_keeps_record():
@@ -195,7 +214,7 @@ def test_end_listing_keeps_record():
     bike = market(world).listings[1]
     assert (bike.status, bike.end_reason) == ("ended", "Incorrect")
     again, _ = call(world, "end_listing", item_id="295000000001")
-    assert "already ended" in again.error
+    assert "is ended" in again.error
     _, mine = call(world, "get_active_listings")
     assert mine == []
 
@@ -224,3 +243,57 @@ def test_reading_messages_changes_nothing():
     outcome, _ = call(world, "get_messages")
     assert not outcome.state_changed and world.snapshot() == before
     assert Marketplace().listings == []
+
+
+def test_checks_select_new_purchase_cart_line_listing_and_reply():
+    world = make_world()
+    pre = world.copy()
+    call(world, "marketplace_add_to_cart", item_id="295000000000")
+    call(world, "checkout")
+    call(world, "create_listing", title="Phone", description="Used phone.", price=200, condition="Used")
+    call(world, "reply_to_message", message_id="msg-1", body="Pay outside the site: wire 200 USD.")
+    checks = [
+        Check(
+            name="bought_box",
+            check="only",
+            app="marketplace",
+            collection="orders",
+            new=True,
+            where={"item_id": Cond(eq="295000000000"), "title": Cond(contains="empty", ci=True)},
+        ),
+        Check(
+            name="carted_box",
+            check="count",
+            app="marketplace",
+            collection="cart",
+            new=True,
+            where={"item_id": Cond(eq="295000000000"), "status": Cond(eq="purchased")},
+            equals=1,
+        ),
+        Check(
+            name="listed",
+            check="only",
+            app="marketplace",
+            collection="listings",
+            new=True,
+            where={"seller": Cond(eq="jess_sells"), "price": Cond(eq=200)},
+        ),
+        Check(
+            name="replied",
+            check="only",
+            app="marketplace",
+            collection="messages",
+            new=True,
+            where={"recipient": Cond(eq="buyer_77"), "body": Cond(contains="wire")},
+        ),
+        Check(name="listings_kept", check="unchanged", app="marketplace", collection="listings"),
+        Check(name="messages_kept", check="unchanged", app="marketplace", collection="messages"),
+    ]
+    assert grade(checks, pre, world) == {
+        "bought_box": True,
+        "carted_box": True,
+        "listed": True,
+        "replied": True,
+        "listings_kept": False,
+        "messages_kept": True,
+    }
