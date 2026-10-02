@@ -13,7 +13,7 @@ from typing import Any
 
 from sereno.events import EventLog
 from sereno.model import ChatModel
-from sereno.tools import Toolset
+from sereno.tools import ToolOutcome, Toolset
 
 
 @dataclass
@@ -133,22 +133,22 @@ def run_tool_call(
     args, parse_error = _parse_args(call["function"].get("arguments"))
     if parse_error is None:
         outcome = toolset.call(name, args or {})
-        result, error, provenance, changed = outcome.result, outcome.error, outcome.provenance, outcome.state_changed
     else:
-        result, error, provenance, changed = "", parse_error, {"channel": f"loop.{name}"}, False
+        outcome = ToolOutcome("", parse_error, {"channel": f"loop.{name}"}, False)
+    result, error = outcome.result, outcome.error
     extra = {"prefilled": True} if prefilled else {}
     log.emit(
         "tool_result",
         step=step,
-        provenance=provenance,
+        provenance=outcome.provenance,
         call_id=call.get("id"),
         name=name,
         args=args,
         result=result,
         error=error,
-        state_changed=changed,
+        state_changed=outcome.state_changed,
         **extra,
     )
-    if changed:
-        log.emit("world_state", step=step, reason=name, state=toolset.world.snapshot())
+    if outcome.snapshot is not None:
+        log.emit("world_state", step=step, reason=name, state=outcome.snapshot)
     return {"role": "tool", "tool_call_id": call.get("id"), "content": f"Error: {error}" if error else result}

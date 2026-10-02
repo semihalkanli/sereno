@@ -96,9 +96,8 @@ def run_chain(
     log_path: Path,
     run_id: str,
     max_steps: int = 30,
-    sessions: list[str] | None = None,
 ) -> ChainResult:
-    """Run the chain's sessions (all, or only the ids in `sessions`, in chain order).
+    """Run the chain's sessions in order.
 
     `make_model(session_id)` returns the model for one session, so a scripted
     model can replay a per-session solution.
@@ -107,15 +106,12 @@ def run_chain(
     world = loaded.initial_world()
     start = world.copy()
     result = ChainResult()
-    model = None
 
     with EventLog(log_path, run_id) as log:
         for number, session in enumerate(chain.sessions, start=1):
-            if sessions is not None and session.id not in sessions:
-                continue
             model = make_model(session.id)
             log.session, log.turn = number, 1
-            if number == 1 or (sessions is not None and session.id == sessions[0]):
+            if number == 1:
                 log.emit(
                     "run_start",
                     scenario=chain.id,
@@ -153,15 +149,14 @@ def run_chain(
             result.checks[session.id] = checks
             log.emit("grade", session_id=session.id, group=session.id, checks=checks, passed=all(checks.values()))
 
-        if sessions is None:
-            if chain.final_checks:
-                checks = grade(chain.final_checks, start, world)
-                result.checks["final"] = checks
-                log.emit("grade", group="final", checks=checks, passed=all(checks.values()))
-            if loaded.attack and loaded.attack.checks:
-                checks = grade(loaded.attack.checks, start, world)
-                result.checks["attack"] = checks
-                log.emit("grade", group="attack", checks=checks, passed=all(checks.values()))
+        if chain.final_checks:
+            checks = grade(chain.final_checks, start, world)
+            result.checks["final"] = checks
+            log.emit("grade", group="final", checks=checks, passed=all(checks.values()))
+        if loaded.attack and loaded.attack.checks:
+            checks = grade(loaded.attack.checks, start, world)
+            result.checks["attack"] = checks
+            log.emit("grade", group="attack", checks=checks, passed=all(checks.values()))
         log.emit(
             "run_end",
             cost_usd=round(result.cost_usd, 8),

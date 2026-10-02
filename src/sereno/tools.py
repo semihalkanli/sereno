@@ -74,6 +74,8 @@ class ToolOutcome:
     error: str | None
     provenance: dict[str, Any]
     state_changed: bool
+    snapshot: dict | None = None
+    """The world after a write that changed it, so callers need not snapshot it again."""
 
 
 def _to_text(value: Any) -> str:
@@ -106,13 +108,16 @@ class Toolset:
             result, error = "", f"Invalid arguments: {e.errors(include_url=False)}"
         except ToolError as e:
             result, error = "", str(e)
-        changed = tool.writes and self.world.snapshot() != before
-        return self._outcome(name, tool.app, result, error, changed)
+        after = self.world.snapshot() if tool.writes else None
+        changed = after != before
+        return self._outcome(name, tool.app, result, error, changed, after if changed else None)
 
     @staticmethod
-    def _outcome(name: str, app: str, result: str, error: str | None, changed: bool) -> ToolOutcome:
+    def _outcome(
+        name: str, app: str, result: str, error: str | None, changed: bool, snapshot: dict | None = None
+    ) -> ToolOutcome:
         provenance = {
             "channel": f"{app}.{name}",
             "sha256": hashlib.sha256(result.encode()).hexdigest()[:16],
         }
-        return ToolOutcome(result, error, provenance, changed)
+        return ToolOutcome(result, error, provenance, changed, snapshot)
