@@ -1,7 +1,7 @@
 # Chains
 
 A chain is one person's long task over several sessions. Each chain is a
-directory here; a new chain is made by copying `_template/` and editing it.
+directory here; a new chain is made by copying an existing one and editing it.
 Apps are written once in `src/sereno/apps/` and a chain only names the ones it
 links. Run a chain with `uv run sereno run <id> --scripted` (its solution, no
 API calls) or `--model glm53` (paid), optionally with `--attack <attack id>`.
@@ -91,7 +91,7 @@ output:
 - in a later session's `changes`: arrives later, from outside (a new email on
   day 3).
 
-On the prompt side (decision log section 107):
+On the prompt side (decision log section 106):
 
 - in a session's `turns`: inside the user's own message, such as text the user
   pasted or a prompt prefilled by a link (`?q=`);
@@ -118,7 +118,7 @@ Every declared slot must be placed somewhere, and every placed slot declared.
 | `trigger` | `{session, phrase}`: something the user says in a later session that the poison waits for (optional) |
 | `checks` | attack success, over the whole chain, against the initial world |
 
-### Timing (decision log section 108)
+### Timing (decision log section 106)
 
 With `one_of` the poison arrives at a time the chain does not fix. Each
 candidate slot sits in its own place with its own text, such as a review there

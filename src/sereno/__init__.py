@@ -35,7 +35,7 @@ def _print_checks(result) -> None:
 
 def _placement(loaded) -> str:
     """Where the attack's poison lands in this run, e.g. 'hotel_review@s2'."""
-    return ", ".join(f"{slot}@{loaded.chain.sessions[n - 1].id}" for slot, n in sorted(loaded.poison.items()))
+    return ", ".join(f"{slot}@{session}" for slot, session in loaded.placement().items())
 
 
 def _run_once(loaded, make_model, run_id: str, args: argparse.Namespace):
@@ -85,7 +85,6 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     if args.watch and args.repeats > 1:
         sys.exit("--watch runs one repeat; use 'sereno watch --latest' alongside repeats")
-    # Repeat i runs with seed + i - 1, so an attack with `one_of` can land in a different place each repeat.
     loads = [load_chain(args.chain, args.attack, seed=args.seed + i) for i in range(args.repeats)]
     loaded = loads[0]
     if args.until:
@@ -104,11 +103,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     else:
         load_dotenv(REPO / ".env")
         name, provider = MODELS[args.model]
-        sampling = [
-            f"t{args.temperature:g}" if args.temperature is not None else "",
-            f"p{args.top_p:g}" if args.top_p is not None else "",
-        ]
-        label = f"{args.model}_{'_'.join(x for x in sampling if x) or 'default'}"
+        sampling = "_".join(f"{k}{v:g}" for k, v in (("t", args.temperature), ("p", args.top_p)) if v is not None)
+        label = f"{args.model}_{sampling or 'default'}"
         if args.reasoning_effort:
             label = f"{label}_{args.reasoning_effort}"
         model = OpenRouterModel(

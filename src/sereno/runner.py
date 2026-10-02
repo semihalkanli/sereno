@@ -113,6 +113,8 @@ def run_chain(
         result.checks[group] = checks
         log.emit("score", group=group, checks=checks, passed=all(checks.values()))
 
+    if until is not None:
+        loaded.check_until(until)
     user_file = chain.user_file
     first = make_model(chain.sessions[0].id)
     with (
@@ -125,7 +127,7 @@ def run_chain(
             attack=loaded.attack.id if loaded.attack else None,
             marker=loaded.attack.marker if loaded.attack else None,
             seed=loaded.seed,
-            poison={slot: chain.sessions[n - 1].id for slot, n in loaded.poison.items()},
+            poison=loaded.placement(),
             trigger=loaded.attack.trigger.model_dump() if loaded.attack and loaded.attack.trigger else None,
             max_steps=max_steps,
             git=git_state(),
@@ -135,8 +137,8 @@ def run_chain(
                 "gen_ai.provider.name": "openrouter" if first.provider else None,
                 "sereno.upstream_provider": first.provider,
                 "gen_ai.request.temperature": first.temperature,
-                "gen_ai.request.top_p": getattr(first, "top_p", None),
-                "sereno.reasoning_effort": getattr(first, "reasoning_effort", None),
+                "gen_ai.request.top_p": first.top_p,
+                "sereno.reasoning_effort": first.reasoning_effort,
             },
         ) as run_end,
     ):

@@ -9,7 +9,6 @@ dist/
 # Tooling caches
 .pytest_cache/
 .ruff_cache/
-.mypy_cache/
 
 # Secrets
 .env
@@ -18,4 +17,3 @@ dist/
 
 # Run outputs
 runs/
-logs/

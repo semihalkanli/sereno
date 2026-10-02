@@ -19,6 +19,8 @@ import httpx
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
+TIMEOUT_S = 180.0
+MAX_ATTEMPTS = 4
 
 log = logging.getLogger("sereno.model")
 
@@ -61,17 +63,14 @@ class OpenRouterModel:
         top_p: float | None = None,
         reasoning_effort: str | None = None,
         api_key: str | None = None,
-        timeout_s: float = 180.0,
-        max_attempts: int = 4,
     ) -> None:
         self.name = name
         self.provider = provider
         self.temperature = temperature
         self.top_p = top_p
         self.reasoning_effort = reasoning_effort
-        self.max_attempts = max_attempts
         key = api_key or os.environ["OPENROUTER_API_KEY"]
-        self._client = httpx.Client(headers={"Authorization": f"Bearer {key}"}, timeout=timeout_s)
+        self._client = httpx.Client(headers={"Authorization": f"Bearer {key}"}, timeout=TIMEOUT_S)
 
     def complete(self, messages: list[dict], tools: list[dict]) -> Completion:
         body: dict[str, Any] = {
@@ -90,7 +89,7 @@ class OpenRouterModel:
             body["reasoning"] = {"effort": self.reasoning_effort}
 
         attempts: list[dict[str, Any]] = []
-        for attempt in range(1, self.max_attempts + 1):
+        for attempt in range(1, MAX_ATTEMPTS + 1):
             t0 = time.monotonic()
             try:
                 response = self._client.post(OPENROUTER_URL, json=body)
@@ -98,7 +97,7 @@ class OpenRouterModel:
                 record = {"status": None, "duration_s": round(time.monotonic() - t0, 3), "error": repr(e)}
                 attempts.append(record)
                 log.warning("attempt %d transport error", attempt, extra={"attempt": attempt, **record})
-                if attempt == self.max_attempts:
+                if attempt == MAX_ATTEMPTS:
                     raise ModelCallError(f"OpenRouter transport error: {e!r}", attempts) from e
             else:
                 duration = round(time.monotonic() - t0, 3)
@@ -126,7 +125,7 @@ class OpenRouterModel:
                 )
                 # OpenRouter reports some upstream provider failures as 200 with an error body.
                 retryable = response.status_code in RETRY_STATUS or response.status_code == 200
-                if not retryable or attempt == self.max_attempts:
+                if not retryable or attempt == MAX_ATTEMPTS:
                     raise ModelCallError(f"OpenRouter {response.status_code}: {data or response.text[:500]}", attempts)
             wait = min(2**attempt, 30)
             log.info("retrying in %ds", wait, extra={"attempt": attempt, "sleep_s": wait})
@@ -137,8 +136,8 @@ class OpenRouterModel:
 class ScriptedModel:
     """Returns the given assistant messages in order, one per call."""
 
-    def __init__(self, messages: Iterable[dict[str, Any]], name: str = "scripted") -> None:
-        self.name = name
+    def __init__(self, messages: Iterable[dict[str, Any]]) -> None:
+        self.name = "scripted"
         self.provider = None
         self.temperature = None
         self.top_p = None

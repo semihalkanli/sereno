@@ -1,17 +1,8 @@
 """Chain files: one person's long task over several sessions, read from disk.
 
-A chain lives in its own directory under `chains/` and is made by copying
-`chains/_template/`. The format is described field by field in
-`chains/README.md`. Apps are written once in `sereno.apps`; a chain only names
-the ones it links.
-
-Placeholders use double braces. `{{slot:<id>}}` marks a place where a poison
-can go, in any text of the chain or its world data: tool output (world data, a
-session change, the history) or the prompt side (a user turn, the user file,
-seeded memory, a tool description); with no attack it becomes the slot's
-default text. The system prompt also takes `{{owner_name}}`, `{{owner_email}}`,
-`{{now}}` and `{{apps}}`, filled per session, and a tool description
-`{{description}}`, the app's own text.
+A chain lives in its own directory under `chains/`. The format, slots and
+placeholders included, is described field by field in `chains/README.md`.
+Apps are written once in `sereno.apps`; a chain only names the ones it links.
 """
 
 import json
@@ -110,26 +101,6 @@ class Attack(BaseModel, extra="forbid"):
     checks: list[Check] = []
 
 
-def _slots_in(value: Any) -> set[str]:
-    return {
-        m.removeprefix("slot:")
-        for m in PLACEHOLDER.findall(json.dumps(value, ensure_ascii=False))
-        if m.startswith("slot:")
-    }
-
-
-def slot_sessions(raw_chain: dict[str, Any], raw_world: dict[str, Any]) -> dict[str, int]:
-    """Slot id -> the first session (1, 2, ...) in which the agent can see it; 1 for anything there from the start."""
-    first: dict[str, int] = {}
-    for number, session in enumerate(raw_chain.get("sessions", []), start=1):
-        for slot in _slots_in(session):
-            first.setdefault(slot, number)
-    rest = {k: v for k, v in raw_chain.items() if k != "sessions"}
-    for slot in _slots_in(rest) | _slots_in(raw_world):
-        first[slot] = 1
-    return first
-
-
 def _fill_slots(value: Any, fills: dict[str, str], used: set[str]) -> Any:
     if isinstance(value, str):
 
@@ -151,6 +122,35 @@ def _fill_slots(value: Any, fills: dict[str, str], used: set[str]) -> Any:
     return value
 
 
+def _slots_in(value: Any, fills: dict[str, str]) -> set[str]:
+    used: set[str] = set()
+    _fill_slots(value, fills, used)
+    return used
+
+
+def slot_sessions(raw_chain: dict[str, Any], raw_world: dict[str, Any], fills: dict[str, str]) -> dict[str, int]:
+    """Slot id -> the first session (1, 2, ...) in which the agent can see it; 1 for anything there from the start."""
+    first: dict[str, int] = {}
+    for number, session in enumerate(raw_chain.get("sessions", []), start=1):
+        for slot in _slots_in(session, fills):
+            first.setdefault(slot, number)
+    rest = {k: v for k, v in raw_chain.items() if k != "sessions"}
+    for slot in _slots_in(rest, fills) | _slots_in(raw_world, fills):
+        first[slot] = 1
+    return first
+
+
+def _fill(text: str, values: dict[str, str], where: str) -> str:
+    """Fill `{{name}}` placeholders from `values`; any other placeholder is an error."""
+
+    def sub(m: re.Match) -> str:
+        if m.group(1) not in values:
+            raise ValueError(f"unknown placeholder {m.group(0)} in {where}")
+        return values[m.group(1)]
+
+    return PLACEHOLDER.sub(sub, text)
+
+
 def _join(names: list[str]) -> str:
     return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
 
@@ -164,32 +164,36 @@ class LoadedChain:
         world_data: dict[str, Any],
         attack: Attack | None,
         solution: list | None,
-        seed: int = 0,
-        poison: dict[str, int] | None = None,
+        seed: int,
+        poison: dict[str, int],
     ):
         self.chain = chain
         self.world_data = world_data
         self.attack = attack
         self.solution = solution
         self.seed = seed
-        self.poison = poison or {}
+        self.poison = poison
         """Slot id -> session number, for the attack fills this run carries."""
 
     def session_number(self, session_id: str) -> int:
-        return [s.id for s in self.chain.sessions].index(session_id) + 1
+        ids = [s.id for s in self.chain.sessions]
+        if session_id not in ids:
+            raise ValueError(f"chain {self.chain.id} has no session {session_id!r}")
+        return ids.index(session_id) + 1
+
+    def placement(self) -> dict[str, str]:
+        """Slot id -> the id of the first session that shows it, for the attack fills this run carries."""
+        return {slot: self.chain.sessions[n - 1].id for slot, n in sorted(self.poison.items())}
 
     def check_until(self, until: str) -> None:
         """Refuse a run stopped at `until` that the attack could not reach: its poison or trigger comes later."""
-        ids = [s.id for s in self.chain.sessions]
-        if until not in ids:
-            raise ValueError(f"chain {self.chain.id} has no session {until!r}")
-        last = ids.index(until) + 1
+        last = self.session_number(until)
         trigger = self.attack.trigger if self.attack else None
         if trigger and self.session_number(trigger.session) > last:
-            raise ValueError(f"--until {until} stops before the attack's trigger session {trigger.session}")
+            raise ValueError(f"a run until {until} stops before the attack's trigger session {trigger.session}")
         late = [slot for slot, n in self.poison.items() if n > last]
         if late:
-            raise ValueError(f"seed {self.seed}: {', '.join(late)} arrives after --until {until}")
+            raise ValueError(f"seed {self.seed}: {', '.join(late)} arrives after the run stops at {until}")
 
     def app_names(self) -> list[str]:
         return [*self.chain.apps, "memory"] if self.chain.memory else self.chain.apps
@@ -201,7 +205,7 @@ class LoadedChain:
         """The linked apps' tools, with the chain's own descriptions where it gives one."""
         overrides = self.chain.tool_descriptions
         return [
-            replace(t, description=overrides[t.name].replace("{{description}}", t.description))
+            replace(t, description=_fill(overrides[t.name], {"description": t.description}, f"{t.name}'s description"))
             if t.name in overrides
             else t
             for t in world.tools()
@@ -215,12 +219,7 @@ class LoadedChain:
             "apps": _join([get_app(n).title for n in self.chain.apps]),
         }
 
-        def sub(m: re.Match) -> str:
-            if m.group(1) not in values:
-                raise ValueError(f"unknown placeholder {m.group(0)} in system_prompt")
-            return values[m.group(1)]
-
-        prompt = PLACEHOLDER.sub(sub, self.chain.system_prompt)
+        prompt = _fill(self.chain.system_prompt, values, "system_prompt")
         return prompt + INSTRUCTIONS if self.chain.memory else prompt
 
 
@@ -258,7 +257,7 @@ def load_chain(chain_id: str, attack_id: str | None = None, root: Path = CHAINS_
             keep = random.Random(seed).choice(attack.one_of)
             chosen = {s: t for s, t in chosen.items() if s not in attack.one_of or s == keep}
         fills.update(chosen)
-        sessions = slot_sessions(raw_chain, raw_world)
+        sessions = slot_sessions(raw_chain, raw_world, fills)
         poison = {s: sessions[s] for s in chosen if s in sessions}
 
     used: set[str] = set()
@@ -269,16 +268,15 @@ def load_chain(chain_id: str, attack_id: str | None = None, root: Path = CHAINS_
         raise ValueError(f"slots declared but never placed: {', '.join(unused)}")
     if chain.id != chain_id:
         raise ValueError(f"chain id {chain.id!r} does not match its directory {chain_id!r}")
+    if not chain.memory and (chain.user_file or any(s.user_file is not None for s in chain.sessions)):
+        raise ValueError(f"chain {chain_id} has a user file but no memory; the user file is loaded with memory")
     loaded = LoadedChain(chain, world_data, attack, solution, seed, poison)
     if attack and attack.trigger:
         trigger = attack.trigger
-        ids = [s.id for s in chain.sessions]
-        if trigger.session not in ids:
-            raise ValueError(f"attack {attack_id}: trigger session {trigger.session!r} is not in the chain")
-        turns = chain.sessions[ids.index(trigger.session)].turns
-        if not any(trigger.phrase.lower() in turn.lower() for turn in turns):
+        at = loaded.session_number(trigger.session)
+        if not any(trigger.phrase.lower() in turn.lower() for turn in chain.sessions[at - 1].turns):
             raise ValueError(f"attack {attack_id}: no turn of {trigger.session} says {trigger.phrase!r}")
-        late = [s for s, n in poison.items() if n >= loaded.session_number(trigger.session)]
+        late = [s for s, n in poison.items() if n >= at]
         if late:
             raise ValueError(f"attack {attack_id}: {', '.join(late)} arrives no earlier than the trigger session")
     known = {t.name for name in loaded.app_names() for t in get_app(name).tools}

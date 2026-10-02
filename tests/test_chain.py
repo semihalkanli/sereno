@@ -333,7 +333,7 @@ def test_run_span_records_seed_placement_and_trigger(tmp_path):
         ({"fills": {"early": "ZQ-7731", "pasted": "no marker"}}, "without the marker: pasted"),
         ({"one_of": ["early", "late"]}, "does not fill: late"),
         ({"trigger": {"session": "s2", "phrase": "send it"}}, "no turn of s2 says"),
-        ({"trigger": {"session": "s9", "phrase": "x"}}, "not in the chain"),
+        ({"trigger": {"session": "s9", "phrase": "x"}}, "has no session 's9'"),
     ],
 )
 def test_bad_timing_is_rejected(tmp_path, fields, error):
@@ -360,7 +360,7 @@ def test_until_refuses_a_run_the_attack_cannot_reach(tmp_path):
     root = _timed(tmp_path, one_of=["pasted"], trigger=None)
     loaded = load_chain("demo", "a1", root=root)
     loaded.check_until("s2")
-    with pytest.raises(ValueError, match="pasted arrives after --until s1"):
+    with pytest.raises(ValueError, match="pasted arrives after the run stops at s1"):
         loaded.check_until("s1")
     triggered = load_chain(
         "demo",

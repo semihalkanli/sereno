@@ -32,7 +32,6 @@ def test_create_stamps_modified_with_the_world_clock():
         "File created successfully at: /memories/hotel.md"
     )
     (item,) = store.files
-    assert item.modified == NOW
     assert "modified: 2026-11-12T08:30:00\n---\n\nPay at the hotel." in item.content
 
     world.now = datetime(2026, 11, 13, 20, 10)
@@ -46,7 +45,6 @@ def test_create_stamps_modified_with_the_world_clock():
 def test_file_without_frontmatter_gets_no_stamp():
     world, store = _world()
     run(world, command="create", path=INDEX, file_text="- [Hotel rule](hotel.md) - pay at the hotel\n")
-    assert store.files[0].modified is None
     assert "modified" not in store.files[0].content
 
 

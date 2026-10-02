@@ -112,6 +112,11 @@ def _parse_ts(value: Any) -> datetime | None:
         return None
 
 
+def _or_default(value: Any) -> Any:
+    """A logged sampling value, or 'default' when none was sent (0 is a value, not a default)."""
+    return "default" if value is None else value
+
+
 def format_age(seconds: float) -> str:
     seconds = max(0, int(seconds))
     if seconds < 60:
@@ -495,9 +500,9 @@ def render_event(
     if kind == "span_begin" and span == "run":
         text.append(
             f"run {event.get('run_id')}  chain {event.get('chain')}  attack {event.get('attack')}  "
-            f"temperature {event.get('gen_ai.request.temperature') or 'default'}  "
-            f"top_p {event.get('gen_ai.request.top_p') or 'default'}  "
-            f"effort {event.get('sereno.reasoning_effort') or 'default'}  max_steps {event.get('max_steps')}",
+            f"temperature {_or_default(event.get('gen_ai.request.temperature'))}  "
+            f"top_p {_or_default(event.get('gen_ai.request.top_p'))}  "
+            f"effort {_or_default(event.get('sereno.reasoning_effort'))}  max_steps {event.get('max_steps')}",
             style="dim",
         )
     elif kind == "span_begin" and span == "session":
@@ -606,7 +611,7 @@ def peek_text(info: RunInfo) -> Text:
     return text
 
 
-def row_text(info: RunInfo, frame: int, width: int, now: datetime | None = None) -> Text:
+def row_text(info: RunInfo, frame: int, width: int) -> Text:
     """One run row: state icon, name, badges, summary and age at the right edge."""
     state = info.state()
     if state == "working":
@@ -630,7 +635,7 @@ def row_text(info: RunInfo, frame: int, width: int, now: datetime | None = None)
         badges.append(f"{passed}/{total} ", style="green" if passed == total else "red")
     if info.model and not info.legacy:
         badges.append(f"{info.model.split('/')[-1]} ", style="dim")
-    age = format_age(info.age(now))
+    age = format_age(info.age())
     room = max(10, width - left.cell_len - badges.cell_len - len(age) - 2)
     summary = _one_line(info.summary(), room)
     line = left + badges

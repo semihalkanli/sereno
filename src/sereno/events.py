@@ -9,7 +9,7 @@ flushed as soon as it is written.
 
 The design follows three references (decision log section 85):
 - Inspect AI's event model for the event kinds: model calls keep the exact
-  request and response, tools, state, scores, errors, approvals, store, and
+  request and response, tools, state, scores, errors, approvals, and
   spans that group them.
 - OpenTelemetry GenAI semantic conventions for field and operation names,
   pinned to open-telemetry/semantic-conventions-genai commit b31e9e8ea26a
@@ -36,7 +36,8 @@ Event kinds and their own fields:
                  run: chain, sessions (count), attack, marker, gen_ai.request.model, gen_ai.provider.name,
                       sereno.upstream_provider, gen_ai.request.temperature, gen_ai.request.top_p,
                       sereno.reasoning_effort (each null: provider default), max_steps, git,
-                      pid (of the process writing the log, for liveness)
+                      pid (of the process writing the log, for liveness), seed, poison (slot ->
+                      first session that shows it), trigger (the attack's {session, phrase} or null)
                  session: session_id, date, owner, gen_ai.system_instructions,
                       gen_ai.tool.definitions (full schemas as sent), changes (outside changes
                       applied when the session started)
@@ -48,7 +49,8 @@ Event kinds and their own fields:
                  event and closes every open span with reason "error" ("stopped" for
                  ctrl+c). A run whose process is killed leaves its spans open; readers
                  check `pid` to tell it from a live one.
-    input        content: a user message; prefilled true when it comes from the session's history
+    input        content: a user message; prefilled true when it comes from the session's history,
+                 harness true when the harness wrote it (the session-start memory reminder)
     chat         one model call.
                  call {request, response}: the exact JSON body posted and the exact JSON
                      returned; request.messages is the exact conversation the model saw.
@@ -72,8 +74,6 @@ Event kinds and their own fields:
     error        message, type (exception class), traceback, attempts (model call attempts,
                  when the error came from the model)
     approval     reserved for the gate: decision, explanation, gen_ai.tool.call.id
-    store        reserved for memory: gen_ai.operation.name (create_memory, update_memory,
-                 search_memory), gen_ai.memory.store.id, records, sereno.provenance
 
 Diagnostic records in diag.jsonl carry ts, level, logger, message, run_id,
 event_id (the event being built when the record was written; a chat event's

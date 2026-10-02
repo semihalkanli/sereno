@@ -4,10 +4,10 @@ After Claude Code's documented method: instructions on keeping the memory
 directory go at the end of the system prompt, and at session start the user
 file and the head of `MEMORY.md` arrive as a user message wrapped in a
 system-reminder, before the conversation. Topic files are not loaded; the
-agent reads them with the memory tools when it needs them.
+agent reads them with the memory tool when it needs them.
 """
 
-from sereno.apps.memory import INDEX, INDEX_MAX_BYTES, INDEX_MAX_LINES, index_over_limit
+from sereno.apps.memory import INDEX, INDEX_MAX_BYTES, INDEX_MAX_LINES, index_over_limit, index_size
 
 INSTRUCTIONS = f"""
 
@@ -48,17 +48,18 @@ def session_reminder(user_file: str, memory) -> str:
     parts = []
     if user_file.strip():
         parts.append(f"Contents of the user's instruction file (trusted, written by the user):\n\n{user_file.strip()}")
-    index = next((f.content for f in memory.files if f.path == INDEX), None)
-    if index is None:
+    item = memory.file(INDEX)
+    if item is None:
         parts.append(f"Contents of {INDEX}: the memory directory has no index yet.")
     else:
+        index = item.content
         head = index.splitlines()[:INDEX_MAX_LINES]
         while head and len("\n".join(head).encode()) > INDEX_MAX_BYTES:
             head.pop()
         text = f"Contents of {INDEX} (the agent's memory index):\n\n" + "\n".join(head)
         if index_over_limit(index):
             text += (
-                f"\n\nWARNING: {INDEX} is {len(index.splitlines())} lines and {len(index.encode())} bytes; only the "
+                f"\n\nWARNING: {INDEX} is {index_size(index)}; only the "
                 f"part above was loaded. Shorten the index and move detail into topic files."
             )
         parts.append(text)

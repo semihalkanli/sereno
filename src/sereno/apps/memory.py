@@ -18,6 +18,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import find, iso_seconds
 from sereno.tools import Tool, ToolError
 
 ROOT = "/memories"
@@ -34,11 +35,13 @@ FRONTMATTER = re.compile(r"\A---\n(.*?\n)?---(\n|\Z)", re.DOTALL)
 class MemoryFile(BaseModel):
     path: str
     content: str
-    modified: datetime | None = None
 
 
 class Memory(BaseModel):
     files: list[MemoryFile] = []
+
+    def file(self, path: str) -> MemoryFile | None:
+        return next((f for f in self.files if f.path == path), None)
 
 
 class MemoryArgs(BaseModel):
@@ -67,10 +70,6 @@ def _clean(raw: str | None) -> str:
     return f"{ROOT}/" + "/".join(parts)
 
 
-def _file(memory: Memory, path: str) -> MemoryFile | None:
-    return next((f for f in memory.files if f.path == path), None)
-
-
 def _under(memory: Memory, path: str) -> list[MemoryFile]:
     prefix = path.rstrip("/") + "/"
     return [f for f in memory.files if f.path.startswith(prefix)]
@@ -92,32 +91,30 @@ def _stamp(content: str, now: datetime) -> str:
     if m is None:
         return content
     lines = [line for line in (m.group(1) or "").splitlines() if not line.startswith("modified:")]
-    lines.append(f"modified: {now.isoformat(timespec='seconds')}")
+    lines.append(f"modified: {iso_seconds(now)}")
     return "---\n" + "\n".join(lines) + "\n---" + m.group(2) + content[m.end() :]
 
 
-def index_over_limit(content: str) -> bool:
-    return len(content.splitlines()) > INDEX_MAX_LINES or len(content.encode()) > INDEX_MAX_BYTES
+def index_over_limit(content: str, share: float = 1.0) -> bool:
+    """Whether the index passes `share` of its line or byte read limit."""
+    return len(content.splitlines()) > INDEX_MAX_LINES * share or len(content.encode()) > INDEX_MAX_BYTES * share
 
 
-def index_near_limit(content: str) -> bool:
-    lines, size = len(content.splitlines()), len(content.encode())
-    return lines > INDEX_MAX_LINES * NEAR or size > INDEX_MAX_BYTES * NEAR
+def index_size(content: str) -> str:
+    return f"{len(content.splitlines())} lines and {len(content.encode())} bytes"
 
 
 def _save(world, path: str, content: str, result: str) -> str:
-    """Write a file with its `modified` stamp, and check the index against its read limit."""
+    """Write a file whose `modified` stamp is already set, and check the index against its read limit."""
     memory = world.app("memory")
-    content = _stamp(content, world.now)
-    stamp = world.now if FRONTMATTER.match(content) else None
-    item = _file(memory, path)
+    item = memory.file(path)
     if item is None:
-        memory.files.append(MemoryFile(path=path, content=content, modified=stamp))
+        memory.files.append(MemoryFile(path=path, content=content))
     else:
-        item.content, item.modified = content, stamp
+        item.content = content
     if path != INDEX:
         return result
-    size = f"MEMORY.md is now {len(content.splitlines())} lines and {len(content.encode())} bytes"
+    size = f"MEMORY.md is now {index_size(content)}"
     if index_over_limit(content):
         # The write stands; the error tells the agent that the part past the limit will not load.
         raise ToolError(
@@ -125,7 +122,7 @@ def _save(world, path: str, content: str, result: str) -> str:
             "saved, but everything past the limit is dropped at the next session start. Rewrite the index: one "
             "short line per file, detail in topic files, stale entries merged or removed."
         )
-    if index_near_limit(content):
+    if index_over_limit(content, NEAR):
         result += (
             f"\n\n{size}, near the read limit of {INDEX_MAX_LINES} lines or {INDEX_MAX_BYTES} bytes. Keep one "
             "short line per file, move detail into topic files, and merge or drop stale entries."
@@ -134,7 +131,7 @@ def _save(world, path: str, content: str, result: str) -> str:
 
 
 def _view(memory: Memory, path: str, view_range: list[int] | None) -> str:
-    item = _file(memory, path)
+    item = memory.file(path)
     if item is not None:
         lines = item.content.splitlines()
         start, end = 1, len(lines)
@@ -166,9 +163,7 @@ def _view(memory: Memory, path: str, view_range: list[int] | None) -> str:
 
 
 def _str_replace(world, path: str, old: str, new: str) -> str:
-    item = _file(world.app("memory"), path)
-    if item is None:
-        raise ToolError(f"The path {path} does not exist. Please provide a valid path.")
+    item = find(world.app("memory").files, f"The path {path} does not exist. Please provide a valid path.", path=path)
     count = item.content.count(old) if old else 0
     if count == 0:
         raise ToolError(f"No replacement was performed, old_str `{old}` did not appear verbatim in {path}.")
@@ -181,18 +176,17 @@ def _str_replace(world, path: str, old: str, new: str) -> str:
     first = item.content[: item.content.index(old)].count("\n") + 1
     content = item.content.replace(old, new)
     stamped = _stamp(content, world.now)
-    if FRONTMATTER.match(content) and first > FRONTMATTER.match(content).group(0).count("\n"):
+    m = FRONTMATTER.match(content)
+    if m and first > m.group(0).count("\n"):
         first += stamped.count("\n") - content.count("\n")
     lines = stamped.splitlines()
     start = max(first - SNIPPET_LINES, 1)
     end = min(first + new.count("\n") + SNIPPET_LINES, len(lines))
-    return _save(world, path, content, "The memory file has been edited.\n" + _numbered(lines[start - 1 : end], start))
+    return _save(world, path, stamped, "The memory file has been edited.\n" + _numbered(lines[start - 1 : end], start))
 
 
 def _insert(world, path: str, line: int, text: str) -> str:
-    item = _file(world.app("memory"), path)
-    if item is None:
-        raise ToolError(f"The path {path} does not exist")
+    item = find(world.app("memory").files, f"The path {path} does not exist", path=path)
     lines = item.content.split("\n")
     if not 0 <= line <= len(lines):
         raise ToolError(
@@ -200,16 +194,23 @@ def _insert(world, path: str, line: int, text: str) -> str:
             f"file: [0, {len(lines)}]"
         )
     lines.insert(line, text.removesuffix("\n"))
-    return _save(world, path, "\n".join(lines), f"The file {path} has been edited.")
+    return _save(world, path, _stamp("\n".join(lines), world.now), f"The file {path} has been edited.")
+
+
+def _targets(memory: Memory, path: str, verb: str) -> list[MemoryFile]:
+    """The file at `path`, or every file under it; a ToolError for the root or a missing path."""
+    if path == ROOT:
+        raise ToolError(f"The {ROOT} directory itself cannot be {verb}")
+    item = memory.file(path)
+    found = [item] if item else _under(memory, path)
+    if not found:
+        raise ToolError(f"The path {path} does not exist")
+    return found
 
 
 def _rename(memory: Memory, old: str, new: str) -> str:
-    if old == ROOT:
-        raise ToolError(f"The {ROOT} directory itself cannot be renamed")
-    moving = [_file(memory, old)] if _file(memory, old) else _under(memory, old)
-    if not moving:
-        raise ToolError(f"The path {old} does not exist")
-    if new == ROOT or _file(memory, new) or _under(memory, new):
+    moving = _targets(memory, old, "renamed")
+    if new == ROOT or memory.file(new) or _under(memory, new):
         raise ToolError(f"The destination {new} already exists")
     if new.startswith(old + "/"):
         raise ToolError(f"Cannot move {old} into itself")
@@ -234,18 +235,14 @@ def memory(world, args: MemoryArgs) -> str:
     if args.command == "view":
         return _view(store, path, args.view_range)
     if args.command == "delete":
-        if path == ROOT:
-            raise ToolError(f"The {ROOT} directory itself cannot be deleted")
-        gone = [_file(store, path)] if _file(store, path) else _under(store, path)
-        if not gone:
-            raise ToolError(f"The path {path} does not exist")
+        gone = _targets(store, path, "deleted")
         store.files = [f for f in store.files if f not in gone]
         return f"Successfully deleted {path}"
     if path == ROOT or _under(store, path):
         raise ToolError(f"The path {path} is a directory, not a file")
     if args.command == "create":
         _require(args, "file_text")
-        return _save(world, path, args.file_text, f"File created successfully at: {path}")
+        return _save(world, path, _stamp(args.file_text, world.now), f"File created successfully at: {path}")
     if args.command == "str_replace":
         _require(args, "old_str")
         return _str_replace(world, path, args.old_str, args.new_str or "")

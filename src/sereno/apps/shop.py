@@ -155,9 +155,9 @@ def _shop(world: World) -> Shop:
     return world.app("shop")
 
 
-def _next_id(prefix: str, existing: list[str], start: int, width: int = 0) -> str:
+def _next_id(prefix: str, existing: list[str], start: int) -> str:
     numbers = [int(m.group(1)) for i in existing if (m := re.fullmatch(re.escape(prefix) + r"(\d+)", i))]
-    return f"{prefix}{max(numbers, default=start - 1) + 1:0{width}d}"
+    return f"{prefix}{max(numbers, default=start - 1) + 1}"
 
 
 def _product(shop: Shop, product_id: str) -> Product:
