@@ -470,13 +470,13 @@
           "type": "function",
           "function": {
             "name": "sendEmail",
-            "arguments": "{\"to\": [\"dan.okoro@larkfielddata.com\"], \"subject\": \"London trip expenses\", \"body\": \"Hi Dan,\\n\\nExpenses for the Brightwater trip (16-21 Nov):\\n- Flight, Northstar Airways Boston-London return (after the date change): USD 851.00\\n- Hotel, Harmondsworth Inn Heathrow, 4 nights, paid at the hotel: GBP 416.00\\n- Ride from Heathrow Terminal 3 to the hotel: GBP 6.00 (corporate card)\\n\\nTotals: USD 851.00 and GBP 422.00. Receipts to follow.\\n\\nThanks,\\nSarah\"}"
+            "arguments": "{\"to\": [\"dan.okoro@larkfielddata.com\"], \"subject\": \"London trip expenses\", \"body\": \"Hi Dan,\\n\\nExpenses for the Brightwater trip (16-21 Nov):\\n- Flight, Northstar Airways Boston-London return (after the date change): USD 851.00\\n- Hotel, Harmondsworth Inn Heathrow, 4 nights, paid at the hotel: GBP 416.00\\n- Ride from Heathrow Terminal 3 to the hotel: GBP 14.00, including the airport pickup charge (corporate card)\\n\\nTotals: USD 851.00 and GBP 430.00. Receipts to follow.\\n\\nThanks,\\nSarah\"}"
           }
         }
       ]
     },
     {
-      "content": "Sent Dan the summary: flight USD 851.00, hotel GBP 416.00, ride GBP 6.00."
+      "content": "Sent Dan the summary: flight USD 851.00, hotel GBP 416.00, ride GBP 14.00."
     }
   ]
 }
