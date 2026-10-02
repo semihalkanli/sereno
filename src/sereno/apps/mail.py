@@ -11,6 +11,8 @@ output shapes). Other scenarios map onto it:
 Added (not in Gray Swan): `attachments` on sendEmail and replyToEmail (paths of
 drive files, as email_send in mcp-email-corporate-leak attaches files), and
 forwardEmail, proposed (no Gray Swan schema) for the Gmail browser scenarios.
+The query understands a subset of Gmail search operators (from, to, subject,
+is, has, in, after, before and quoted phrases).
 Reading an email does not mark it read, as in the Gmail API; markEmailAsRead
 does. Delete moves the email to the trash folder. Bodies, subjects and senders
 of received emails are written by others, so they carry poison slots.
@@ -18,13 +20,14 @@ of received emails are written by others, so they carry poison slots.
 
 from __future__ import annotations
 
-from datetime import datetime
+import re
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find, plain_stamp
+from sereno.apps._common import find, fresh_id, plain_stamp
 from sereno.apps.files import require_files
 from sereno.tools import Tool, ToolError
 
@@ -64,11 +67,23 @@ def _snippet(body: str) -> str:
     return text if len(text) <= 100 else text[:97] + "..."
 
 
+_TERM = re.compile(r'(?:[A-Za-z_]+:)?"[^"]*"|\S+')
+
+
+def _day(value: str) -> date | None:
+    try:
+        return date.fromisoformat(value.replace("/", "-"))
+    except ValueError:
+        return None
+
+
 def _matches(e: Email, query: str) -> bool:
     folder = "inbox"
-    for term in query.split():
-        key, _, value = term.partition(":")
-        key, value = key.lower(), value.lower()
+    for term in _TERM.findall(query):
+        key, sep, value = term.partition(":")
+        if not sep or key.startswith('"'):
+            key, value = "", ""
+        key, value = key.lower(), value.strip('"').lower()
         if value and key == "from":
             if value not in e.sender.lower():
                 return False
@@ -86,7 +101,10 @@ def _matches(e: Email, query: str) -> bool:
                 return False
         elif value and key == "in":
             folder = value
-        elif term.lower() not in f"{e.sender} {e.subject} {e.body}".lower():
+        elif key in ("after", "before") and (day := _day(value)):
+            if (e.sent_at.date() < day) if key == "after" else (e.sent_at.date() >= day):
+                return False
+        elif term.strip('"').lower() not in f"{e.sender} {e.subject} {e.body}".lower():
             return False
     return folder == "anywhere" or e.folder == folder
 
@@ -95,8 +113,9 @@ class ListEmailsArgs(BaseModel):
     query: str = Field(
         "",
         description="Optional search query to filter emails (e.g., 'from:user@example.com', 'subject:meeting', "
-        "'is:unread', 'has:attachment', 'in:sent', 'in:trash', 'in:anywhere'). Plain words match sender, subject "
-        "and body. Without in: only the inbox is searched.",
+        "'is:unread', 'has:attachment', 'after:2024/01/31', 'before:2024/02/01', 'in:sent', 'in:trash', "
+        "'in:anywhere'). Plain words match sender, subject and body; quote a phrase to match it whole. Without in: "
+        "only the inbox is searched.",
     )
     max_results: int = Field(50, ge=1, le=500, description="Maximum number of emails to return. Default 50.")
 
@@ -137,13 +156,22 @@ def get_email_by_id(world: World, args: GetEmailByIdArgs) -> dict:
     }
 
 
+def _addresses(addresses: list[str]) -> list[str]:
+    cleaned = [a.strip() for a in addresses]
+    bad = [a for a in cleaned if not re.fullmatch(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+", a)]
+    if bad:
+        raise ToolError(f"Invalid email address: {', '.join(map(repr, bad))}.")
+    return cleaned
+
+
 def _send(world: World, to: list[str], cc: list[str], subject: str, body: str, attachments: list[str], **extra) -> dict:
     if not to:
         raise ToolError("At least one recipient is required.")
-    require_files(world, attachments)
+    to, cc = _addresses(to), _addresses(cc)
     mail = _mail(world)
+    sent = sum(e.folder == "sent" for e in mail.emails)
     email = Email(
-        id=f"sent-{sum(e.folder == 'sent' for e in mail.emails) + 1}",
+        id=fresh_id(lambda n: f"sent-{n}", (e.id for e in mail.emails), sent + 1),
         sender=world.owner.email,
         to=to,
         cc=cc,
@@ -168,6 +196,7 @@ class SendEmailArgs(BaseModel):
 
 
 def send_email(world: World, args: SendEmailArgs) -> dict:
+    require_files(world, args.attachments)
     return _send(world, args.to, args.cc, args.subject, args.body, args.attachments)
 
 
@@ -182,10 +211,14 @@ def reply_to_email(world: World, args: ReplyToEmailArgs) -> dict:
     original = _email(world, args.email_id)
     me = world.owner.email.lower()
     to = original.to if original.sender.lower() == me else [original.sender]
-    cc = []
+    cc: list[str] = []
     if args.reply_all:
-        others = [a for a in original.to + original.cc if a.lower() != me and a not in to]
-        cc = others
+        seen = {a.lower() for a in to} | {me}
+        for a in original.to + original.cc:
+            if a.lower() not in seen:
+                seen.add(a.lower())
+                cc.append(a)
+    require_files(world, args.attachments)
     subject = original.subject if original.subject.lower().startswith("re:") else f"Re: {original.subject}"
     return _send(world, to, cc, subject, args.body, args.attachments, in_reply_to=original.id)
 
