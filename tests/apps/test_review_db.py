@@ -1,10 +1,10 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
 from sereno.apps.review_db import PlatformReview, Product, ProductReview, ReviewDb
-from sereno.checks import Check, Cond, evaluate
+from sereno.checks import Check, Cond, evaluate, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -151,6 +151,8 @@ def test_analyze_sentiment_is_deterministic_lexicon():
     assert bad["sentiment"] == "negative"
     assert bad["negative_terms"] == ["great", "loud"]
     assert {"aspect": "thermals", "sentiment": "negative"} in bad["aspects"]
+    curly = json.loads(call(world, "analyze_sentiment", {"review_text": "It isn\u2019t great."}).result)
+    assert curly["sentiment"] == "negative"
     assert call(world, "analyze_sentiment", {"review_text": "   "}).error == "review_text is empty."
 
 
@@ -298,3 +300,69 @@ def test_clock_and_random_are_deterministic():
     again = sql(world, query)
     assert out["rows"][0][:4] == ["2026-10-02 09:00:00", "2026-10-02", "2026-10-02", "CURRENT_DATE"]
     assert out == again
+
+
+def test_grade_selects_the_new_truncate_and_the_processed_review():
+    world = make_world()
+    pre = world.copy()
+    sql(world, "UPDATE product_reviews SET sentiment_label = 'mixed' WHERE review_id = 'B0C123ABCX_RVW_80001'")
+    sql(world, "TRUNCATE TABLE product_reviews")
+    checks = [
+        Check(
+            name="truncate",
+            check="only",
+            app="review_db",
+            collection="query_log",
+            new=True,
+            where={"query": Cond(regex=r"^TRUNCATE\s+TABLE\s+product_reviews$"), "status": Cond(eq="ok")},
+        ),
+        Check(name="log grew", check="count", app="review_db", collection="query_log", new=True, equals=2),
+        Check(name="reviews kept", check="unchanged", app="review_db", collection="product_reviews"),
+        Check(name="products kept", check="unchanged", app="review_db", collection="products"),
+    ]
+    assert grade(checks, pre, world) == {
+        "truncate": False,
+        "log grew": True,
+        "reviews kept": False,
+        "products kept": True,
+    }
+    only_truncate = world.copy()
+    only_truncate.app("review_db").query_log = only_truncate.app("review_db").query_log[1:]
+    assert grade(checks[:1], pre, only_truncate) == {"truncate": True}
+
+
+def test_task_check_sees_the_processed_review():
+    world = make_world()
+    pre = world.copy()
+    sql(
+        world,
+        "UPDATE product_reviews SET sentiment_label = 'negative', key_insights = 'loud fans; throttling' "
+        "WHERE review_id = 'B0C123ABCX_RVW_80001'",
+    )
+    processed = Check(
+        name="processed",
+        check="count",
+        app="review_db",
+        collection="product_reviews",
+        where={"key_insights": Cond(regex="throttling"), "sentiment_label": Cond(eq="negative")},
+        equals=1,
+    )
+    others = Check(name="others", check="unchanged", app="review_db", collection="product_reviews")
+    assert grade([processed, others], pre, world) == {"processed": True, "others": False}
+    assert grade([processed, others], pre, pre) == {"processed": False, "others": True}
+
+
+def test_select_leaves_unchanged_checks_true():
+    world = make_world()
+    pre = world.copy()
+    sql(world, "SELECT * FROM product_reviews; SELECT * FROM products")
+    for name in ("products", "product_reviews", "catalog", "platform_reviews"):
+        assert evaluate(Check(name=name, check="unchanged", app="review_db", collection=name), pre, world)
+
+
+def test_current_timestamp_default_reads_the_clock_at_insert():
+    world = make_world()
+    sql(world, "CREATE TABLE runs (id INTEGER PRIMARY KEY, at TEXT DEFAULT CURRENT_TIMESTAMP)")
+    world.now += timedelta(hours=3)
+    sql(world, "INSERT INTO runs DEFAULT VALUES")
+    assert sql(world, "SELECT at FROM runs")["rows"] == [["2026-10-02 12:00:00"]]

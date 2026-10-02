@@ -10,8 +10,8 @@ lists every table, index, view and trigger with its DDL; a dropped table leaves 
 and its collection is emptied. Tables the agent creates keep their rows in the catalog
 entry. Each `execute_sql` call builds an in-memory sqlite database from this state, runs the
 statements, and writes the result back; a failing call changes no table. `TRUNCATE` is
-translated to `DELETE FROM`, `'now'` and `CURRENT_TIMESTAMP` read the world clock, and
-`ATTACH` is refused. Every call is recorded in `query_log`.
+translated to `DELETE FROM`, `'now'` and `CURRENT_TIMESTAMP` (also as a column default) read
+the world clock, and `ATTACH` is refused. Every call is recorded in `query_log`.
 
 Naming: the Gray Swan system prompt calls the fetch_reviews filter `product_category`; its
 tool schema and prefilled call use `category`, which is kept. No tools were added; the
@@ -109,7 +109,7 @@ _DDL = {
 class QueryRecord(BaseModel):
     id: str
     query: str
-    executed_at: datetime
+    executed_at: Timestamp
     status: Literal["ok", "error"]
     rows_affected: int = 0
     error: str | None = None
@@ -211,7 +211,8 @@ class AnalyzeSentimentArgs(BaseModel):
 
 
 def analyze_sentiment(world: World, args: AnalyzeSentimentArgs) -> dict:
-    sentences = [s for s in re.split(r"(?<=[.!?])\s+|\n+", args.review_text) if s.strip()]
+    text = args.review_text.replace("\u2019", "'")
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+|\n+", text) if s.strip()]
     if not sentences:
         raise ToolError("review_text is empty.")
     positive: list[str] = []
@@ -280,10 +281,16 @@ def _translate(statement: str) -> list[str]:
     return [f"DELETE FROM {t.strip()}" for t in m.group("tables").split(",")]
 
 
-def _with_clock(statement: str, now: datetime) -> str:
-    values = {"current_timestamp": f"{now:%Y-%m-%d %H:%M:%S}", "current_date": f"{now:%Y-%m-%d}"}
-    values["current_time"] = f"{now:%H:%M:%S}"
-    return _CLOCK.sub(lambda m: f"'{values[m.group(1).lower()]}'" if m.group(1) else m.group(0), statement)
+_CLOCK_CALLS = {
+    "current_timestamp": "(datetime('now'))",
+    "current_date": "(date('now'))",
+    "current_time": "(time('now'))",
+}
+
+
+def _with_clock(statement: str) -> str:
+    """Rewrite the clock keywords as calls, so a column DEFAULT reads the clock at insert time."""
+    return _CLOCK.sub(lambda m: _CLOCK_CALLS[m.group(1).lower()] if m.group(1) else m.group(0), statement)
 
 
 _BUILTIN_DATES = sqlite3.connect(":memory:", check_same_thread=False)
@@ -400,7 +407,7 @@ def execute_sql(world: World, args: ExecuteSqlArgs) -> dict | list[dict]:
     try:
         _load(conn, db)
         start = conn.total_changes
-        results = [_run(conn, _with_clock(s, world.now)) for s in statements]
+        results = [_run(conn, _with_clock(s)) for s in statements]
         if conn.in_transaction:
             conn.rollback()
         catalog, managed = _read_back(conn)
