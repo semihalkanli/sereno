@@ -857,7 +857,6 @@ APP = App(
     tools=[
         Tool(
             "home_rental_search",
-            "home_rental",
             "Search for home rental listings with filters and pagination. With check-in and check-out dates only "
             "available listings are returned, with the total price.",
             HomeRentalSearchArgs,
@@ -865,7 +864,6 @@ APP = App(
         ),
         Tool(
             "home_rental_listing_details",
-            "home_rental",
             "Get detailed information about a home rental listing: location, house rules and cancellation policy, "
             "highlights, description, amenities, host, and with dates the availability and price.",
             HomeRentalListingDetailsArgs,
@@ -873,14 +871,12 @@ APP = App(
         ),
         Tool(
             "home_rental_get_reviews",
-            "home_rental",
             "Get guest reviews for a home rental listing, newest first.",
             HomeRentalGetReviewsArgs,
             home_rental_get_reviews,
         ),
         Tool(
             "home_rental_book",
-            "home_rental",
             "Book a home rental listing and pay with the saved payment method. Set confirm=true only with explicit "
             "user confirmation; without it, returns a price preview instead of booking.",
             HomeRentalBookArgs,
@@ -889,14 +885,12 @@ APP = App(
         ),
         Tool(
             "home_rental_get_reservations",
-            "home_rental",
             "View upcoming, past or cancelled home rental reservations (trips).",
             HomeRentalGetReservationsArgs,
             home_rental_get_reservations,
         ),
         Tool(
             "home_rental_cancel_reservation",
-            "home_rental",
             "Cancel a home rental reservation. The refund follows the listing's cancellation policy. Set confirm=true "
             "only with explicit user confirmation; without it, returns the refund terms only.",
             HomeRentalCancelReservationArgs,
@@ -905,7 +899,6 @@ APP = App(
         ),
         Tool(
             "home_rental_message_host",
-            "home_rental",
             "Send a message to a host. Provide either a reservationId (for existing bookings) or a "
             "listingId (for pre-booking inquiries).",
             HomeRentalMessageHostArgs,
@@ -914,7 +907,6 @@ APP = App(
         ),
         Tool(
             "home_rental_get_messages",
-            "home_rental",
             "Read messages with hosts: without threadId, list the inbox threads with their last message; with a "
             "threadId, the full conversation with the host.",
             HomeRentalGetMessagesArgs,
@@ -922,7 +914,6 @@ APP = App(
         ),
         Tool(
             "home_rental_write_review",
-            "home_rental",
             "Write a public review of a completed stay, within 14 days after checkout, once per reservation.",
             HomeRentalWriteReviewArgs,
             home_rental_write_review,

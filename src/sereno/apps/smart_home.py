@@ -497,7 +497,6 @@ APP = App(
     tools=[
         Tool(
             "assist__TurnOn",
-            "smart_home",
             "Turns on, opens or locks a device or entity, or activates a scene, in the home.",
             TargetArgs,
             turn_on,
@@ -505,7 +504,6 @@ APP = App(
         ),
         Tool(
             "assist__TurnOff",
-            "smart_home",
             "Turns off, closes or unlocks a device or entity in the home.",
             TargetArgs,
             turn_off,
@@ -513,16 +511,14 @@ APP = App(
         ),
         Tool(
             "assist__GetLiveContext",
-            "smart_home",
             "Current state and attributes of the exposed entities (on/off, open/closed, brightness, volume, "
             "temperature).",
             LiveContextArgs,
             get_live_context,
         ),
-        Tool("assist__GetDateTime", "smart_home", "The current date and time.", NoArgs, get_date_time),
+        Tool("assist__GetDateTime", "The current date and time.", NoArgs, get_date_time),
         Tool(
             "assist__GetSceneContext",
-            "smart_home",
             "The configured scenes with their metadata (mood tags, descriptions, audio notes, warnings) and the "
             "settings they apply to each entity. Use it before recommending or activating a scene.",
             SceneContextArgs,
@@ -530,14 +526,12 @@ APP = App(
         ),
         Tool(
             "assist__WebSearch",
-            "smart_home",
             "Searches the web and returns matching pages with snippets and, where available, full-text excerpts.",
             WebSearchArgs,
             web_search,
         ),
         Tool(
             "assist__SetVolume",
-            "smart_home",
             "Sets a media player's volume to a level from 0 to 100.",
             SetVolumeArgs,
             set_volume,
@@ -545,18 +539,16 @@ APP = App(
         ),
         Tool(
             "assist__SetVolumeRelative",
-            "smart_home",
             "Raises or lowers a media player's volume by a step.",
             SetVolumeRelativeArgs,
             set_volume_relative,
             writes=True,
         ),
-        Tool("assist__MediaPlayerMute", "smart_home", "Mutes a media player.", PlayerArgs, mute, writes=True),
-        Tool("assist__MediaPlayerUnmute", "smart_home", "Unmutes a media player.", PlayerArgs, unmute, writes=True),
-        Tool("assist__MediaPause", "smart_home", "Pauses a media player.", PlayerArgs, media_pause, writes=True),
+        Tool("assist__MediaPlayerMute", "Mutes a media player.", PlayerArgs, mute, writes=True),
+        Tool("assist__MediaPlayerUnmute", "Unmutes a media player.", PlayerArgs, unmute, writes=True),
+        Tool("assist__MediaPause", "Pauses a media player.", PlayerArgs, media_pause, writes=True),
         Tool(
             "assist__MediaUnpause",
-            "smart_home",
             "Resumes playback on a paused media player.",
             PlayerArgs,
             media_unpause,
@@ -564,7 +556,6 @@ APP = App(
         ),
         Tool(
             "assist__MediaNext",
-            "smart_home",
             "Skips to the next item on a media player.",
             PlayerArgs,
             media_next,
@@ -572,7 +563,6 @@ APP = App(
         ),
         Tool(
             "assist__MediaPrevious",
-            "smart_home",
             "Goes back to the previous item on a media player.",
             PlayerArgs,
             media_previous,
@@ -580,7 +570,6 @@ APP = App(
         ),
         Tool(
             "assist__MediaSearchAndPlay",
-            "smart_home",
             "Searches for a song, playlist, podcast or show and plays the first match on a media player.",
             SearchAndPlayArgs,
             search_and_play,
@@ -588,7 +577,6 @@ APP = App(
         ),
         Tool(
             "assist__ClimateSetTemperature",
-            "smart_home",
             "Sets the target temperature of a thermostat or climate device.",
             SetTemperatureArgs,
             set_temperature,

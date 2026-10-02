@@ -74,7 +74,6 @@ APP = App(
     tools=[
         Tool(
             "contact_search",
-            "contacts",
             "Search the company contact directory by name, email, or department.",
             ContactSearchArgs,
             contact_search,

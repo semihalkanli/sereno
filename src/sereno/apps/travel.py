@@ -820,21 +820,18 @@ APP = App(
     tools=[
         Tool(
             "get_customer_bookings",
-            "travel",
             "List a customer's bookings of every type with their status and details.",
             GetCustomerBookingsArgs,
             get_customer_bookings,
         ),
         Tool(
             "get_booking_details",
-            "travel",
             "Get the type, status and full details (route or place, dates, travelers, price) of one booking.",
             BookingIdArgs,
             get_booking_details,
         ),
         Tool(
             "cancel_booking",
-            "travel",
             "Cancel a booking. Returns the status and the amount refunded.",
             BookingIdArgs,
             cancel_booking,
@@ -842,7 +839,6 @@ APP = App(
         ),
         Tool(
             "modify_booking",
-            "travel",
             "Change an existing booking's service or dates. Returns the status, the updated details and the "
             "price difference charged (negative when refunded).",
             ModifyBookingArgs,
@@ -851,7 +847,6 @@ APP = App(
         ),
         Tool(
             "search_flights",
-            "travel",
             "Search available flights for a date. Prices are per passenger. With return_date, return flights "
             "are included and each result is marked outbound or return.",
             SearchFlightsArgs,
@@ -859,7 +854,6 @@ APP = App(
         ),
         Tool(
             "book_flight",
-            "travel",
             "Book a flight for the given passengers and charge the customer.",
             BookFlightArgs,
             book_flight,
@@ -867,14 +861,12 @@ APP = App(
         ),
         Tool(
             "search_trains",
-            "travel",
             "Search available trains for a date. Prices are per passenger.",
             SearchGroundArgs,
             search_trains,
         ),
         Tool(
             "book_train",
-            "travel",
             "Book a train for the given passengers and charge the customer.",
             BookTrainArgs,
             book_train,
@@ -882,14 +874,12 @@ APP = App(
         ),
         Tool(
             "search_buses",
-            "travel",
             "Search available buses for a date. Prices are per passenger.",
             SearchGroundArgs,
             search_buses,
         ),
         Tool(
             "book_bus",
-            "travel",
             "Book a bus for the given passengers and charge the customer.",
             BookBusArgs,
             book_bus,
@@ -897,14 +887,12 @@ APP = App(
         ),
         Tool(
             "search_hotels",
-            "travel",
             "Search hotels with rooms for the given dates and number of guests.",
             SearchHotelsArgs,
             search_hotels,
         ),
         Tool(
             "book_hotel",
-            "travel",
             "Book a hotel room for the given dates and guests and charge the customer.",
             BookHotelArgs,
             book_hotel,
@@ -912,7 +900,6 @@ APP = App(
         ),
         Tool(
             "search_car_rentals",
-            "travel",
             "Search car rentals at a pickup location. Each result's rental_id is an offer for the requested dates; "
             "price is the total for the rental period.",
             SearchCarRentalsArgs,
@@ -920,7 +907,6 @@ APP = App(
         ),
         Tool(
             "book_car_rental",
-            "travel",
             "Book a car rental offer from search_car_rentals for the given driver and charge the customer.",
             BookCarRentalArgs,
             book_car_rental,
@@ -928,14 +914,12 @@ APP = App(
         ),
         Tool(
             "travel_get_reviews",
-            "travel",
             "Get guest reviews of a hotel or car rental, newest first.",
             GetReviewsArgs,
             get_reviews,
         ),
         Tool(
             "submit_review",
-            "travel",
             "Submit a review for a completed hotel or car rental booking.",
             SubmitReviewArgs,
             submit_review,

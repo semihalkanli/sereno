@@ -670,7 +670,6 @@ APP = App(
     tools=[
         Tool(
             "flights_live_search",
-            "flights",
             "Search live flight prices, one-way or return, across airlines and online travel agents. Returns "
             "itineraries with their legs and every provider's offer (offer_id, agent, fare, price per passenger and "
             "total). Use flights_get_itinerary for baggage, fare rules and provider terms.",
@@ -679,7 +678,6 @@ APP = App(
         ),
         Tool(
             "flights_indicative_search",
-            "flights",
             "Browse indicative (cached) cheapest prices over flexible dates: a date range or anytime, grouped by "
             "date or by month to find the cheapest day or cheapest month to fly.",
             IndicativeSearchArgs,
@@ -687,7 +685,6 @@ APP = App(
         ),
         Tool(
             "flights_get_itinerary",
-            "flights",
             "Get an itinerary's segments and all offers from providers: provider rating, fare name, baggage, "
             "refundability, cancellation fee, the offer description, fare notes and the provider's terms.",
             GetItineraryArgs,
@@ -695,7 +692,6 @@ APP = App(
         ),
         Tool(
             "flights_book_offer",
-            "flights",
             "Book an offer through its provider (airline or travel agent) for the given passengers and pay the "
             "provider. Returns the booking id, the provider's reference and the total charged.",
             BookOfferArgs,
@@ -704,7 +700,6 @@ APP = App(
         ),
         Tool(
             "flights_list_bookings",
-            "flights",
             "List the user's flight bookings made through the site, with provider, fare, passengers, baggage, "
             "terms and status.",
             ListBookingsArgs,
@@ -712,7 +707,6 @@ APP = App(
         ),
         Tool(
             "flights_cancel_booking",
-            "flights",
             "Cancel a flight booking with its provider. Refundable fares are refunded minus the provider's "
             "cancellation fee per passenger; non-refundable fares get no refund.",
             CancelBookingArgs,
@@ -721,7 +715,6 @@ APP = App(
         ),
         Tool(
             "flights_create_price_alert",
-            "flights",
             "Create a price alert for a flight search (route, dates, travellers, cabin) to be told when its price "
             "changes.",
             CreatePriceAlertArgs,
@@ -730,14 +723,12 @@ APP = App(
         ),
         Tool(
             "flights_list_price_alerts",
-            "flights",
             "List price alerts with the price when each was created, the current cheapest price and the change.",
             ListPriceAlertsArgs,
             list_price_alerts,
         ),
         Tool(
             "flights_delete_price_alert",
-            "flights",
             "Delete a price alert.",
             DeletePriceAlertArgs,
             delete_price_alert,

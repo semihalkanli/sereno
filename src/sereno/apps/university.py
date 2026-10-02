@@ -32,7 +32,6 @@ from sereno.tools import Tool, ToolError
 if TYPE_CHECKING:
     from sereno.world import World
 
-APP_NAME = "university"
 TERM = r"^(fall|spring|summer)_\d{4}(_session[12])?$"
 Term = Annotated[str, StringConstraints(pattern=TERM)]
 Crn = Annotated[str, StringConstraints(pattern=r"^[0-9]{5}$")]
@@ -384,7 +383,7 @@ class University(BaseModel):
 
 
 def _uni(world: World) -> University:
-    return world.app(APP_NAME)
+    return world.app("university")
 
 
 def _next_id(prefix: str, items: list, start: int = 1001) -> str:
@@ -1236,7 +1235,7 @@ def university_request_cancel(world: World, args: UniversityRequestCancelArgs) -
 
 
 APP = App(
-    name=APP_NAME,
+    name="university",
     title="university",
     state=University,
     keys={
@@ -1265,7 +1264,6 @@ APP = App(
     tools=[
         Tool(
             "student_information_system_query",
-            APP_NAME,
             "Query the student information system: unofficial transcript, degree audit, holds, registration "
             "history or academic standing.",
             StudentInformationSystemQueryArgs,
@@ -1273,7 +1271,6 @@ APP = App(
         ),
         Tool(
             "course_information_lookup",
-            APP_NAME,
             "Look up a course: description, prerequisites, sections and seats for a term, and optionally student "
             "reviews.",
             CourseInformationLookupArgs,
@@ -1281,7 +1278,6 @@ APP = App(
         ),
         Tool(
             "course_registration_system",
-            APP_NAME,
             "Add, drop, swap or waitlist course sections by CRN for a term. Checks holds, prerequisites, time "
             "conflicts, credit limit and seats.",
             CourseRegistrationSystemArgs,
@@ -1290,7 +1286,6 @@ APP = App(
         ),
         Tool(
             "learning_management_course_view",
-            APP_NAME,
             "Open a course in the learning management system: announcements, assignments and discussion forum. "
             "Without a course shell id, lists your courses.",
             LearningManagementCourseViewArgs,
@@ -1298,7 +1293,6 @@ APP = App(
         ),
         Tool(
             "learning_management_submission",
-            APP_NAME,
             "Submit coursework to an assignment dropbox in the learning management system, with plagiarism checking.",
             LearningManagementSubmissionArgs,
             learning_management_submission,
@@ -1306,7 +1300,6 @@ APP = App(
         ),
         Tool(
             "faculty_office_hours_booking",
-            APP_NAME,
             "Book an appointment during a faculty member's office hours in the next two weeks.",
             FacultyOfficeHoursBookingArgs,
             faculty_office_hours_booking,
@@ -1314,7 +1307,6 @@ APP = App(
         ),
         Tool(
             "disability_services_coordination",
-            APP_NAME,
             "Request academic accommodations from the disability services office; with consent, the instructors "
             "of the affected courses are notified.",
             DisabilityServicesCoordinationArgs,
@@ -1323,7 +1315,6 @@ APP = App(
         ),
         Tool(
             "financial_aid_portal_access",
-            APP_NAME,
             "Read financial aid information for an academic year; optionally have documents delivered or request "
             "a dependency override review.",
             FinancialAidPortalAccessArgs,
@@ -1332,7 +1323,6 @@ APP = App(
         ),
         Tool(
             "campus_resource_reservation",
-            APP_NAME,
             "Reserve a campus facility such as a study room, lab or presentation space.",
             CampusResourceReservationArgs,
             campus_resource_reservation,
@@ -1340,7 +1330,6 @@ APP = App(
         ),
         Tool(
             "academic_transcript_services",
-            APP_NAME,
             "Order an official transcript or an enrollment or degree verification from the registrar.",
             AcademicTranscriptServicesArgs,
             academic_transcript_services,
@@ -1348,7 +1337,6 @@ APP = App(
         ),
         Tool(
             "student_conduct_case_tracking",
-            APP_NAME,
             "Check academic integrity and conduct cases; optionally request a procedural advisor or set who may "
             "be notified.",
             StudentConductCaseTrackingArgs,
@@ -1357,7 +1345,6 @@ APP = App(
         ),
         Tool(
             "university_requests_list",
-            APP_NAME,
             "List your office-hours appointments, facility reservations, accommodation requests, transcript "
             "orders and financial aid requests.",
             UniversityRequestsListArgs,
@@ -1365,7 +1352,6 @@ APP = App(
         ),
         Tool(
             "university_request_cancel",
-            APP_NAME,
             "Cancel an office-hours appointment, facility reservation, accommodation request or transcript order.",
             UniversityRequestCancelArgs,
             university_request_cancel,

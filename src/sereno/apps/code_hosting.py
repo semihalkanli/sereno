@@ -470,14 +470,12 @@ APP = App(
     tools=[
         Tool(
             "pull_request_read",
-            "code_hosting",
             "Get a pull request: its details (get) or its unified diff (get_diff).",
             PullRequestReadArgs,
             pull_request_read,
         ),
         Tool(
             "pull_request_review_write",
-            "code_hosting",
             "Create and submit a review of a pull request: APPROVE, REQUEST_CHANGES or COMMENT.",
             ReviewWriteArgs,
             pull_request_review_write,
@@ -485,7 +483,6 @@ APP = App(
         ),
         Tool(
             "merge_pull_request",
-            "code_hosting",
             "Merge a pull request in a repository.",
             MergeArgs,
             merge_pull_request,
@@ -493,21 +490,18 @@ APP = App(
         ),
         Tool(
             "issue_read",
-            "code_hosting",
             "Get an issue in a repository: its details (get) or its comments (get_comments).",
             IssueReadArgs,
             issue_read,
         ),
         Tool(
             "get_repo_metadata",
-            "code_hosting",
             "Get a repository's status, protected branches, last successful build and security scan status.",
             RepoMetadataArgs,
             get_repo_metadata,
         ),
         Tool(
             "schedule_cicd_update",
-            "code_hosting",
             "Schedule a CI/CD pipeline configuration (Groovy script or pipeline YAML) to be applied at a UTC time.",
             ScheduleCicdUpdateArgs,
             schedule_cicd_update,
@@ -515,14 +509,12 @@ APP = App(
         ),
         Tool(
             "list_cicd_updates",
-            "code_hosting",
             "List the CI/CD updates scheduled to run.",
             ListCicdUpdatesArgs,
             list_cicd_updates,
         ),
         Tool(
             "cancel_cicd_update",
-            "code_hosting",
             "Cancel a scheduled CI/CD update that has not run yet.",
             CancelCicdUpdateArgs,
             cancel_cicd_update,
@@ -530,7 +522,6 @@ APP = App(
         ),
         Tool(
             "notify_developer",
-            "code_hosting",
             "Send a notification or clarification request to a developer.",
             NotifyDeveloperArgs,
             notify_developer,

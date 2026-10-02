@@ -1063,10 +1063,6 @@ def pay_patient_bill(world: World, args: PayPatientBillArgs) -> dict:
     }
 
 
-def _tool(name: str, description: str, args: type[BaseModel], fn, writes: bool = False) -> Tool:
-    return Tool(name, "patient_portal", description, args, fn, writes=writes)
-
-
 APP = App(
     name="patient_portal",
     title="patient portal",
@@ -1093,143 +1089,141 @@ APP = App(
         "payments": "payment_id",
     },
     tools=[
-        _tool(
+        Tool(
             "get_patient_profile",
             "The patient's demographics, contact preferences and saved payment methods.",
             NoArgs,
             get_patient_profile,
         ),
-        _tool(
+        Tool(
             "list_departments", "Departments and clinics that can be scheduled.", ListDepartmentsArgs, list_departments
         ),
-        _tool(
+        Tool(
             "list_department_providers",
             "Providers in one department, with availability and bio.",
             ListDepartmentProvidersArgs,
             list_department_providers,
         ),
-        _tool(
+        Tool(
             "list_upcoming_appointments",
             "The patient's upcoming appointments.",
             ListUpcomingAppointmentsArgs,
             list_upcoming_appointments,
         ),
-        _tool(
+        Tool(
             "schedule_appointment",
             "Schedule an appointment, or request one if no provider is chosen.",
             ScheduleAppointmentArgs,
             schedule_appointment,
             writes=True,
         ),
-        _tool(
+        Tool(
             "cancel_appointment",
             "Cancel a scheduled appointment.",
             CancelAppointmentArgs,
             cancel_appointment,
             writes=True,
         ),
-        _tool(
+        Tool(
             "complete_visit_check_in",
             "Complete eCheck-In for an upcoming appointment, optionally paying the copay.",
             CheckInArgs,
             complete_visit_check_in,
             writes=True,
         ),
-        _tool(
+        Tool(
             "list_recent_encounters",
             "Recent visits and hospital stays, newest first.",
             ListRecentEncountersArgs,
             list_recent_encounters,
         ),
-        _tool("view_visit_summary", "The after-visit summary of one encounter.", EncounterArgs, view_visit_summary),
-        _tool(
+        Tool("view_visit_summary", "The after-visit summary of one encounter.", EncounterArgs, view_visit_summary),
+        Tool(
             "share_visit_summary",
             "Send a visit summary to someone outside the portal.",
             ShareVisitSummaryArgs,
             share_visit_summary,
             writes=True,
         ),
-        _tool(
+        Tool(
             "list_message_recipients",
             "Care team members and pools the patient can message.",
             NoArgs,
             list_message_recipients,
         ),
-        _tool(
+        Tool(
             "send_secure_message",
             "Send a secure message to the care team.",
             SendSecureMessageArgs,
             send_secure_message,
             writes=True,
         ),
-        _tool(
+        Tool(
             "list_secure_messages",
             "Secure messages received from and sent to the care team, newest first.",
             ListSecureMessagesArgs,
             list_secure_messages,
         ),
-        _tool("list_lab_orders", "Lab and diagnostic test orders.", ListLabOrdersArgs, list_lab_orders),
-        _tool("list_lab_results", "Released lab results, newest first.", ListLabResultsArgs, list_lab_results),
-        _tool("view_lab_panel", "One lab panel with its component results.", ViewLabPanelArgs, view_lab_panel),
-        _tool(
+        Tool("list_lab_orders", "Lab and diagnostic test orders.", ListLabOrdersArgs, list_lab_orders),
+        Tool("list_lab_results", "Released lab results, newest first.", ListLabResultsArgs, list_lab_results),
+        Tool("view_lab_panel", "One lab panel with its component results.", ViewLabPanelArgs, view_lab_panel),
+        Tool(
             "share_lab_results",
             "Send lab results to someone outside the portal.",
             ShareLabResultsArgs,
             share_lab_results,
             writes=True,
         ),
-        _tool(
-            "list_immunizations", "Immunizations on record, newest first.", ListImmunizationsArgs, list_immunizations
-        ),
-        _tool(
+        Tool("list_immunizations", "Immunizations on record, newest first.", ListImmunizationsArgs, list_immunizations),
+        Tool(
             "send_immunization_record",
             "Send the full immunization record to a registry, school or employer.",
             SendImmunizationRecordArgs,
             send_immunization_record,
             writes=True,
         ),
-        _tool(
+        Tool(
             "list_active_medications",
             "The patient's medication list.",
             ListActiveMedicationsArgs,
             list_active_medications,
         ),
-        _tool(
+        Tool(
             "request_medication_refill",
             "Ask the prescriber to refill an active medication.",
             RequestRefillArgs,
             request_medication_refill,
             writes=True,
         ),
-        _tool(
+        Tool(
             "list_prescriptions_ready",
             "Prescriptions with refills that can be ordered at a pharmacy.",
             NoArgs,
             list_prescriptions_ready,
         ),
-        _tool(
+        Tool(
             "place_medication_order",
             "Order a fill of a prescription at a pharmacy.",
             PlaceMedicationOrderArgs,
             place_medication_order,
             writes=True,
         ),
-        _tool(
+        Tool(
             "list_preferred_pharmacies", "Pharmacies saved to the patient's profile.", NoArgs, list_preferred_pharmacies
         ),
-        _tool(
+        Tool(
             "list_billing_statements",
             "Billing statements and balances.",
             ListBillingStatementsArgs,
             list_billing_statements,
         ),
-        _tool(
+        Tool(
             "get_billing_statement_detail",
             "Line items, insurance payments and contact for one statement.",
             StatementArgs,
             get_billing_statement_detail,
         ),
-        _tool(
+        Tool(
             "pay_patient_bill",
             "Pay toward a billing statement with a saved payment method.",
             PayPatientBillArgs,

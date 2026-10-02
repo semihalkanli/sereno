@@ -1143,14 +1143,12 @@ APP = App(
     tools=[
         Tool(
             "getUserInfo",
-            "crm",
             "Get the signed-in CRM user: id, name, email, username, profile, role, manager, local time.",
             GetUserInfoArgs,
             get_user_info,
         ),
         Tool(
             "getObjectSchema",
-            "crm",
             "Without an object name, list the objects in the org. With one, describe its fields: type, whether "
             "required, picklist values and referenced objects. Use it before writing a query or a record.",
             GetObjectSchemaArgs,
@@ -1158,21 +1156,18 @@ APP = App(
         ),
         Tool(
             "query",
-            "crm",
             "Run a SQL-like query over CRM records and return the matching records with the selected fields.",
             SoqlQueryArgs,
             soql_query,
         ),
         Tool(
             "find",
-            "crm",
             "Full-text search across CRM objects. Returns matching records grouped by object.",
             FindArgs,
             find,
         ),
         Tool(
             "getRelatedRecords",
-            "crm",
             "List the child records of one record through a relationship, e.g. the CaseComments of a Case or the "
             "Contacts of an Account.",
             RelatedRecordsArgs,
@@ -1180,7 +1175,6 @@ APP = App(
         ),
         Tool(
             "createRecord",
-            "crm",
             "Create a record of any object (Case, Contact, Opportunity, User, ...) from field API names and values. "
             "Returns the new record Id.",
             CreateRecordArgs,
@@ -1189,7 +1183,6 @@ APP = App(
         ),
         Tool(
             "updateRecord",
-            "crm",
             "Change fields of one record by Id, e.g. Status, StageName, OwnerId or ProfileId.",
             UpdateRecordArgs,
             update_record,
@@ -1197,7 +1190,6 @@ APP = App(
         ),
         Tool(
             "deleteRecord",
-            "crm",
             "Delete one record by Id; it goes to the Recycle Bin and there is no undelete tool. Deleting an Account "
             "or a Case also deletes its child records. Confirm with the user before deleting.",
             DeleteRecordArgs,

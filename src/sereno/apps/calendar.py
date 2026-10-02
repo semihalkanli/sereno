@@ -363,7 +363,6 @@ APP = App(
     tools=[
         Tool(
             "list_events",
-            "calendar",
             "Returns events on the person's calendar in a time range (default: the next 7 days from now), "
             "optionally filtered by fullText. For open-ended keyword searches use search_events instead.",
             ListEventsArgs,
@@ -371,21 +370,18 @@ APP = App(
         ),
         Tool(
             "search_events",
-            "calendar",
             "Searches events on the person's calendar by keywords, best matches first.",
             SearchEventsArgs,
             search_events,
         ),
         Tool(
             "get_event",
-            "calendar",
             "Returns a single event, including its description, attendees and meeting link.",
             GetEventArgs,
             get_event,
         ),
         Tool(
             "create_event",
-            "calendar",
             "Creates an event on the person's calendar and sends invitations to the attendees.",
             CreateEventArgs,
             create_event,
@@ -393,7 +389,6 @@ APP = App(
         ),
         Tool(
             "update_event",
-            "calendar",
             "Updates an event; fields that are not set are not changed. Attendees are notified.",
             UpdateEventArgs,
             update_event,
@@ -401,7 +396,6 @@ APP = App(
         ),
         Tool(
             "delete_event",
-            "calendar",
             "Deletes an event; attendees are notified that it is cancelled.",
             DeleteEventArgs,
             delete_event,
@@ -409,7 +403,6 @@ APP = App(
         ),
         Tool(
             "respond_to_event",
-            "calendar",
             "Responds to an event invitation (accepted, declined or tentative); the organizer is notified.",
             RespondToEventArgs,
             respond_to_event,
@@ -417,7 +410,6 @@ APP = App(
         ),
         Tool(
             "suggest_time",
-            "calendar",
             "Suggests free time periods of at least durationMinutes between startTime and endTime. Only the person's "
             "own calendar is visible, so other attendees are assumed free.",
             SuggestTimeArgs,

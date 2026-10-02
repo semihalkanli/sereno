@@ -171,21 +171,18 @@ APP = App(
     tools=[
         Tool(
             "socialmedia__list_impersonation_reports",
-            "social_media",
             "List impersonation reports in the review queue, oldest first, with the photo similarity scores.",
             ListReportsArgs,
             list_impersonation_reports,
         ),
         Tool(
             "socialmedia__get_account_profiles",
-            "social_media",
             "Fetch profile details (names, bios, photos) of the responsible and victim accounts of a report.",
             GetProfilesArgs,
             get_account_profiles,
         ),
         Tool(
             "socialmedia__submit_impersonation_assessment",
-            "social_media",
             "Submit the final impersonation assessment for a reported account: clear it (safe) or flag it "
             "(impersonating).",
             SubmitAssessmentArgs,

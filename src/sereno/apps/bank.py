@@ -922,7 +922,6 @@ APP = App(
     tools=[
         Tool(
             "accounts_list",
-            "bank",
             "Get all the person's bank accounts (accountUid, accountType, defaultCategory, currency, createdAt, "
             "name). Call this first: other tools need the accountUid and, for the main account, the defaultCategory "
             "as categoryUid.",
@@ -931,7 +930,6 @@ APP = App(
         ),
         Tool(
             "account_balance_get",
-            "bank",
             "Get an account's balance: cleared balance (settled transactions), effective balance (after pending "
             "card payments), pending amount, overdraft, and totals including savings goals. Amounts are minor units.",
             AccountArgs,
@@ -939,14 +937,12 @@ APP = App(
         ),
         Tool(
             "account_identifiers_get",
-            "bank",
             "Get an account's bank details: account number, sort code, IBAN and BIC.",
             AccountArgs,
             account_identifiers_get,
         ),
         Tool(
             "transactions_list",
-            "bank",
             "List the transaction feed items of an account category, newest first, optionally between two "
             "timestamps. Each item has amount, direction (IN or OUT), status, source, counterparty name, reference, "
             "spending category and user note.",
@@ -955,14 +951,12 @@ APP = App(
         ),
         Tool(
             "feed_item_get",
-            "bank",
             "Get one transaction (feed item) in full, with any attachments.",
             FeedItemArgs,
             feed_item_get,
         ),
         Tool(
             "feed_item_note_update",
-            "bank",
             "Set the person's own note on a transaction.",
             FeedItemNoteUpdateArgs,
             feed_item_note_update,
@@ -970,7 +964,6 @@ APP = App(
         ),
         Tool(
             "payees_list",
-            "bank",
             "Get all payees (people and companies the person can pay), each with its bank account "
             "(payeeAccountUid, account number, sort code) and last references used.",
             NoArgs,
@@ -978,7 +971,6 @@ APP = App(
         ),
         Tool(
             "payee_create",
-            "bank",
             "Add a new payee with one bank account. Returns the payeeUid; use payees_list to get its "
             "payeeAccountUid before paying.",
             PayeeCreateArgs,
@@ -987,7 +979,6 @@ APP = App(
         ),
         Tool(
             "payee_delete",
-            "bank",
             "Delete a payee.",
             PayeeDeleteArgs,
             payee_delete,
@@ -995,7 +986,6 @@ APP = App(
         ),
         Tool(
             "payment_create",
-            "bank",
             "Pay an existing payee now from the main account (a bank transfer that settles immediately). Returns the "
             "paymentOrderUid.",
             PaymentCreateArgs,
@@ -1004,14 +994,12 @@ APP = App(
         ),
         Tool(
             "standing_orders_list",
-            "bank",
             "List the active standing orders and scheduled payments of an account category.",
             CategoryArgs,
             standing_orders_list,
         ),
         Tool(
             "standing_order_create",
-            "bank",
             "Set up a standing order to an existing payee: a repeating payment, or with count 1 a single payment "
             "scheduled for a future date. Returns the paymentOrderUid.",
             StandingOrderCreateArgs,
@@ -1020,7 +1008,6 @@ APP = App(
         ),
         Tool(
             "standing_order_cancel",
-            "bank",
             "Cancel a standing order or scheduled payment so no further payments are made.",
             StandingOrderCancelArgs,
             standing_order_cancel,
@@ -1028,14 +1015,12 @@ APP = App(
         ),
         Tool(
             "direct_debits_list",
-            "bank",
             "List the direct debit mandates on an account: originator, reference, status, next and last payment.",
             AccountArgs,
             direct_debits_list,
         ),
         Tool(
             "direct_debit_cancel",
-            "bank",
             "Cancel a direct debit mandate so the originator can no longer collect payments.",
             DirectDebitCancelArgs,
             direct_debit_cancel,
@@ -1043,7 +1028,6 @@ APP = App(
         ),
         Tool(
             "cards_list",
-            "bank",
             "Get all the person's cards with their controls (enabled, online, ATM, contactless, gambling) and last "
             "four digits.",
             NoArgs,
@@ -1051,7 +1035,6 @@ APP = App(
         ),
         Tool(
             "card_lock_update",
-            "bank",
             "Lock (freeze) or unlock a card.",
             CardLockUpdateArgs,
             card_lock_update,
@@ -1059,14 +1042,12 @@ APP = App(
         ),
         Tool(
             "savings_goals_list",
-            "bank",
             "List an account's savings goals (spaces) with target, amount saved and state.",
             AccountArgs,
             savings_goals_list,
         ),
         Tool(
             "savings_goal_deposit",
-            "bank",
             "Move money from the main account into a savings goal.",
             SavingsGoalTransferArgs,
             savings_goal_deposit,
@@ -1074,7 +1055,6 @@ APP = App(
         ),
         Tool(
             "savings_goal_withdraw",
-            "bank",
             "Move money from a savings goal back to the main account.",
             SavingsGoalTransferArgs,
             savings_goal_withdraw,
@@ -1082,14 +1062,12 @@ APP = App(
         ),
         Tool(
             "statement_periods_list",
-            "bank",
             "List the monthly statement periods available for an account (YYYY-MM; the current month is partial).",
             AccountArgs,
             statement_periods_list,
         ),
         Tool(
             "statement_download",
-            "bank",
             "Download an account statement for one month as CSV: date, counterparty, reference, type, amount and "
             "running balance, starting with the opening balance.",
             StatementDownloadArgs,

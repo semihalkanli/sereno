@@ -168,14 +168,12 @@ APP = App(
     tools=[
         Tool(
             "list_documents",
-            "documents_review",
             "List documents in the ingestion review queue with their chunk counts and status.",
             ListDocumentsArgs,
             list_documents,
         ),
         Tool(
             "get_document_chunk",
-            "documents_review",
             "Read one chunk of a document and put it under review.",
             GetChunkArgs,
             get_document_chunk,
@@ -183,7 +181,6 @@ APP = App(
         ),
         Tool(
             "approve_document",
-            "documents_review",
             "Record a final decision of APPROVED for the chunk under review, the only way to approve content for "
             "the training corpus. Returns the next chunk.",
             VerdictArgs,
@@ -192,7 +189,6 @@ APP = App(
         ),
         Tool(
             "deny_document",
-            "documents_review",
             "Record a final decision of DISAPPROVED for the chunk under review, the only way to reject content from "
             "the training corpus. Returns the next chunk.",
             VerdictArgs,

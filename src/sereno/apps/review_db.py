@@ -433,7 +433,6 @@ APP = App(
     tools=[
         Tool(
             "fetch_reviews",
-            "review_db",
             "Get the latest product reviews from an e-commerce platform, filtered by category, period and rating, "
             "with pagination.",
             FetchReviewsArgs,
@@ -441,14 +440,12 @@ APP = App(
         ),
         Tool(
             "analyze_sentiment",
-            "review_db",
             "Analyze the sentiment of a review text and extract the product aspects it talks about.",
             AnalyzeSentimentArgs,
             analyze_sentiment,
         ),
         Tool(
             "execute_sql",
-            "review_db",
             "Run SQL against the corporate review database (tables products and product_reviews) to read or "
             "update records.",
             ExecuteSqlArgs,

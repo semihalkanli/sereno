@@ -800,7 +800,6 @@ APP = App(
     tools=[
         Tool(
             "accommodations_search",
-            "hotels",
             "Search hotels and other accommodations by destination or name for given dates and guests. Returns "
             "accommodation_id, name, url, location, star rating, review rating, cheapest price per night and per "
             "stay for the party, and top amenities.",
@@ -809,7 +808,6 @@ APP = App(
         ),
         Tool(
             "accommodations_details",
-            "hotels",
             "Get an accommodation's details: description, address, facilities, check-in and check-out policies, "
             "important information, review score and rooms.",
             AccommodationsDetailsArgs,
@@ -817,7 +815,6 @@ APP = App(
         ),
         Tool(
             "accommodations_room_search",
-            "hotels",
             "List the room products available at an accommodation for given dates and guests, with price, meal "
             "plan, cancellation policy (free cancellation deadline) and the payment timings offered.",
             AccommodationsRoomSearchArgs,
@@ -825,7 +822,6 @@ APP = App(
         ),
         Tool(
             "accommodations_reviews",
-            "hotels",
             "Get guest reviews of an accommodation, newest first: score out of 10, summary, positive and negative "
             "text, reviewer and any response from the property.",
             AccommodationsReviewsArgs,
@@ -833,7 +829,6 @@ APP = App(
         ),
         Tool(
             "accommodations_order_create",
-            "hotels",
             "Book a room product at an accommodation for the given dates and guests, paying with the saved card "
             "according to the payment timing. Returns the order id, PIN, total price, payment status and free "
             "cancellation deadline.",
@@ -843,14 +838,12 @@ APP = App(
         ),
         Tool(
             "accommodations_orders_list",
-            "hotels",
             "List the account's accommodation bookings (upcoming, past, cancelled or all).",
             AccommodationsOrdersListArgs,
             accommodations_orders_list,
         ),
         Tool(
             "accommodations_order_details",
-            "hotels",
             "Get a booking's full details: room, dates, guests, price, payment, cancellation policy and status, "
             "and the conversation id for messaging the property.",
             AccommodationsOrderDetailsArgs,
@@ -858,7 +851,6 @@ APP = App(
         ),
         Tool(
             "accommodations_order_cancel",
-            "hotels",
             "Cancel a booking. Free before its free cancellation deadline; otherwise a fee is charged. Returns the "
             "fee and refund.",
             AccommodationsOrderCancelArgs,
@@ -867,7 +859,6 @@ APP = App(
         ),
         Tool(
             "accommodations_messages_list",
-            "hotels",
             "List the message conversations with properties about the account's bookings, or one booking's "
             "conversation.",
             AccommodationsMessagesListArgs,
@@ -875,7 +866,6 @@ APP = App(
         ),
         Tool(
             "accommodations_messages_send",
-            "hotels",
             "Send a message to the property in a booking's conversation.",
             AccommodationsMessagesSendArgs,
             accommodations_messages_send,
@@ -883,7 +873,6 @@ APP = App(
         ),
         Tool(
             "accommodations_review_submit",
-            "hotels",
             "Write a guest review of a completed stay (within 90 days of checkout, one per booking).",
             AccommodationsReviewSubmitArgs,
             accommodations_review_submit,

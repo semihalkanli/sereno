@@ -48,8 +48,8 @@ NOTES = App(
     state=Notes,
     keys={"notes": "id"},
     tools=[
-        Tool("read_notes", "notes", "Read all notes.", ReadNotesArgs, read_notes),
-        Tool("add_note", "notes", "Add a note.", AddNoteArgs, add_note, writes=True),
+        Tool("read_notes", "Read all notes.", ReadNotesArgs, read_notes),
+        Tool("add_note", "Add a note.", AddNoteArgs, add_note, writes=True),
     ],
 )
 

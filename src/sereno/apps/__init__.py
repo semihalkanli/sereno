@@ -7,7 +7,7 @@ the agent sees only those apps' tools. Apps are imported by name on first use,
 so adding an app means adding one module and nothing else.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib import import_module
 from pkgutil import iter_modules
 
@@ -24,6 +24,9 @@ class App:
     tools: list[Tool]
     keys: dict[str, str]
     """Collection name -> the field that identifies an item, for checks and changes."""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "tools", [replace(t, app=self.name) for t in self.tools])
 
 
 _cache: dict[str, App] = {}

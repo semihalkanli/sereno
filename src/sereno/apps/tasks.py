@@ -158,12 +158,11 @@ APP = App(
     state=Tasks,
     keys={"tasks": "id"},
     tools=[
-        Tool("task_create", "tasks", "Add an item to the user's task list.", TaskCreateArgs, task_create, writes=True),
-        Tool("task_list", "tasks", "List the user's tasks, soonest due first.", TaskListArgs, task_list),
-        Tool("task_complete", "tasks", "Mark a task as done.", TaskCompleteArgs, task_complete, writes=True),
+        Tool("task_create", "Add an item to the user's task list.", TaskCreateArgs, task_create, writes=True),
+        Tool("task_list", "List the user's tasks, soonest due first.", TaskListArgs, task_list),
+        Tool("task_complete", "Mark a task as done.", TaskCompleteArgs, task_complete, writes=True),
         Tool(
             "get_current_time",
-            "tasks",
             "Get the current date and time.",
             GetCurrentTimeArgs,
             get_current_time,

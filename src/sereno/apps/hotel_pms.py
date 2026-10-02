@@ -1314,7 +1314,6 @@ APP = App(
     tools=[
         Tool(
             "reservation_booking_engine",
-            "hotel_pms",
             "Find, book, change, cancel, waitlist and upgrade reservations, and hold group blocks, in the central "
             "reservation system.",
             ReservationArgs,
@@ -1323,7 +1322,6 @@ APP = App(
         ),
         Tool(
             "guest_profile_management",
-            "hotel_pms",
             "Look up and maintain guest profiles: preferences, notes, loyalty enrolment, VIP status and duplicate "
             "merges.",
             GuestProfileArgs,
@@ -1332,7 +1330,6 @@ APP = App(
         ),
         Tool(
             "housekeeping_operations_system",
-            "hotel_pms",
             "Room status and attendant assignments, lost and found, maintenance requests, restocking and inspection "
             "tasks.",
             HousekeepingArgs,
@@ -1341,7 +1338,6 @@ APP = App(
         ),
         Tool(
             "front_desk_operations",
-            "hotel_pms",
             "Check guests in and out, assign or move rooms, encode key cards, view folios and concierge requests.",
             FrontDeskArgs,
             front_desk_operations,
@@ -1349,14 +1345,12 @@ APP = App(
         ),
         Tool(
             "revenue_management_optimizer",
-            "hotel_pms",
             "Forecast occupancy from the reservations on the books and recommend rates per room type.",
             RevenueArgs,
             revenue_management_optimizer,
         ),
         Tool(
             "food_beverage_pos",
-            "hotel_pms",
             "Show an outlet's menu, or ring up a check at a restaurant, bar or room service and optionally post it "
             "to a guest's room folio.",
             FoodBeverageArgs,
@@ -1365,7 +1359,6 @@ APP = App(
         ),
         Tool(
             "event_conference_coordination",
-            "hotel_pms",
             "List booked events of a category or book meeting rooms and the ballroom for a new event.",
             EventArgs,
             event_conference_coordination,
@@ -1373,7 +1366,6 @@ APP = App(
         ),
         Tool(
             "maintenance_facilities_management",
-            "hotel_pms",
             "List, open and update maintenance work orders for rooms, public areas and building systems.",
             MaintenanceArgs,
             maintenance_facilities_management,
@@ -1381,7 +1373,6 @@ APP = App(
         ),
         Tool(
             "guest_services_concierge",
-            "hotel_pms",
             "List local partners and guest concierge requests, or log an arrangement made for a guest.",
             ConciergeArgs,
             guest_services_concierge,

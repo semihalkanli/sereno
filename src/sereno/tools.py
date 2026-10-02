@@ -39,11 +39,12 @@ def _inline_refs(schema: dict) -> dict:
 @dataclass(frozen=True)
 class Tool:
     name: str
-    app: str
     description: str
     args: type[BaseModel]
     fn: Callable[[Any, Any], Any]
     writes: bool = False
+    app: str = ""
+    """Set by the `App` that lists the tool."""
 
     def schema(self) -> dict:
         parameters = _inline_refs(self.args.model_json_schema())

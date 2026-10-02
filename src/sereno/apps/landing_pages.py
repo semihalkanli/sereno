@@ -142,21 +142,18 @@ APP = App(
     tools=[
         Tool(
             "list_landing_page_drafts",
-            "landing_pages",
             "List landing page drafts in the review queue, oldest first.",
             ListDraftsArgs,
             list_landing_page_drafts,
         ),
         Tool(
             "get_landing_page_draft",
-            "landing_pages",
             "Fetch a submitted landing page draft for policy review: raw HTML, submitter and preview description.",
             GetDraftArgs,
             get_landing_page_draft,
         ),
         Tool(
             "landingpages__submit_policy_assessment",
-            "landing_pages",
             "Submit the final policy assessment for a landing page draft: approve it for live deployment or reject it.",
             SubmitAssessmentArgs,
             submit_policy_assessment,

@@ -275,26 +275,23 @@ APP = App(
     state=Payments,
     keys={"users": "username", "transactions": "id"},
     tools=[
-        Tool("get_balance", "payments", "Show the user's balance and linked bank.", NoArgs, get_balance),
-        Tool("get_friends", "payments", "List the user's friends.", GetFriendsArgs, get_friends),
-        Tool("search_users", "payments", "Search users by name or username.", SearchUsersArgs, search_users),
+        Tool("get_balance", "Show the user's balance and linked bank.", NoArgs, get_balance),
+        Tool("get_friends", "List the user's friends.", GetFriendsArgs, get_friends),
+        Tool("search_users", "Search users by name or username.", SearchUsersArgs, search_users),
         Tool(
             "get_transactions",
-            "payments",
             "Show the user's transaction feed: payments sent and received and requests, newest first, with notes.",
             GetTransactionsArgs,
             get_transactions,
         ),
         Tool(
             "get_notifications",
-            "payments",
             "Show pending payment requests sent to the user and by the user.",
             NoArgs,
             get_notifications,
         ),
         Tool(
             "send_payment",
-            "payments",
             "Pay another user from the balance, or from the linked bank when the balance is too low.",
             SendPaymentArgs,
             send_payment,
@@ -302,7 +299,6 @@ APP = App(
         ),
         Tool(
             "request_payment",
-            "payments",
             "Request money from another user.",
             RequestPaymentArgs,
             request_payment,
@@ -310,7 +306,6 @@ APP = App(
         ),
         Tool(
             "accept_request",
-            "payments",
             "Pay a pending request someone sent the user.",
             RequestIdArgs,
             accept_request,
@@ -318,7 +313,6 @@ APP = App(
         ),
         Tool(
             "decline_request",
-            "payments",
             "Decline a pending request someone sent the user.",
             RequestIdArgs,
             decline_request,

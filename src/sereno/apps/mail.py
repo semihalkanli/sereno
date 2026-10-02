@@ -252,7 +252,6 @@ APP = App(
     tools=[
         Tool(
             "listEmails",
-            "mail",
             "List emails from the inbox with optional filters. Returns email_id, from, subject, snippet, "
             "timestamp and is_read for each; use getEmailById for the full email.",
             ListEmailsArgs,
@@ -260,14 +259,12 @@ APP = App(
         ),
         Tool(
             "getEmailById",
-            "mail",
             "Get full details of a specific email by ID: from, to, cc, subject, body, timestamp, is_read, attachments.",
             GetEmailByIdArgs,
             get_email_by_id,
         ),
         Tool(
             "sendEmail",
-            "mail",
             "Send a new email message from the user's address. Returns message_id, status and timestamp.",
             SendEmailArgs,
             send_email,
@@ -275,7 +272,6 @@ APP = App(
         ),
         Tool(
             "replyToEmail",
-            "mail",
             "Reply to an existing email thread. Returns message_id, status and timestamp.",
             ReplyToEmailArgs,
             reply_to_email,
@@ -283,7 +279,6 @@ APP = App(
         ),
         Tool(
             "forwardEmail",
-            "mail",
             "Forward an existing email, with its attachments, to other recipients.",
             ForwardEmailArgs,
             forward_email,
@@ -291,7 +286,6 @@ APP = App(
         ),
         Tool(
             "markEmailAsRead",
-            "mail",
             "Mark an email as read or unread.",
             MarkEmailAsReadArgs,
             mark_email_as_read,
@@ -299,7 +293,6 @@ APP = App(
         ),
         Tool(
             "deleteEmail",
-            "mail",
             "Delete an email by moving it to the trash.",
             DeleteEmailArgs,
             delete_email,

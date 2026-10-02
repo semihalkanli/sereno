@@ -652,7 +652,6 @@ APP = App(
     tools=[
         Tool(
             "search_files",
-            "files",
             "Search the person's drive for files and folders with a structured query (`term operator value`). "
             "Returns file objects with content snippets, and nextPageToken when there are more.",
             SearchFilesArgs,
@@ -660,21 +659,18 @@ APP = App(
         ),
         Tool(
             "list_recent_files",
-            "files",
             "List the user's recent files, newest first (orderBy recency, lastModified or lastModifiedByMe).",
             ListRecentFilesArgs,
             list_recent_files,
         ),
         Tool(
             "get_file_metadata",
-            "files",
             "Get the metadata of a file or folder in the person's drive.",
             GetFileMetadataArgs,
             get_file_metadata,
         ),
         Tool(
             "read_file_content",
-            "files",
             "Read a text representation of a file (native documents, spreadsheets and presentations, office "
             "files, PDFs, images). Needs an exact fileId from search_files or list_recent_files.",
             ReadFileContentArgs,
@@ -682,14 +678,12 @@ APP = App(
         ),
         Tool(
             "get_file_permissions",
-            "files",
             "List the permissions of a file or folder: who has access and with which role.",
             FileIdArgs,
             get_file_permissions,
         ),
         Tool(
             "create_file",
-            "files",
             "Create or upload a file, or a folder, in the person's drive. Uploaded content is converted to the "
             "native type unless disableConversionToNativeType is set. Returns the new file object.",
             CreateFileArgs,
@@ -698,7 +692,6 @@ APP = App(
         ),
         Tool(
             "share_file",
-            "files",
             "Share a file or folder with a user or group as writer, commenter or reader. An existing "
             "permission is raised to the role, never lowered.",
             ShareFileArgs,
@@ -707,7 +700,6 @@ APP = App(
         ),
         Tool(
             "trash_file",
-            "files",
             "Move a file or folder (with its contents) to the trash. It is not deleted permanently.",
             FileIdArgs,
             trash_file,

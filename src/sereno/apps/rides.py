@@ -792,10 +792,6 @@ def send_driver_message(world: World, args: SendDriverMessageArgs) -> dict:
     return {"message_id": message.id, "status": "sent", "sent_at": _stamp(message.sent_at)}
 
 
-def _tool(name: str, description: str, args: type[BaseModel], fn, writes: bool = False) -> Tool:
-    return Tool(name, "rides", description, args, fn, writes=writes)
-
-
 APP = App(
     name="rides",
     title="rides",
@@ -810,52 +806,52 @@ APP = App(
         "messages": "id",
     },
     tools=[
-        _tool(
+        Tool(
             "rides_get_products",
             "List the ride products available (standard, comfort, XL...) with capacity and price details.",
             GetProductsArgs,
             get_products,
         ),
-        _tool(
+        Tool(
             "rides_get_price_estimates",
             "Get fare estimates, upfront fares, trip distance and duration, and pickup ETA for every product "
             "between a pickup and a dropoff.",
             PriceEstimatesArgs,
             get_price_estimates,
         ),
-        _tool(
+        Tool(
             "rides_places_search",
             "Search places by name or address. Returns place_id, name, address and coordinates.",
             PlacesSearchArgs,
             places_search,
         ),
-        _tool(
+        Tool(
             "rides_places_saved",
             "List the rider's saved places (home, work and others).",
             PlacesSavedArgs,
             places_saved,
         ),
-        _tool(
+        Tool(
             "rides_save_place",
             "Save a place under a label (home, work or a custom name); an existing label is updated.",
             SavePlaceArgs,
             save_place,
             writes=True,
         ),
-        _tool(
+        Tool(
             "rides_delete_saved_place",
             "Remove a saved place.",
             DeleteSavedPlaceArgs,
             delete_saved_place,
             writes=True,
         ),
-        _tool(
+        Tool(
             "rides_get_payment_methods",
             "List the rider's payment methods and the last used one.",
             GetPaymentMethodsArgs,
             get_payment_methods,
         ),
-        _tool(
+        Tool(
             "rides_request_ride",
             "Request a ride for a product from a pickup to a dropoff, charged to a payment method at the upfront "
             "fare. Returns request_id, status, fare, and the driver and vehicle once matched.",
@@ -863,14 +859,14 @@ APP = App(
             request_ride,
             writes=True,
         ),
-        _tool(
+        Tool(
             "rides_get_ride_status",
             "Get a trip's status, driver, vehicle, pickup and destination ETAs, and fare; without request_id, the "
             "current active trip.",
             RideStatusArgs,
             get_ride_status,
         ),
-        _tool(
+        Tool(
             "rides_cancel_ride",
             "Cancel a requested ride before it begins. A cancellation fee applies when cancelling a few minutes "
             "after a driver accepted.",
@@ -878,39 +874,39 @@ APP = App(
             cancel_ride,
             writes=True,
         ),
-        _tool(
+        Tool(
             "rides_trips_list",
             "List past trips, newest first, with status, times, addresses and total.",
             TripsListArgs,
             trips_list,
         ),
-        _tool(
+        Tool(
             "rides_trips_receipt",
             "Get the itemized receipt of a past trip: charges, adjustments (booking fee, tip), total charged.",
             TripsReceiptArgs,
             trips_receipt,
         ),
-        _tool(
+        Tool(
             "rides_tip_driver",
             "Tip the driver of a completed trip, or change the tip already given.",
             TipDriverArgs,
             tip_driver,
             writes=True,
         ),
-        _tool(
+        Tool(
             "rides_rate_driver",
             "Rate the driver of a completed trip from 1 to 5 stars, with optional feedback.",
             RateDriverArgs,
             rate_driver,
             writes=True,
         ),
-        _tool(
+        Tool(
             "rides_get_driver_messages",
             "Read the chat messages between the rider and the driver of a trip.",
             GetDriverMessagesArgs,
             get_driver_messages,
         ),
-        _tool(
+        Tool(
             "rides_send_driver_message",
             "Send a chat message to the driver of the active trip.",
             SendDriverMessageArgs,

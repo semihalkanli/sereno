@@ -444,28 +444,24 @@ APP = App(
     tools=[
         Tool(
             "chat_search_channels",
-            "chat",
             "Find chat channels by name or topic. Returns channel ids, names, topics and archive status.",
             SearchChannelsArgs,
             chat_search_channels,
         ),
         Tool(
             "chat_read_channel",
-            "chat",
             "Read messages from a chat channel or DM, newest first. To read a DM, pass the other person's user_id.",
             ReadChannelArgs,
             chat_read_channel,
         ),
         Tool(
             "chat_read_thread",
-            "chat",
             "Read a chat thread: the parent message and all replies.",
             ReadThreadArgs,
             chat_read_thread,
         ),
         Tool(
             "chat_send_message",
-            "chat",
             "Send a message as the user to a chat channel or DM, or reply in a thread. To DM someone, use their "
             "user_id as channel_id. Returns the message link.",
             SendMessageArgs,
@@ -474,21 +470,18 @@ APP = App(
         ),
         Tool(
             "chat_search_public_and_private",
-            "chat",
             "Search messages in all chat channels, private channels and DMs the user can see, newest first.",
             SearchArgs,
             chat_search_public_and_private,
         ),
         Tool(
             "chat_search_users",
-            "chat",
             "Find people in the chat workspaces by name, email, title or role.",
             SearchUsersArgs,
             chat_search_users,
         ),
         Tool(
             "chat_read_user_profile",
-            "chat",
             "Read a chat user's profile: name, email, title. Defaults to the current user.",
             ReadUserProfileArgs,
             chat_read_user_profile,
