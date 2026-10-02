@@ -146,7 +146,7 @@ def run_chain(
                 apply_change(world, change)
             if session.user_file is not None:
                 user_file = session.user_file
-            toolset = Toolset(world, world.tools())
+            toolset = Toolset(world, loaded.tools(world))
             system_prompt = loaded.system_prompt(world)
             with log.span(
                 "session",

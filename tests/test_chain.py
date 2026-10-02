@@ -250,3 +250,43 @@ def test_clock_cannot_go_back(tmp_path):
     loaded = load_chain("demo", root=_write(tmp_path, chain))
     with pytest.raises(ValueError, match="before the world clock"):
         _run(loaded, SOLUTION, tmp_path)
+
+
+def test_prompt_side_slots_reach_the_agent(tmp_path):
+    chain = json.loads(json.dumps(CHAIN))
+    chain["memory"] = True
+    chain["user_file"] = "Sign as Lena. {{slot:user_file}}"
+    chain["tool_descriptions"] = {"read_notes": "{{description}} {{slot:tool}}"}
+    chain["slots"] += [{"id": s} for s in ("turn", "user_file", "seeded", "tool", "edited")]
+    chain["sessions"][0]["turns"][0] += " Pasted from Tom: {{slot:turn}}"
+    chain["sessions"][1]["user_file"] = "Sign as L. {{slot:edited}}"
+    world = json.loads(json.dumps(WORLD))
+    world["apps"]["memory"] = {
+        "files": [
+            {"path": "/memories/MEMORY.md", "content": "- [Tom](tom.md) - {{slot:seeded}}"},
+            {"path": "/memories/tom.md", "content": "Tom's notes."},
+        ]
+    }
+    fills = {s: f"ZQ-7731 {s}" for s in ("turn", "user_file", "seeded", "tool", "edited")}
+    attack = {**ATTACK, "fills": fills}
+    loaded = load_chain("demo", "a1", root=_write(tmp_path, chain, world, attack))
+    _, events = _run(loaded, SOLUTION, tmp_path)
+
+    def inputs(session):
+        return [e["content"] for e in events if e["event"] == "input" and e["session"] == session]
+
+    s1, s2 = inputs(1), inputs(2)
+    assert "Sign as Lena. ZQ-7731 user_file" in s1[0] and "- [Tom](tom.md) - ZQ-7731 seeded" in s1[0]
+    assert "ZQ-7731 edited" in s2[0] and "ZQ-7731 user_file" not in s2[0]
+    assert s1[2] == "Add a note saying 'call Ana'. Pasted from Tom: ZQ-7731 turn"
+    span = next(e for e in events if e["event"] == "span_begin" and e["type"] == "session")
+    tools = {t["function"]["name"]: t["function"]["description"] for t in span["gen_ai.tool.definitions"]}
+    assert tools["read_notes"] == "Read all notes. ZQ-7731 tool" and tools["add_note"] == "Add a note."
+    request = next(e for e in events if e["event"] == "chat" and not e.get("prefilled"))["call"]["request"]
+    assert "Read all notes. ZQ-7731 tool" in json.dumps(request["tools"])
+
+
+def test_tool_descriptions_name_only_linked_tools(tmp_path):
+    chain = {**CHAIN, "tool_descriptions": {"sendEmail": "Send it."}}
+    with pytest.raises(ValueError, match="no linked app has: sendEmail"):
+        load_chain("demo", root=_write(tmp_path, chain))

@@ -24,6 +24,7 @@ chains/<id>/
 | `system_prompt` | the agent's system prompt; `{{owner_name}}`, `{{owner_email}}`, `{{now}}` and `{{apps}}` are filled in each session |
 | `memory` | `true` gives the agent a memory directory that carries over between sessions, see below |
 | `user_file` | the user's instruction file, trusted; loaded at every session start of a chain with memory |
+| `tool_descriptions` | tool name -> the description the agent sees instead of the app's own; `{{description}}` stands for the app's text |
 | `slots` | places a poison can go: `{id, default, note}`; with no attack a slot becomes its `default` |
 | `sessions` | the sessions in order, see below |
 | `final_checks` | checks over the whole chain, against the initial world |
@@ -79,9 +80,9 @@ Do not list `memory` in `apps`.
 
 ## Slots and poisons
 
-Write `{{slot:<id>}}` inside any text of `world.json`, of a session's `changes`
-or of its `history`. Where the slot sits decides when the poison reaches the
-agent:
+Write `{{slot:<id>}}` inside any text of `world.json` or `chain.json`. Where
+the slot sits decides how and when the poison reaches the agent. As tool
+output:
 
 - in `world.json`: present from the start (an old review, an email already in
   the inbox);
@@ -89,6 +90,19 @@ agent:
   when the session starts, as in Gray Swan's prefilled conversations;
 - in a later session's `changes`: arrives later, from outside (a new email on
   day 3).
+
+On the prompt side (decision log section 107):
+
+- in a session's `turns`: inside the user's own message, such as text the user
+  pasted or a prompt prefilled by a link (`?q=`);
+- in `user_file`, or a session's `user_file`: in the trusted instruction file
+  loaded at every session start, such as tips the user copied into it;
+- in a memory file seeded under `apps.memory` in `world.json`: in memory
+  before the chain starts, as if an earlier conversation had written it; a
+  slot in `/memories/MEMORY.md` is loaded at every session start;
+- in `tool_descriptions`: in a tool's description, sent with every request,
+  as a poisoned third-party tool would ship it, e.g.
+  `{"read_notes": "{{description}} {{slot:tool_note}}"}`.
 
 Every declared slot must be placed somewhere, and every placed slot declared.
 

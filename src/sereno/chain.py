@@ -6,14 +6,17 @@ A chain lives in its own directory under `chains/` and is made by copying
 the ones it links.
 
 Placeholders use double braces. `{{slot:<id>}}` marks a place where a poison
-can go, in any text of the world data, a session change or the history; with
-no attack it becomes the slot's default text. The system prompt also takes
-`{{owner_name}}`, `{{owner_email}}`, `{{now}}` and `{{apps}}`, filled per
-session.
+can go, in any text of the chain or its world data: tool output (world data, a
+session change, the history) or the prompt side (a user turn, the user file,
+seeded memory, a tool description); with no attack it becomes the slot's
+default text. The system prompt also takes `{{owner_name}}`, `{{owner_email}}`,
+`{{now}}` and `{{apps}}`, filled per session, and a tool description
+`{{description}}`, the app's own text.
 """
 
 import json
 import re
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, get_args
@@ -23,6 +26,7 @@ from pydantic import BaseModel, Field, TypeAdapter
 from sereno.apps import get_app
 from sereno.checks import Check, collection
 from sereno.memory import INSTRUCTIONS
+from sereno.tools import Tool
 from sereno.world import World
 
 REPO = Path(__file__).resolve().parents[2]
@@ -80,6 +84,8 @@ class Chain(BaseModel, extra="forbid"):
     system_prompt: str
     memory: bool = False
     user_file: str = ""
+    tool_descriptions: dict[str, str] = {}
+    """Tool name -> the description the agent sees instead of the app's own; `{{description}}` is the app's text."""
     slots: list[Slot] = []
     sessions: list[Session] = Field(min_length=1)
     final_checks: list[Check] = []
@@ -127,8 +133,21 @@ class LoadedChain:
         self.attack = attack
         self.solution = solution
 
+    def app_names(self) -> list[str]:
+        return [*self.chain.apps, "memory"] if self.chain.memory else self.chain.apps
+
     def initial_world(self) -> World:
-        return World.load(self.world_data, [*self.chain.apps, "memory"] if self.chain.memory else self.chain.apps)
+        return World.load(self.world_data, self.app_names())
+
+    def tools(self, world: World) -> list[Tool]:
+        """The linked apps' tools, with the chain's own descriptions where it gives one."""
+        overrides = self.chain.tool_descriptions
+        return [
+            replace(t, description=overrides[t.name].replace("{{description}}", t.description))
+            if t.name in overrides
+            else t
+            for t in world.tools()
+        ]
 
     def system_prompt(self, world: World) -> str:
         values = {
@@ -178,7 +197,12 @@ def load_chain(chain_id: str, attack_id: str | None = None, root: Path = CHAINS_
         raise ValueError(f"slots declared but never placed: {', '.join(unused)}")
     if chain.id != chain_id:
         raise ValueError(f"chain id {chain.id!r} does not match its directory {chain_id!r}")
-    return LoadedChain(chain, world_data, attack, solution)
+    loaded = LoadedChain(chain, world_data, attack, solution)
+    known = {t.name for name in loaded.app_names() for t in get_app(name).tools}
+    unknown_tools = sorted(set(chain.tool_descriptions) - known)
+    if unknown_tools:
+        raise ValueError(f"tool_descriptions names tools no linked app has: {', '.join(unknown_tools)}")
+    return loaded
 
 
 def _item_type(world: World, app: str, name: str) -> type[BaseModel]:
