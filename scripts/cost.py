@@ -29,6 +29,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from sereno.events import read_events
+from sereno.runner import git_state
+
 REPO = Path(__file__).resolve().parent.parent
 HOOK_DIR = Path(__file__).resolve().parent / "cost_hook"
 DEFAULT_LEDGER = REPO / "runs" / "cost" / "ledger.jsonl"
@@ -48,26 +51,15 @@ def openrouter_get(path: str) -> dict | None:
         return None
 
 
-def git_state() -> dict:
-    def git(*args: str) -> str:
-        return subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True).stdout.strip()
-
-    return {"commit": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain"))}
-
-
 def summarize_calls(calls_path: Path) -> dict:
-    calls = []
-    if calls_path.exists():
-        calls = [json.loads(line) for line in calls_path.read_text(encoding="utf-8").splitlines() if line]
+    calls = read_events(calls_path) if calls_path.exists() else []
+    billed = [c for c in calls if c["cost"] is not None]
     by_model: dict[str, dict] = defaultdict(lambda: {"calls": 0, "cost_usd": 0.0, "providers": set()})
-    for call in calls:
-        if call["cost"] is None:
-            continue
+    for call in billed:
         entry = by_model[call["model"]]
         entry["calls"] += 1
         entry["cost_usd"] += call["cost"]
         entry["providers"].add(call["provider"])
-    billed = [c for c in calls if c["cost"] is not None]
     return {
         "calls": len(billed),
         "failed_calls": len(calls) - len(billed),
@@ -123,9 +115,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_report(args: argparse.Namespace) -> int:
-    rows = []
-    if args.ledger.exists():
-        rows = [json.loads(line) for line in args.ledger.read_text(encoding="utf-8").splitlines() if line]
+    rows = read_events(args.ledger) if args.ledger.exists() else []
     if args.label:
         rows = [r for r in rows if r["label"] == args.label]
     print(f"{'run':<44} {'calls':>6} {'failed':>6} {'tokens in':>10} {'tokens out':>10} {'USD':>10}")
