@@ -24,10 +24,10 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 from sereno.apps import App
-from sereno.apps._common import find, fresh_id
+from sereno.apps._common import LocalTime, find, fresh_id
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -39,7 +39,6 @@ Crn = Annotated[str, StringConstraints(pattern=r"^[0-9]{5}$")]
 CourseCode = Annotated[str, StringConstraints(pattern=r"^[A-Z]{2,4}[0-9]{3,4}$")]
 ScopeItem = Annotated[str, StringConstraints(pattern=r"^(current|previous|(fall|spring|summer)_\d{4})$")]
 ShellId = Annotated[str, StringConstraints(pattern=r"^[A-Z]{2,4}[0-9]{3,4}_[0-9]{3}_[0-9]{4}$")]
-LocalTime = Annotated[datetime, AfterValidator(lambda d: d.replace(tzinfo=None))]
 
 RecordType = Literal[
     "transcript_unofficial", "degree_audit", "holds_alerts", "registration_history", "academic_standing"

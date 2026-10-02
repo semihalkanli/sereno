@@ -40,18 +40,14 @@ from __future__ import annotations
 from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find, fresh_id, iso_seconds
+from sereno.apps._common import LocalTime, find, fresh_id, iso_seconds
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
     from sereno.world import World
-
-
-def _naive(value: datetime | None) -> datetime | None:
-    return value.replace(tzinfo=None) if value is not None else None
 
 
 class Event(BaseModel):
@@ -139,10 +135,10 @@ class Attendee(BaseModel):
 
 
 class ListEventsArgs(BaseModel):
-    startTime: datetime | None = Field(
+    startTime: LocalTime | None = Field(
         None, description="Optional. Lower bound of a time range (ISO 8601). Default: now."
     )
-    endTime: datetime | None = Field(
+    endTime: LocalTime | None = Field(
         None,
         description="Optional. Upper bound of a time range (ISO 8601), after startTime. Default: startTime + 7 days.",
     )
@@ -150,8 +146,6 @@ class ListEventsArgs(BaseModel):
         "", description="Optional. Case-insensitive search over title, description, location and attendees; all terms."
     )
     pageSize: int = Field(100, ge=1, le=250, description="Optional. Max events to return (default 100, max 250).")
-
-    _naive_times = field_validator("startTime", "endTime")(_naive)
 
 
 def list_events(world: World, args: ListEventsArgs) -> dict:
@@ -189,14 +183,12 @@ def get_event(world: World, args: GetEventArgs) -> dict:
 
 class CreateEventArgs(BaseModel):
     summary: str = Field(description="Required. Title.")
-    startTime: datetime = Field(description="Required. Start time (ISO 8601, for example 2026-04-30T10:00:00).")
-    endTime: datetime = Field(description="Required. End time (ISO 8601, for example 2026-04-30T11:00:00).")
+    startTime: LocalTime = Field(description="Required. Start time (ISO 8601, for example 2026-04-30T10:00:00).")
+    endTime: LocalTime = Field(description="Required. End time (ISO 8601, for example 2026-04-30T11:00:00).")
     attendees: list[Attendee] = Field([], description="Optional. Attendees to invite.")
     description: str = Field("", description="Optional. Description.")
     location: str = Field("", description="Optional. Location.")
     addMeetingUrl: bool = Field(False, description="Optional. Create and add a video meeting link. Default false.")
-
-    _naive_times = field_validator("startTime", "endTime")(_naive)
 
 
 def create_event(world: World, args: CreateEventArgs) -> dict:
@@ -225,15 +217,13 @@ class UpdateEventArgs(BaseModel):
     summary: str | None = Field(None, description="Optional. New title.")
     description: str | None = Field(None, description="Optional. New description.")
     location: str | None = Field(None, description="Optional. New location.")
-    startTime: datetime | None = Field(
+    startTime: LocalTime | None = Field(
         None, description="Optional. New start time (ISO 8601). Preserves duration if updating only start."
     )
-    endTime: datetime | None = Field(None, description="Optional. New end time (ISO 8601).")
+    endTime: LocalTime | None = Field(None, description="Optional. New end time (ISO 8601).")
     addedAttendees: list[Attendee] = Field([], description="Optional. Attendees to add to the event.")
     removedAttendeeEmails: list[str] = Field([], description="Optional. Attendees to remove, as email addresses.")
     addMeetingUrl: bool = Field(False, description="Optional. If true, adds a video meeting link to the event.")
-
-    _naive_times = field_validator("startTime", "endTime")(_naive)
 
 
 def update_event(world: World, args: UpdateEventArgs) -> dict:
@@ -307,12 +297,10 @@ class Preferences(BaseModel):
 
 class SuggestTimeArgs(BaseModel):
     attendeeEmails: list[str] = Field(description="Required. Attendee emails to find free time for.")
-    startTime: datetime = Field(description="Required. Query interval start (ISO 8601).")
-    endTime: datetime = Field(description="Required. Query interval end (ISO 8601).")
+    startTime: LocalTime = Field(description="Required. Query interval start (ISO 8601).")
+    endTime: LocalTime = Field(description="Required. Query interval end (ISO 8601).")
     durationMinutes: int = Field(30, ge=1, le=1440, description="Optional. Min duration of free slot in minutes.")
     preferences: Preferences = Field(default_factory=Preferences, description="Preferences for suggested time.")
-
-    _naive_times = field_validator("startTime", "endTime")(_naive)
 
 
 def suggest_time(world: World, args: SuggestTimeArgs) -> dict:

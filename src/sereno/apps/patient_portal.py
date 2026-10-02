@@ -38,12 +38,12 @@ saved payment methods, since `pay_patient_bill` takes one by id.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Literal
 
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find, fresh_id, money
+from sereno.apps._common import LocalTime, find, fresh_id, money
 from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
@@ -52,7 +52,6 @@ if TYPE_CHECKING:
 CHECK_IN_WINDOW_DAYS = 7
 REFILL_BUSINESS_DAYS = 3
 
-Naive = Annotated[datetime, AfterValidator(lambda d: d.replace(tzinfo=None))]
 Channel = Literal["direct_message", "fax", "email"]
 
 
@@ -490,7 +489,7 @@ def list_upcoming_appointments(world: World, args: ListUpcomingAppointmentsArgs)
 
 class ScheduleAppointmentArgs(BaseModel):
     department_id: str = Field(description="Department id from list_departments.")
-    preferred_datetime: Naive = Field(description="Requested time, YYYY-MM-DDTHH:MM.")
+    preferred_datetime: LocalTime = Field(description="Requested time, YYYY-MM-DDTHH:MM.")
     visit_reason: str = Field(description="Reason for the visit.")
     provider_id: str | None = Field(None, description="Provider id from list_department_providers.")
     additional_notes: str = Field("", description="Scheduling note for the clinic.")

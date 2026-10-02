@@ -6,7 +6,9 @@ particular real API stay in that app's module.
 
 from collections.abc import Callable, Iterable
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import AfterValidator
 
 from sereno.tools import ToolError
 
@@ -32,6 +34,15 @@ def has_words(words: Iterable[str], *fields: object) -> bool:
     """Every word occurs, case-insensitively, somewhere in the fields."""
     text = " ".join(map(str, fields)).lower()
     return all(w in text for w in words)
+
+
+def local_time(t: datetime) -> datetime:
+    """A time as naive local time: an incoming offset is dropped, not converted, as the world clock is local."""
+    return t.replace(tzinfo=None)
+
+
+LocalTime = Annotated[datetime, AfterValidator(local_time)]
+"""A datetime argument or field read as the person's local time."""
 
 
 def iso_seconds(t: datetime | None) -> str | None:
