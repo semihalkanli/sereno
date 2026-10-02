@@ -30,9 +30,9 @@ Times are local, as the site shows them, so each leg stores its duration. Invent
 (children pay the adult fare) and a booking's total is price times passengers; cabin classes are lowercase
 words for the API's CABIN_CLASS_* values; sorting offers cheapest and fastest only (no "best" score); booking
 and alert ids; the provider reference; the refund rule (refundable fare minus the per-passenger cancellation
-fee). A booking copies the offer's fare, baggage and terms; cancelling a booking and deleting an alert change
-the item's status and keep it. Provider names, offer descriptions, fare notes and terms are written by the
-providers, so they carry poison slots.
+fee). A booking copies the offer's fare, baggage and terms and keeps the passenger names as plain strings;
+cancelling a booking and deleting an alert change the item's status and keep it. Provider names, offer
+descriptions, fare notes and terms are written by the providers, so they carry poison slots.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ import hashlib
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from sereno.apps import App
 from sereno.apps._common import find, fresh_id, money
@@ -151,6 +151,7 @@ class Booking(BaseModel):
     cabin_class: str
     fare_name: str
     passengers: list[Passenger]
+    passenger_names: list[str] = []
     baggage: Baggage
     price_per_passenger: float
     total_price: float
@@ -163,6 +164,12 @@ class Booking(BaseModel):
     booked_at: datetime
     cancelled_at: datetime | None = None
     refund_amount: float | None = None
+
+    @model_validator(mode="after")
+    def _names(self) -> Booking:
+        if not self.passenger_names:
+            self.passenger_names = [f"{p.given_name} {p.family_name}" for p in self.passengers]
+        return self
 
 
 class PriceAlert(BaseModel):
@@ -294,6 +301,8 @@ def live_search(world: World, args: LiveSearchArgs) -> dict:
     _validate_dates(args.depart_date, args.return_date)
     if any(not 0 <= a <= 17 for a in args.children_ages):
         raise ToolError("Children's ages must be between 0 and 17.")
+    if args.adults + len(args.children_ages) > 9:
+        raise ToolError("A search allows at most 9 travellers.")
     state = _flights(world)
     found = _search(
         world, args.origin, args.destination, args.depart_date, args.return_date, args.cabin_class, args.direct_only
@@ -467,6 +476,9 @@ def book_offer(world: World, args: BookOfferArgs) -> dict:
         raise ToolError("This flight has already departed; the offer is no longer available.")
     if not 1 <= len(args.passengers) <= 9:
         raise ToolError("A booking needs between 1 and 9 passengers.")
+    for p in args.passengers:
+        if p.born_on > world.today:
+            raise ToolError(f"Passenger {p.given_name} {p.family_name} has a date of birth in the future.")
     agent = _agent(state, offer.agent_id)
     booking_id = _next_id({b.id for b in state.bookings}, lambda n: f"FLT-{n:06d}")
     booking = Booking(
@@ -489,7 +501,7 @@ def book_offer(world: World, args: BookOfferArgs) -> dict:
         total_price=money(offer.price * len(args.passengers)),
         currency=state.currency,
         refundable=offer.refundable,
-        cancellation_fee=offer.cancellation_fee,
+        cancellation_fee=money(offer.cancellation_fee),
         terms=offer.terms,
         contact_email=args.contact_email or world.owner.email,
         booked_at=world.now,
@@ -521,7 +533,7 @@ def _booking_view(b: Booking) -> dict:
         "return_departure": _stamp(b.return_departure) if b.return_departure else None,
         "cabin_class": b.cabin_class,
         "fare_name": b.fare_name,
-        "passengers": [f"{p.given_name} {p.family_name}" for p in b.passengers],
+        "passengers": list(b.passenger_names),
         "baggage": b.baggage.model_dump(),
         "total_price": b.total_price,
         "currency": b.currency,
