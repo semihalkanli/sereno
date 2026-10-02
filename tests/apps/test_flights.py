@@ -77,6 +77,7 @@ def make_world() -> World:
                         baggage=Baggage(cabin_bags=1, checked_bags=1),
                         refundable=True,
                         cancellation_fee=50.0,
+                        change_fee=40.0,
                         terms="Changes allowed for a fee. Refund minus GBP 50 per passenger.",
                     ),
                     Offer(
@@ -86,6 +87,7 @@ def make_world() -> World:
                         fare_name="Basic",
                         description="Best price with eDreams Prime.",
                         fare_notes="Seats assigned at check-in.",
+                        changeable=False,
                         terms="Non-refundable. eDreams service fee applies to changes.",
                     ),
                 ],
@@ -294,6 +296,81 @@ def test_book_offer_errors(ts):
     unborn = {**TOM, "born_on": "2027-01-01"}
     assert "in the future" in ts.call("flights_book_offer", {"offer_id": "po-ba-1", "passengers": [unborn]}).error
     assert ts.world.app("flights").bookings == []
+
+
+def _add_change_targets(world: World) -> None:
+    back = _leg(135, _seg("BA 479", "British Airways", "BCN", "LHR", "2026-11-21T11:20", "2026-11-21T12:35"))
+    world.app("flights").itineraries += [
+        Itinerary(
+            id="ba-1115",
+            legs=[_ba_out("2026-11-15")],
+            pricing_options=[
+                Offer(id="po-ba-15", agent_id="baww", price=118.0),
+                Offer(id="po-edus-15", agent_id="edus", price=99.0),
+            ],
+        ),
+        Itinerary(
+            id="ba-1115-late",
+            legs=[_leg(135, _seg("BA 482", "British Airways", "LHR", "BCN", "2026-11-15T18:05", "2026-11-15T21:20"))],
+            pricing_options=[Offer(id="po-ba-15b", agent_id="baww", price=171.0)],
+        ),
+        Itinerary(
+            id="ba-r-1115",
+            legs=[_ba_out("2026-11-15"), back],
+            pricing_options=[Offer(id="po-ba-r15", agent_id="baww", price=290.0)],
+        ),
+    ]
+
+
+def test_request_and_confirm_change(ts):
+    _add_change_targets(ts.world)
+    call(ts, "flights_book_offer", offer_id="po-ba-1", passengers=[EMMA, TOM])
+    res, out = call(ts, "flights_request_change", booking_id="FLT-000001", new_date="2026-11-15")
+    assert out.state_changed and res["provider"] == "British Airways"
+    cheap, late = res["change_offers"]
+    assert cheap["legs"][0]["departure"] == "2026-11-15T07:15" and late["legs"][0]["flight_numbers"] == ["BA 482"]
+    assert (cheap["new_total_amount"], cheap["penalty_total_amount"], cheap["change_total_amount"]) == (
+        236.0,
+        80.0,
+        32.0,
+    )
+    assert late["change_total_amount"] == 138.0 and cheap["refund_to"] is None
+    res, _ = call(ts, "flights_confirm_change", change_offer_id=cheap["change_offer_id"])
+    assert res["departure"] == "2026-11-15T07:15" and res["new_total_amount"] == 236.0
+    b = ts.world.app("flights").bookings[0]
+    assert b.itinerary_id == "ba-1115" and b.total_price == 236.0 and b.changed_at == ts.world.now
+    assert b.provider_reference == res["provider_reference"] and b.id == "FLT-000001"
+    out = ts.call("flights_confirm_change", {"change_offer_id": late["change_offer_id"]})
+    assert "replaced" in out.error
+    out = ts.call("flights_confirm_change", {"change_offer_id": cheap["change_offer_id"]})
+    assert "already been confirmed" in out.error
+
+
+def test_change_keeps_the_other_leg(ts):
+    _add_change_targets(ts.world)
+    call(ts, "flights_book_offer", offer_id="po-ba-r1", passengers=[EMMA])
+    res, _ = call(ts, "flights_request_change", booking_id="FLT-000001", new_date="2026-11-15")
+    [offer] = res["change_offers"]
+    assert offer["legs"][1]["departure"] == "2026-11-21T11:20" and offer["change_total_amount"] == 30.0
+    res, _ = call(ts, "flights_request_change", booking_id="FLT-000001", slice="return", new_date="2026-11-22")
+    assert res["change_offers"] == []
+
+
+def test_change_errors(ts):
+    _add_change_targets(ts.world)
+    call(ts, "flights_book_offer", offer_id="po-edus-1", passengers=[EMMA])
+    call(ts, "flights_book_offer", offer_id="po-ba-1", passengers=[EMMA])
+    base = {"new_date": "2026-11-15"}
+    assert "does not allow" in ts.call("flights_request_change", {**base, "booking_id": "FLT-000001"}).error
+    assert "one-way" in ts.call("flights_request_change", {**base, "booking_id": "FLT-000002", "slice": "return"}).error
+    assert "No booking" in ts.call("flights_request_change", {**base, "booking_id": "FLT-9"}).error
+    res, _ = call(ts, "flights_request_change", booking_id="FLT-000002", new_date="2026-11-15")
+    offer_id = res["change_offers"][0]["change_offer_id"]
+    ts.world.now = datetime(2026, 10, 5, 9, 1)
+    assert "expired" in ts.call("flights_confirm_change", {"change_offer_id": offer_id}).error
+    assert "No change offer" in ts.call("flights_confirm_change", {"change_offer_id": "oco-x"}).error
+    call(ts, "flights_cancel_booking", booking_id="FLT-000002")
+    assert "cancelled" in ts.call("flights_request_change", {**base, "booking_id": "FLT-000002"}).error
 
 
 def test_list_and_cancel_bookings(ts):

@@ -19,6 +19,10 @@ are modelled on the Duffel community MCP server (https://github.com/CaullenOmdah
     flights_book_offer         modelled on Duffel duffel_create_order; added (not in Skyscanner's API)
     flights_list_bookings      proposed (the app's Trips list)
     flights_cancel_booking     modelled on Duffel order cancellations; added (not in Skyscanner's API)
+    flights_request_change     modelled on Duffel order change requests (remove a slice, add one on a new date)
+                               and the order change offers they return; added (not in Skyscanner's API)
+    flights_confirm_change     modelled on Duffel order changes (create from the selected offer, then confirm
+                               with payment, in one call); added
     flights_create_price_alert proposed (the app's price alerts; no public API)
     flights_list_price_alerts  proposed
     flights_delete_price_alert proposed
@@ -43,12 +47,21 @@ childrenAges as a list. That server's create order also requires `id`, `gender` 
 `phone_number` per passenger; ours keeps them optional or absent (no gender, no passenger id) on purpose, since a
 required field would change the tool interface. Invented, unverified: the 50-result cap, the per-passenger
 cancellation fee and refund rule, and the 6-character provider reference alphabet.
+
+Changes follow Duffel's guide (https://duffel.com/docs/guides/changing-an-order): an order change request names
+the slice to remove and the new slice's origin, destination, date and cabin; each order change offer carries
+change_total_amount (charged now, a negative amount is refunded), penalty_total_amount, new_total_amount,
+refund_to and expires_at; the selected offer becomes an order change that is confirmed with payment. Here a
+change keeps the provider and the other slice, so offers come from the same provider's offers on itineraries
+that share the untouched leg. Invented, unverified: change_total_amount as fare difference plus penalty, the
+penalty as the fare's change fee per passenger, and offers expiring 72 hours after the request (the gap in
+Duffel's example response).
 """
 
 from __future__ import annotations
 
 import hashlib
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -124,6 +137,8 @@ class Offer(BaseModel):
     baggage: Baggage = Baggage()
     refundable: bool = False
     cancellation_fee: float = 0.0
+    changeable: bool = True
+    change_fee: float = 0.0
     description: str = ""
     fare_notes: str = ""
     terms: str = ""
@@ -168,18 +183,35 @@ class Booking(BaseModel):
     currency: str
     refundable: bool
     cancellation_fee: float
+    changeable: bool = True
+    change_fee: float = 0.0
     terms: str
     contact_email: str
     status: Literal["confirmed", "cancelled"] = "confirmed"
     booked_at: datetime
     cancelled_at: datetime | None = None
     refund_amount: float | None = None
+    changed_at: datetime | None = None
 
     @model_validator(mode="after")
     def _names(self) -> Booking:
         if not self.passenger_names:
             self.passenger_names = [f"{p.given_name} {p.family_name}" for p in self.passengers]
         return self
+
+
+class ChangeOffer(BaseModel):
+    id: str
+    booking_id: str
+    itinerary_id: str
+    offer_id: str
+    change_total_amount: float
+    penalty_total_amount: float
+    new_total_amount: float
+    created_at: datetime
+    expires_at: datetime
+    status: Literal["offered", "confirmed", "superseded"] = "offered"
+    confirmed_at: datetime | None = None
 
 
 class PriceAlert(BaseModel):
@@ -202,6 +234,7 @@ class Flights(BaseModel):
     agents: list[Agent] = []
     itineraries: list[Itinerary] = []
     bookings: list[Booking] = []
+    change_offers: list[ChangeOffer] = []
     price_alerts: list[PriceAlert] = []
 
 
@@ -452,6 +485,8 @@ def get_itinerary(world: World, args: GetItineraryArgs) -> dict:
                 "baggage": o.baggage.model_dump(),
                 "refundable": o.refundable,
                 "cancellation_fee": money(o.cancellation_fee),
+                "changeable": o.changeable,
+                "change_fee": money(o.change_fee),
                 "description": o.description,
                 "fare_notes": o.fare_notes,
                 "terms": o.terms,
@@ -512,6 +547,8 @@ def book_offer(world: World, args: BookOfferArgs) -> dict:
         currency=state.currency,
         refundable=offer.refundable,
         cancellation_fee=money(offer.cancellation_fee),
+        changeable=offer.changeable,
+        change_fee=money(offer.change_fee),
         terms=offer.terms,
         contact_email=args.contact_email or world.owner.email,
         booked_at=world.now,
@@ -548,8 +585,10 @@ def _booking_view(b: Booking) -> dict:
         "total_price": b.total_price,
         "currency": b.currency,
         "refundable": b.refundable,
+        "changeable": b.changeable,
         "terms": b.terms,
         "booked_at": _stamp(b.booked_at),
+        "changed_at": _stamp(b.changed_at) if b.changed_at else None,
         "cancelled_at": _stamp(b.cancelled_at) if b.cancelled_at else None,
         "refund_amount": b.refund_amount,
     }
@@ -586,6 +625,134 @@ def cancel_booking(world: World, args: CancelBookingArgs) -> dict:
         "refund_amount": booking.refund_amount,
         "currency": booking.currency,
         "cancelled_at": _stamp(booking.cancelled_at),
+    }
+
+
+class RequestChangeArgs(BaseModel):
+    booking_id: str = Field(description="The booking id (FLT-...).")
+    slice: Literal["outbound", "return"] = Field(
+        "outbound", description="Which flight of the booking to replace; the other one is kept."
+    )
+    new_date: date = Field(description="The new departure date for that flight, YYYY-MM-DD.")
+
+
+def _change_view(state: Flights, c: ChangeOffer) -> dict:
+    it = _itinerary(state, c.itinerary_id)
+    return {
+        "change_offer_id": c.id,
+        "booking_id": c.booking_id,
+        "legs": [_leg_summary(state, leg) for leg in it.legs],
+        "change_total_amount": c.change_total_amount,
+        "penalty_total_amount": c.penalty_total_amount,
+        "new_total_amount": c.new_total_amount,
+        "currency": state.currency,
+        "refund_to": "original_form_of_payment" if c.change_total_amount < 0 else None,
+        "expires_at": _stamp(c.expires_at),
+    }
+
+
+def request_change(world: World, args: RequestChangeArgs) -> dict:
+    state = _flights(world)
+    booking = find(state.bookings, f"No booking with id {args.booking_id!r}.", id=args.booking_id)
+    if booking.status == "cancelled":
+        raise ToolError(f"Booking {booking.id!r} is cancelled.")
+    if not booking.changeable:
+        raise ToolError(f"The fare of booking {booking.id!r} does not allow changes.")
+    old = _itinerary(state, booking.itinerary_id)
+    index = 0 if args.slice == "outbound" else 1
+    if index >= len(old.legs):
+        raise ToolError(f"Booking {booking.id!r} is one-way and has no return flight.")
+    if old.legs[index].departure <= world.now:
+        raise ToolError(f"The {args.slice} flight has already departed and cannot be changed.")
+    kept = [leg for i, leg in enumerate(old.legs) if i != index]
+    for c in state.change_offers:
+        if c.booking_id == booking.id and c.status == "offered":
+            c.status = "superseded"
+    passengers = len(booking.passengers)
+    offers = []
+    for it in state.itineraries:
+        if it.id == old.id or it.cabin_class != old.cabin_class or len(it.legs) != len(old.legs):
+            continue
+        leg = it.legs[index]
+        if (leg.origin, leg.destination) != (old.legs[index].origin, old.legs[index].destination):
+            continue
+        if leg.departure.date() != args.new_date or leg.departure <= world.now:
+            continue
+        if [x for i, x in enumerate(it.legs) if i != index] != kept:
+            continue
+        if len(it.legs) > 1 and it.legs[1].departure <= it.legs[0].segments[-1].arrival:
+            continue
+        for o in it.pricing_options:
+            if o.agent_id != booking.agent_id:
+                continue
+            new_total = money(o.price * passengers)
+            penalty = money(booking.change_fee * passengers)
+            change = ChangeOffer(
+                id=_next_id({c.id for c in state.change_offers}, lambda n: f"oco-{n:05d}"),
+                booking_id=booking.id,
+                itinerary_id=it.id,
+                offer_id=o.id,
+                change_total_amount=money(new_total - booking.total_price + penalty),
+                penalty_total_amount=penalty,
+                new_total_amount=new_total,
+                created_at=world.now,
+                expires_at=world.now + timedelta(hours=72),
+            )
+            state.change_offers.append(change)
+            offers.append(change)
+    offers.sort(key=lambda c: (c.change_total_amount, _itinerary(state, c.itinerary_id).legs[index].departure))
+    return {
+        "booking_id": booking.id,
+        "provider": booking.provider_name,
+        "slice": args.slice,
+        "change_offers": [_change_view(state, c) for c in offers],
+    }
+
+
+class ConfirmChangeArgs(BaseModel):
+    change_offer_id: str = Field(description="The change offer id (oco-...) from flights_request_change.")
+
+
+def confirm_change(world: World, args: ConfirmChangeArgs) -> dict:
+    state = _flights(world)
+    change = find(state.change_offers, f"No change offer with id {args.change_offer_id!r}.", id=args.change_offer_id)
+    if change.status == "confirmed":
+        raise ToolError(f"Change offer {change.id!r} has already been confirmed.")
+    if change.status == "superseded":
+        raise ToolError(f"Change offer {change.id!r} was replaced by a newer change request.")
+    if change.expires_at <= world.now:
+        raise ToolError(f"Change offer {change.id!r} has expired; request the change again.")
+    booking = find(state.bookings, f"No booking with id {change.booking_id!r}.", id=change.booking_id)
+    if booking.status == "cancelled":
+        raise ToolError(f"Booking {booking.id!r} is cancelled.")
+    it = _itinerary(state, change.itinerary_id)
+    if it.legs[0].departure <= world.now:
+        raise ToolError("The new flight has already departed; request the change again.")
+    offer = find(it.pricing_options, f"No offer with id {change.offer_id!r}.", id=change.offer_id)
+    booking.itinerary_id = it.id
+    booking.offer_id = offer.id
+    booking.departure = it.legs[0].departure
+    booking.return_departure = it.legs[1].departure if len(it.legs) > 1 else None
+    booking.price_per_passenger = money(offer.price)
+    booking.total_price = change.new_total_amount
+    booking.changed_at = world.now
+    change.status = "confirmed"
+    change.confirmed_at = world.now
+    for c in state.change_offers:
+        if c.booking_id == booking.id and c.status == "offered":
+            c.status = "superseded"
+    return {
+        "order_change_id": change.id,
+        "booking_id": booking.id,
+        "provider_reference": booking.provider_reference,
+        "departure": _stamp(booking.departure),
+        "return_departure": _stamp(booking.return_departure) if booking.return_departure else None,
+        "change_total_amount": change.change_total_amount,
+        "penalty_total_amount": change.penalty_total_amount,
+        "new_total_amount": change.new_total_amount,
+        "currency": state.currency,
+        "refund_to": "original_form_of_payment" if change.change_total_amount < 0 else None,
+        "confirmed_at": _stamp(change.confirmed_at),
     }
 
 
@@ -675,7 +842,14 @@ APP = App(
     name="flights",
     title="flights",
     state=Flights,
-    keys={"airports": "iata", "agents": "id", "itineraries": "id", "bookings": "id", "price_alerts": "id"},
+    keys={
+        "airports": "iata",
+        "agents": "id",
+        "itineraries": "id",
+        "bookings": "id",
+        "change_offers": "id",
+        "price_alerts": "id",
+    },
     tools=[
         Tool(
             "flights_live_search",
@@ -720,6 +894,23 @@ APP = App(
             "cancellation fee per passenger; non-refundable fares get no refund.",
             CancelBookingArgs,
             cancel_booking,
+            writes=True,
+        ),
+        Tool(
+            "flights_request_change",
+            "Ask the booking's provider for offers to move one flight of a booking (outbound or return) to a new "
+            "date, keeping the other flight. Each offer shows the new flights, the change penalty, the amount to "
+            "pay now (negative means a refund) and the new total. Nothing changes until an offer is confirmed.",
+            RequestChangeArgs,
+            request_change,
+            writes=True,
+        ),
+        Tool(
+            "flights_confirm_change",
+            "Confirm a change offer from flights_request_change and pay its change amount to the provider. The "
+            "booking keeps its id and reference and moves to the new flights.",
+            ConfirmChangeArgs,
+            confirm_change,
             writes=True,
         ),
         Tool(
