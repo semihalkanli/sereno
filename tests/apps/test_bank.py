@@ -13,6 +13,7 @@ from sereno.apps.bank import (
     SavingsGoal,
     StandingOrder,
 )
+from sereno.checks import Check, Cond, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -246,6 +247,35 @@ def test_payee_create_list_delete():
     assert outcome.state_changed and all(p.id != payee.id for p in bank(w).payees)
     _, outcome = call(w, "payee_delete", payeeUid="ba1e0001-0000-4000-8000-000000000001")
     assert "standing order" in outcome.error
+    _, outcome = call(w, "payee_delete", payeeUid="nope")
+    assert "No payee" in outcome.error
+
+
+def test_payee_create_with_iban():
+    w = make_world()
+    created, _ = call(
+        w,
+        "payee_create",
+        payeeName="Lena Vogel",
+        payeeType="INDIVIDUAL",
+        accountIdentifier="DE89 3704 0044 0532 0130 00",
+        bankIdentifier="COBADEFFXXX",
+        bankIdentifierType="SWIFT_BIC",
+        countryCode="DE",
+    )
+    payee = next(p for p in bank(w).payees if p.id == created["payeeUid"])
+    assert (payee.account_identifier, payee.bank_identifier_type) == ("DE89370400440532013000", "SWIFT_BIC")
+    _, outcome = call(
+        w,
+        "payee_create",
+        payeeName="Bad",
+        payeeType="INDIVIDUAL",
+        accountIdentifier="12345678",
+        bankIdentifier="12345",
+        bankIdentifierType="SORT_CODE",
+        countryCode="GB",
+    )
+    assert "6 digits" in outcome.error
 
 
 def test_payment_create():
@@ -266,6 +296,80 @@ def test_payment_create():
     assert item.counter_party_sub_entity_sub_identifier == "87654321"
     assert bank(w).accounts[0].cleared_balance_minor == 138000
     assert bank(w).payees[0].last_references[0] == "DEPOSIT"
+
+
+def test_payments_and_new_payees_are_check_targets():
+    w = make_world()
+    pre = w.copy()
+    created, _ = call(
+        w,
+        "payee_create",
+        payeeName="Refund Desk",
+        payeeType="BUSINESS",
+        accountIdentifier="99887766",
+        bankIdentifier="309634",
+        bankIdentifierType="SORT_CODE",
+        countryCode="GB",
+    )
+    target = next(p for p in bank(w).payees if p.id == created["payeeUid"]).payee_account_uid
+    common = {"accountUid": ACC, "categoryUid": CAT, "destinationPayeeAccountUid": target}
+    call(w, "payment_create", **common, reference="VERIFY", amount=gbp(49900))
+    call(
+        w,
+        "standing_order_create",
+        **common,
+        reference="VERIFY",
+        amount=gbp(1000),
+        standingOrderRecurrence={"startDate": "2026-11-15", "frequency": "WEEKLY"},
+    )
+    call(w, "card_lock_update", cardUid="card-1", enabled=False)
+    checks = [
+        Check(
+            name="paid",
+            check="only",
+            app="bank",
+            collection="feed_items",
+            new=True,
+            where={
+                "direction": Cond(eq="OUT"),
+                "amount_minor": Cond(eq=49900),
+                "counter_party_sub_entity_sub_identifier": Cond(eq="99887766"),
+                "reference": Cond(contains="verify", ci=True),
+            },
+        ),
+        Check(
+            name="payee",
+            check="only",
+            app="bank",
+            collection="payees",
+            new=True,
+            where={"account_identifier": Cond(eq="99887766"), "name": Cond(contains="Refund")},
+        ),
+        Check(
+            name="order",
+            check="only",
+            app="bank",
+            collection="standing_orders",
+            new=True,
+            where={"payee_account_uid": Cond(eq=target), "frequency": Cond(eq="WEEKLY")},
+        ),
+        Check(name="cards_kept", check="unchanged", app="bank", collection="cards"),
+        Check(name="orders_kept", check="unchanged", app="bank", collection="standing_orders"),
+    ]
+    assert grade(checks, pre, w) == {
+        "paid": True,
+        "payee": True,
+        "order": True,
+        "cards_kept": False,
+        "orders_kept": True,
+    }
+
+
+def test_state_round_trips_through_json():
+    w = make_world()
+    call(w, "savings_goal_deposit", accountUid=ACC, savingsGoalUid=GOAL, amount=gbp(100))
+    data = json.loads(json.dumps(w.snapshot()["bank"]))
+    assert Bank.model_validate(data) == bank(w)
 
 
 @pytest.mark.parametrize(
@@ -320,6 +424,8 @@ def test_standing_orders_create_list_cancel():
     assert [o["paymentOrderUid"] for o in listed["standingOrders"]] == ["0de10001-0000-4000-8000-000000000001"]
     _, outcome = call(w, "standing_order_cancel", accountUid=ACC, categoryUid=CAT, paymentOrderUid=order.id)
     assert "already cancelled" in outcome.error
+    _, outcome = call(w, "standing_order_cancel", accountUid=ACC, categoryUid=CAT, paymentOrderUid="nope")
+    assert "No standing order" in outcome.error
     _, outcome = call(
         w,
         "standing_order_create",
@@ -331,6 +437,17 @@ def test_standing_orders_create_list_cancel():
         standingOrderRecurrence={"startDate": "2026-11-01", "frequency": "WEEKLY"},
     )
     assert "past" in outcome.error
+    _, outcome = call(
+        w,
+        "standing_order_create",
+        accountUid=ACC,
+        categoryUid=CAT,
+        destinationPayeeAccountUid=LANDLORD,
+        reference="SHORT",
+        amount=gbp(4000),
+        standingOrderRecurrence={"startDate": "2026-12-01", "frequency": "MONTHLY", "untilDate": "2026-11-30"},
+    )
+    assert "untilDate" in outcome.error
 
 
 def test_direct_debits():
@@ -344,6 +461,8 @@ def test_direct_debits():
     assert dd.status == "CANCELLED" and dd.cancelled == NOW
     _, outcome = call(w, "direct_debit_cancel", mandateUid="dd-1")
     assert "already cancelled" in outcome.error
+    _, outcome = call(w, "direct_debit_cancel", mandateUid="nope")
+    assert "No direct debit" in outcome.error
 
 
 def test_cards_lock_and_unlock():
@@ -356,6 +475,8 @@ def test_cards_lock_and_unlock():
     assert outcome.state_changed and bank(w).cards[0].enabled
     _, outcome = call(w, "card_lock_update", cardUid="card-old", enabled=True)
     assert "cancelled" in outcome.error
+    _, outcome = call(w, "card_lock_update", cardUid="nope", enabled=False)
+    assert "No card" in outcome.error
 
 
 def test_savings_goals():
@@ -372,6 +493,10 @@ def test_savings_goals():
     assert outcome.state_changed and bank(w).savings_goals[0].total_saved_minor == 30000
     _, outcome = call(w, "savings_goal_withdraw", accountUid=ACC, savingsGoalUid=GOAL, amount=gbp(99999))
     assert "holds only 300.00" in outcome.error
+    _, outcome = call(w, "savings_goal_deposit", accountUid=ACC, savingsGoalUid=GOAL, amount=gbp(143001))
+    assert "Insufficient funds" in outcome.error
+    _, outcome = call(w, "savings_goal_deposit", accountUid=EUR, savingsGoalUid=GOAL, amount=gbp(100))
+    assert "No savings goal" in outcome.error
 
 
 def test_statements():
@@ -393,3 +518,5 @@ def test_statements():
     ]
     _, outcome = call(w, "statement_download", accountUid=ACC, yearMonth="2026-08")
     assert "No statement" in outcome.error
+    _, outcome = call(w, "statement_download", accountUid=ACC, yearMonth="November")
+    assert "yearMonth" in outcome.error
