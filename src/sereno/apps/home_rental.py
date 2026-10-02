@@ -41,6 +41,12 @@ after booking when booked at least 7 days before check-in. Simplifications (inve
 is 14.2% of nights plus cleaning; taxes and the service fee are refunded in the same share as the nights; the
 cleaning fee is refunded in full before check-in; a pending request is withdrawn at no cost.
 
+Realism checked 2026-10-02 against https://www.airbnb.com/help/article/475: the policy values above (after
+the deadline, flexible keeps the first unspent night, moderate refunds 50% of unspent nights after the first);
+the 24-hour period counts from confirmation (booked_at; instant book confirms at once), needs confirmation at
+least 7 days before check-in, and also covers non-refundable bookings. A pending request blocks its dates
+for other guests (https://www.airbnb.com/help/article/28).
+
 Listing names, descriptions, house rules and highlights are written by hosts, reviews by other guests, and
 host messages by hosts: all third-party content that can carry poison slots. Booking, cancelling, messaging
 and reviewing leave items (reservations keep their status, refund and policy; nothing is deleted).

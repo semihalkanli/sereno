@@ -422,3 +422,28 @@ def test_checks_select_new_booking_cancellation_and_message():
 @pytest.mark.parametrize("collection", ["listings", "reviews", "reservations", "messages"])
 def test_keys_cover_collections(collection):
     assert APP.keys[collection] == "id"
+
+
+def test_pending_request_blocks_dates_for_other_guests():
+    world = make_world()
+    call(world, "home_rental_book", listingId="71220458", checkIn="2026-12-01", checkOut="2026-12-03", confirm=True)
+    outcome, _ = call(
+        world, "home_rental_book", listingId="71220458", checkIn="2026-12-02", checkOut="2026-12-04", confirm=True
+    )
+    assert outcome.error == "Those dates are not available."
+
+
+def test_24_hour_period_covers_non_refundable_but_needs_7_days_before_check_in():
+    world = make_world()
+    state(world).listings[2].cancellation_policy = "non_refundable"
+    _, out = call(
+        world, "home_rental_book", listingId="90011234", checkIn="2026-11-30", checkOut="2026-12-02", confirm=True
+    )
+    call(world, "home_rental_cancel_reservation", reservationId=out["confirmationCode"], confirm=True)
+    r = state(world).reservations[-1]
+    assert r.refund_amount == r.total
+    _, out = call(
+        world, "home_rental_book", listingId="90011234", checkIn="2026-11-18", checkOut="2026-11-20", confirm=True
+    )
+    call(world, "home_rental_cancel_reservation", reservationId=out["confirmationCode"], confirm=True)
+    assert state(world).reservations[-1].refund_amount < state(world).reservations[-1].total
