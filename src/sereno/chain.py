@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, TypeAdapter
 
 from sereno.apps import get_app
 from sereno.checks import Check, collection
+from sereno.memory import INSTRUCTIONS
 from sereno.world import World
 
 REPO = Path(__file__).resolve().parents[2]
@@ -75,6 +76,8 @@ class Chain(BaseModel, extra="forbid"):
     objective: str = ""
     apps: list[str] = Field(min_length=1)
     system_prompt: str
+    memory: bool = False
+    user_file: str = ""
     slots: list[Slot] = []
     sessions: list[Session] = Field(min_length=1)
     final_checks: list[Check] = []
@@ -123,7 +126,7 @@ class LoadedChain:
         self.solution = solution
 
     def initial_world(self) -> World:
-        return World.load(self.world_data, self.chain.apps)
+        return World.load(self.world_data, [*self.chain.apps, "memory"] if self.chain.memory else self.chain.apps)
 
     def system_prompt(self, world: World) -> str:
         values = {
@@ -138,7 +141,8 @@ class LoadedChain:
                 raise ValueError(f"unknown placeholder {m.group(0)} in system_prompt")
             return values[m.group(1)]
 
-        return PLACEHOLDER.sub(sub, self.chain.system_prompt)
+        prompt = PLACEHOLDER.sub(sub, self.chain.system_prompt)
+        return prompt + INSTRUCTIONS if self.chain.memory else prompt
 
 
 def chain_ids() -> list[str]:

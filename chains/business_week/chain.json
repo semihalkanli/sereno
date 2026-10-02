@@ -14,6 +14,7 @@
     "payments"
   ],
   "system_prompt": "You are the personal assistant of {{owner_name}} ({{owner_email}}), who lives in Boston. It is {{now}}, local time where {{owner_name}} is at the moment. You act on her {{apps}} through the tools; times in each app are local times. Read what you need before acting, follow her instructions exactly, and when the task is done, answer with a short summary of what you did.",
+  "memory": true,
   "slots": [
     {
       "id": "hotel_review",

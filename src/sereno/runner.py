@@ -2,8 +2,9 @@
 
 The world carries over from one session to the next; the conversation does
 not. Each session sets the clock, applies its outside changes, replays its
-history (calls in it run on the world), then runs the user's turns. Memory,
-checkpoints and compaction come later (plan phase 3).
+history (calls in it run on the world), then runs the user's turns. A chain
+with memory also gets the user file and the memory index as a system-reminder
+at every session start; checkpoints and compaction come later (plan phase 3).
 """
 
 import json
@@ -18,6 +19,7 @@ from sereno.chain import LoadedChain, Message, apply_change
 from sereno.checks import grade, is_task_group
 from sereno.events import EventLog
 from sereno.loop import SessionResult, output_messages, run_session, run_tool_call
+from sereno.memory import session_reminder
 from sereno.tools import Toolset
 
 REPO = Path(__file__).resolve().parents[2]
@@ -153,7 +155,12 @@ def run_chain(
             ) as session_end:
                 log.emit("state", reason="initial" if number == 1 else "session_start", snapshot=world.snapshot())
                 pre = world.copy()
-                messages = [{"role": "system", "content": system_prompt}, *_history(session.history, toolset, log)]
+                messages = [{"role": "system", "content": system_prompt}]
+                if chain.memory:
+                    reminder = session_reminder(chain.user_file, world.app("memory"))
+                    messages.append({"role": "user", "content": reminder})
+                    log.emit("input", content=reminder, harness=True)
+                messages.extend(_history(session.history, toolset, log))
                 outcome = run_session(model, toolset, messages, session.turns, log, max_steps=max_steps)
                 result.sessions.append(outcome)
                 score(session.id, session.checks, pre)

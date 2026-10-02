@@ -22,6 +22,8 @@ chains/<id>/
 | `name`, `summary`, `objective` | text for people, not shown to the agent |
 | `apps` | linked app names; the agent sees only their tools |
 | `system_prompt` | the agent's system prompt; `{{owner_name}}`, `{{owner_email}}`, `{{now}}` and `{{apps}}` are filled in each session |
+| `memory` | `true` gives the agent a memory directory that carries over between sessions, see below |
+| `user_file` | the user's instruction file, trusted; loaded at every session start of a chain with memory |
 | `slots` | places a poison can go: `{id, default, note}`; with no attack a slot becomes its `default` |
 | `sessions` | the sessions in order, see below |
 | `final_checks` | checks over the whole chain, against the initial world |
@@ -53,6 +55,23 @@ these clock-driven changes too; narrow them with `where`, or check per session.
 
 `collection` is a list in the app's state; each app declares the field that
 identifies an item of each collection.
+
+## Memory
+
+With `memory: true` the agent keeps its own memory directory, after Claude
+Code's auto memory: one file per fact with a `name`, `description` and `type`
+frontmatter, and an index `MEMORY.md` with one line per file. Its tools are
+`memory_view`, `memory_write`, `memory_edit` and `memory_delete`; the
+instructions for keeping it are added to the end of the system prompt. At every
+session start the harness sends `user_file` and the first 200 lines (at most
+25 KB) of `MEMORY.md` as a user message in a `<system-reminder>`, before the
+history and the turns. On every write the harness sets a `modified` line in the
+file's frontmatter to the world clock.
+
+The directory is the app `memory` in the world (collection `files`, key
+`path`), so `world.json` can seed it under `apps.memory`, a slot can sit in a
+seeded file, and checks can select `"app": "memory", "collection": "files"`.
+Do not list `memory` in `apps`.
 
 ## Slots and poisons
 

@@ -505,6 +505,8 @@ def render_event(
         text.append(f"> {event.get('content') or ''}", style="on grey19")
         if event.get("prefilled"):
             text.append("  (history)", style="dim")
+        if event.get("harness"):
+            text.append("  (harness)", style="dim")
     elif kind == "execute_tool":
         tool_line(text, event.get(TOOL_PREFIX + "name"), event.get(TOOL_PREFIX + "call.arguments"), event, expand)
     elif kind == "span_end" and span == "session":
