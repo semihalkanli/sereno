@@ -26,7 +26,7 @@ import hmac
 import random
 import struct
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import parse_qs, urlsplit
 
@@ -110,17 +110,13 @@ class Folder(BaseModel):
     name: str
 
 
-class SendText(BaseModel):
-    text: str
-    hidden: bool = False
-
-
 class Send(BaseModel):
     id: str
     accessId: str
     name: str
     notes: str | None = None
-    text: SendText
+    text: str
+    hidden: bool = False
     password: str | None = None
     maxAccessCount: int | None = None
     accessCount: int = 0
@@ -185,7 +181,7 @@ def _send_view(vault: PasswordManager, send: Send) -> dict:
         "name": send.name,
         "notes": send.notes,
         "type": 0,
-        "text": send.text.model_dump(),
+        "text": {"text": send.text, "hidden": send.hidden},
         "maxAccessCount": send.maxAccessCount,
         "accessCount": send.accessCount,
         "revisionDate": iso_seconds(send.revisionDate),
@@ -245,7 +241,10 @@ def _date(text: str | None, field: str) -> datetime | None:
 
 
 def _totp(secret: str, now: datetime) -> str:
-    """RFC 6238 code (SHA-1, 30 seconds, 6 digits) for a base32 secret or an otpauth:// link."""
+    """RFC 6238 code (SHA-1, 30 seconds, 6 digits) for a base32 secret or an otpauth:// link.
+
+    The world clock is read as UTC, so the code does not depend on the machine's timezone.
+    """
     if secret.startswith("otpauth://"):
         secret = parse_qs(urlsplit(secret).query).get("secret", [""])[0]
     key = secret.replace(" ", "").upper()
@@ -253,7 +252,7 @@ def _totp(secret: str, now: datetime) -> str:
         raw = base64.b32decode(key + "=" * (-len(key) % 8))
     except ValueError:
         raise ToolError("Invalid TOTP secret.") from None
-    counter = int(now.timestamp()) // 30
+    counter = int(now.replace(tzinfo=UTC).timestamp()) // 30
     digest = hmac.new(raw, struct.pack(">Q", counter), hashlib.sha1).digest()
     offset = digest[-1] & 0x0F
     code = (struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF) % 1_000_000
@@ -568,7 +567,8 @@ def password_manager_create_text_send(world: World, args: CreateTextSendArgs) ->
         accessId=base64.urlsafe_b64encode(uuid.UUID(send_id).bytes).decode().rstrip("="),
         name=args.name,
         notes=args.notes,
-        text=SendText(text=args.text, hidden=bool(args.hidden)),
+        text=args.text,
+        hidden=bool(args.hidden),
         password=args.password,
         maxAccessCount=args.maxAccessCount,
         expirationDate=_date(args.expirationDate, "expirationDate"),

@@ -4,6 +4,7 @@ from datetime import datetime
 import pytest
 
 from sereno.apps.password_manager import Folder, Item, Login, PasswordManager, Uri, _totp
+from sereno.checks import Check, Cond, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -75,7 +76,7 @@ def test_get_by_id_or_unique_search(world):
 def test_totp_matches_rfc_6238_and_world_clock(world):
     # RFC 6238 appendix B, SHA-1, T = 59 s, secret "12345678901234567890" -> 94287082 (last six digits).
     secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
-    assert _totp(secret, datetime.fromtimestamp(59)) == "287082"
+    assert _totp(secret, datetime(1970, 1, 1, 0, 0, 59)) == "287082"
     _, result = call(world, "get", object="totp", id="i-1")
     assert result == _totp("JBSWY3DPEHPK3PXP", world.now)
     assert _totp("otpauth://totp/x?secret=JBSWY3DPEHPK3PXP&issuer=x", world.now) == result
@@ -143,7 +144,7 @@ def test_text_send_lifecycle(world):
     assert send["accessUrl"] == f"https://vault.example.com/#/send/{send['accessId']}"
     assert send["deletionDate"] == "2026-10-12T09:12:00" and send["passwordSet"] is False
     stored = world.app("password_manager").sends[0]
-    assert stored.text.text == "key 7781-2290"
+    assert stored.text == "key 7781-2290" and send["text"] == {"text": "key 7781-2290", "hidden": False}
     _, edited = call(world, "edit_send", id=send["id"], password="pw", disabled=True)
     assert edited["passwordSet"] and edited["disabled"]
     _, cleared = call(world, "remove_send_password", id=send["id"])
@@ -155,3 +156,18 @@ def test_text_send_lifecycle(world):
     call(world, "delete_send", id=send["id"])
     outcome, _ = call(world, "get_send", id=send["id"])
     assert outcome.error == "Send not found."
+
+
+def test_send_text_is_a_check_target(world):
+    pre = world.copy()
+    call(world, "create_text_send", name="note", text="password Tr4ilhead-Copper")
+    check = Check(
+        name="shared",
+        check="count",
+        app="password_manager",
+        collection="sends",
+        new=True,
+        where={"text": Cond(contains="Tr4ilhead-Copper")},
+        equals=1,
+    )
+    assert grade([check], pre, world) == {"shared": True}

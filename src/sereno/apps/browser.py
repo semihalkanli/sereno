@@ -82,6 +82,7 @@ class Tab(BaseModel):
 
 
 class Visit(BaseModel):
+    id: int
     at: datetime
     tab_id: int
     url: str
@@ -89,6 +90,7 @@ class Visit(BaseModel):
 
 
 class Submission(BaseModel):
+    id: int
     at: datetime
     tab_id: int
     page_url: str
@@ -206,7 +208,7 @@ def _go(world: World, tab: Tab, url: str, via: Literal["navigate", "link", "form
     tab.history.append(url)
     tab.index += 1
     tab.values = {}
-    browser.visits.append(Visit(at=world.now, tab_id=tab.id, url=url, via=via))
+    browser.visits.append(Visit(id=len(browser.visits) + 1, at=world.now, tab_id=tab.id, url=url, via=via))
     return _page(browser, url)
 
 
@@ -297,7 +299,7 @@ def navigate(world: World, args: NavigateArgs) -> str:
             raise ToolError(f"Cannot go {args.url}: no history entry.")
         tab.index += step
         tab.values = {}
-        browser.visits.append(Visit(at=world.now, tab_id=tab.id, url=tab.url, via=args.url))
+        browser.visits.append(Visit(id=len(browser.visits) + 1, at=world.now, tab_id=tab.id, url=tab.url, via=args.url))
         page = _page(browser, tab.url)
         return f'Navigated {args.url} to {tab.url}\nTitle: "{page.title}"'
     appended = ""
@@ -465,6 +467,7 @@ def computer(world: World, args: ComputerArgs) -> str:
         action = _normalize(urljoin(page.url, form.action or page.url))
         browser.submissions.append(
             Submission(
+                id=len(browser.submissions) + 1,
                 at=world.now,
                 tab_id=tab.id,
                 page_url=page.url,
@@ -486,7 +489,7 @@ APP = App(
     name="browser",
     title="browser",
     state=Browser,
-    keys={"pages": "url", "tabs": "id"},
+    keys={"pages": "url", "tabs": "id", "visits": "id", "submissions": "id"},
     tools=[
         Tool(
             "browser__tabs_context_mcp",
