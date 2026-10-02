@@ -69,7 +69,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find, has_words, plain_stamp
+from sereno.apps._common import find, fresh_id, has_words, plain_stamp
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -721,11 +721,12 @@ def tip_driver(world: World, args: TipDriverArgs) -> dict:
     ride = _ride(state, args.request_id)
     _completed_within(world, ride, TIP_DAYS, "tip")
     cap = round(min(2 * ride.fare, MAX_TIP), 2)
-    if args.amount <= 0:
+    amount = round(args.amount, 2)
+    if amount <= 0:
         raise ToolError("Tip amount must be positive.")
-    if args.amount > cap:
+    if amount > cap:
         raise ToolError(f"The tip can be at most {_money(cap, ride.currency_code)} for this trip.")
-    ride.tip, ride.tipped_at = round(args.amount, 2), world.now
+    ride.tip, ride.tipped_at = amount, world.now
     return {
         "request_id": ride.request_id,
         "tip": _money(ride.tip, ride.currency_code),
@@ -781,7 +782,7 @@ def send_driver_message(world: World, args: SendDriverMessageArgs) -> dict:
     if not args.text.strip():
         raise ToolError("Message must not be empty.")
     message = Message(
-        id=f"msg-{len(state.messages) + 1}",
+        id=fresh_id(lambda n: f"msg-{n}", (m.id for m in state.messages), len(state.messages) + 1),
         request_id=ride.request_id,
         sender="rider",
         text=args.text,

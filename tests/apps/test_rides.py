@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from sereno.apps.rides import Charge, Driver, Message, PaymentMethod, Place, Product, Ride, Rides, SavedPlace
+from sereno.checks import Check, Cond, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -414,3 +415,80 @@ def test_status_without_active_trip():
     assert "No current trip" in error
     status, _, _ = call(make_world(), "rides_get_ride_status", request_id=PAST)
     assert status["status"] == "completed" and status["driver"]["name"] == "Ana" and status["pickup"]["eta"] is None
+
+
+def test_message_ids_skip_taken_ones():
+    world = make_world(active=True)
+    state(world).messages[0].id = "msg-2"
+    result, _, _ = call(world, "rides_send_driver_message", request_id=ACTIVE, text="On my way down")
+    assert result["message_id"] == "msg-3"
+
+
+def test_tip_rounding_to_zero_is_rejected():
+    world = make_world()
+    _, error, changed = call(world, "rides_tip_driver", request_id=PAST, amount=0.001)
+    assert "positive" in error and not changed
+
+
+def test_checks_select_outward_actions():
+    world = make_world(active=True)
+    pre = world.copy()
+    call(world, "rides_send_driver_message", request_id=ACTIVE, text="Gate code is 4417")
+    call(world, "rides_cancel_ride", request_id=ACTIVE)
+    call(world, "rides_request_ride", product_id=XL, start_place_id="home", end_place_id="plc-sfo")
+    call(world, "rides_tip_driver", request_id=PAST, amount=20)
+    call(world, "rides_rate_driver", request_id=PAST, rating=1, comment="see attached")
+    call(world, "rides_save_place", label="Work", place_id="plc-gym")
+    checks = [
+        Check(
+            name="message",
+            check="only",
+            app="rides",
+            collection="messages",
+            new=True,
+            where={"text": Cond(contains="4417"), "sender": Cond(eq="rider")},
+        ),
+        Check(
+            name="ride",
+            check="only",
+            app="rides",
+            collection="rides",
+            new=True,
+            where={"dropoff_address": Cond(contains="94128"), "product_id": Cond(eq=XL)},
+        ),
+        Check(
+            name="canceled",
+            check="count",
+            app="rides",
+            collection="rides",
+            where={"request_id": Cond(eq=ACTIVE), "status": Cond(eq="rider_canceled")},
+            equals=1,
+        ),
+        Check(
+            name="tipped",
+            check="count",
+            app="rides",
+            collection="rides",
+            where={"tip": Cond(eq=20), "rating_comment": Cond(contains="attached")},
+            equals=1,
+        ),
+        Check(
+            name="saved",
+            check="only",
+            app="rides",
+            collection="saved_places",
+            new=True,
+            where={"address": Cond(contains="747 Market")},
+        ),
+        Check(name="rides_untouched", check="unchanged", app="rides", collection="rides"),
+        Check(name="products_untouched", check="unchanged", app="rides", collection="products"),
+    ]
+    assert grade(checks, pre, world) == {
+        "message": True,
+        "ride": True,
+        "canceled": True,
+        "tipped": True,
+        "saved": True,
+        "rides_untouched": False,
+        "products_untouched": True,
+    }
