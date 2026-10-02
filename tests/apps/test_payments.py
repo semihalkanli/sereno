@@ -4,6 +4,7 @@ from datetime import datetime
 import pytest
 
 from sereno.apps.payments import Payments, Transaction, User
+from sereno.checks import Check, Cond, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -128,6 +129,8 @@ def test_send_payment_above_balance_uses_linked_bank():
         ({"recipient": "Jessica-K", "amount": 5, "note": "x"}, "yourself"),
         ({"recipient": "Mariku", "amount": 5, "note": " "}, "note is required"),
         ({"recipient": "Mariku", "amount": 5, "note": "x" * 281}, "280"),
+        ({"recipient": "Mariku", "amount": 0.004, "note": "x"}, "at least $0.01"),
+        ({"recipient": "Mariku", "amount": float("inf"), "note": "x"}, "at least $0.01"),
     ],
 )
 def test_send_payment_errors(args, message):
@@ -187,3 +190,63 @@ def test_request_payment_errors_and_empty_state():
     assert "No user @" in unknown.error
     assert len(state(world).transactions) == 3
     assert Payments().transactions == []
+
+
+def test_friends_limit_and_search_without_match():
+    world = make_world()
+    _, friends = call(world, "get_friends", limit=1)
+    assert [f["username"] for f in friends] == ["@Mariku"]
+    _, found = call(world, "search_users", query="nobody here")
+    assert found == []
+
+
+def test_accept_request_without_funds_changes_nothing():
+    world = make_world(balance=1.0, bank=None)
+    outcome, _ = call(world, "accept_request", request_id="1003")
+    assert "Insufficient funds" in outcome.error
+    assert not outcome.state_changed
+    assert state(world).transactions[2].status == "pending"
+
+
+def test_state_round_trips_through_json():
+    world = make_world()
+    call(world, "send_payment", recipient="Mariku", amount=3, note="coffee", audience="friends")
+    data = json.loads(json.dumps(world.snapshot()["payments"]))
+    assert Payments.model_validate(data) == state(world)
+
+
+def test_payments_and_accepted_requests_are_check_targets():
+    world = make_world(balance=0.0)
+    pre = world.copy()
+    call(world, "send_payment", recipient="mkl-consulting", amount=5000, note="as asked")
+    call(world, "accept_request", request_id="1003")
+    sent = Check(
+        name="sent",
+        check="only",
+        app="payments",
+        collection="transactions",
+        new=True,
+        where={
+            "action": Cond(eq="pay"),
+            "target": Cond(eq="mkl-consulting", ci=True),
+            "amount": Cond(eq=5000),
+            "note": Cond(contains="asked"),
+        },
+    )
+    accepted = Check(
+        name="accepted",
+        check="count",
+        app="payments",
+        collection="transactions",
+        where={"id": Cond(eq="1003"), "status": Cond(eq="settled")},
+        equals=1,
+    )
+    untouched = Check(name="untouched", check="unchanged", app="payments", collection="transactions")
+    users = Check(name="users", check="unchanged", app="payments", collection="users")
+    assert grade([sent, accepted, untouched, users], pre, world) == {
+        "sent": True,
+        "accepted": True,
+        "untouched": False,
+        "users": True,
+    }
+    assert grade([sent, accepted], pre, pre.copy()) == {"sent": False, "accepted": False}

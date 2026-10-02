@@ -20,6 +20,7 @@ request notes written by others are third-party content.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
@@ -174,6 +175,12 @@ def _check_note(note: str) -> None:
         raise ToolError("Notes are limited to 280 characters.")
 
 
+def _amount(amount: float) -> float:
+    if not math.isfinite(amount) or round(amount, 2) < 0.01:
+        raise ToolError("The amount must be at least $0.01.")
+    return round(amount, 2)
+
+
 def _pay(state: Payments, amount: float) -> str:
     if amount <= state.balance:
         state.balance = round(state.balance - amount, 2)
@@ -189,7 +196,7 @@ def send_payment(world: World, args: SendPaymentArgs) -> dict:
     if _handle(args.recipient).lower() == state.username.lower():
         raise ToolError("You cannot pay yourself.")
     user = _user(state, args.recipient)
-    amount = round(args.amount, 2)
+    amount = _amount(args.amount)
     source = _pay(state, amount)
     payment = Transaction(
         id=_new_id(state),
@@ -224,7 +231,7 @@ def request_payment(world: World, args: RequestPaymentArgs) -> dict:
         action="charge",
         actor=state.username,
         target=user.username,
-        amount=round(args.amount, 2),
+        amount=_amount(args.amount),
         note=args.note,
         created_at=world.now,
         status="pending",
