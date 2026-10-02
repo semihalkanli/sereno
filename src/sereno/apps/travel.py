@@ -19,13 +19,13 @@ negative-review and tool names are unique across apps; its parameters and output
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import has_words
+from sereno.apps._common import fresh_id, has_words
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -203,17 +203,29 @@ def _code(n: int) -> str:
 
 
 def _new_booking_id(travel: Travel, prefix: str) -> str:
-    taken = {b.booking_id for b in travel.bookings}
-    n = len(travel.bookings) + 1
-    while f"{prefix}-{_code(n)}" in taken:
-        n += 1
-    return f"{prefix}-{_code(n)}"
+    return fresh_id(lambda n: f"{prefix}-{_code(n)}", (b.booking_id for b in travel.bookings), len(travel.bookings) + 1)
+
+
+def _departed(world: World, s: _Departure) -> bool:
+    try:
+        return datetime.combine(s.departure_date, time.fromisoformat(s.departure_time)) <= world.now
+    except ValueError:
+        return s.departure_date < world.today
+
+
+def _booking_departed(world: World, travel: Travel, b: Booking) -> bool:
+    service = _departure(travel, b.type, b.item_id)
+    return _departed(world, service) if service is not None else b.start_date < world.today
+
+
+def _service_number(item_id: str) -> str:
+    return re.sub(r"-\d{8}$", "", item_id)
 
 
 def _record(world: World, travel: Travel, booking: Booking, action: str, amount: float, description: str) -> None:
     travel.transactions.append(
         Transaction(
-            id=f"TXN-{len(travel.transactions) + 1:06d}",
+            id=fresh_id(lambda n: f"TXN-{n:06d}", (t.id for t in travel.transactions), len(travel.transactions) + 1),
             booking_id=booking.booking_id,
             action=action,
             at=world.now,
@@ -317,7 +329,8 @@ def cancel_booking(world: World, args: BookingIdArgs) -> dict:
     b = _booking(travel, args.booking_id)
     if b.status == "cancelled":
         raise ToolError(f"Booking {b.booking_id} is already cancelled.")
-    if _completed(world, b) or b.start_date < world.today:
+    started = _booking_departed(world, travel, b) if b.type in _KINDS else b.start_date < world.today
+    if _completed(world, b) or started:
         raise ToolError(f"Booking {b.booking_id} has already started and can no longer be cancelled.")
     if b.type in _KINDS and (service := _departure(travel, b.type, b.item_id)) is not None:
         service.seats_left += len(b.travelers)
@@ -325,7 +338,7 @@ def cancel_booking(world: World, args: BookingIdArgs) -> dict:
     b.status = "cancelled"
     b.refund_amount = refund
     b.cancelled_at = world.now
-    _record(world, travel, b, "cancelled", -refund, f"Cancelled {b.type} booking; refund {refund:.2f}.")
+    _record(world, travel, b, "cancelled", 0.0 - refund, f"Cancelled {b.type} booking; refund {refund:.2f}.")
     return {"status": "cancelled", "booking_id": b.booking_id, "refund_amount": refund}
 
 
@@ -349,7 +362,7 @@ def _date_arg(changes: dict, key: str, default: date) -> date:
         raise ToolError(f"{key} must be a date in YYYY-MM-DD format.") from None
 
 
-def _modify_departure(travel: Travel, b: Booking, changes: dict, today: date) -> None:
+def _modify_departure(world: World, travel: Travel, b: Booking, changes: dict) -> None:
     collection, id_field = _KINDS[b.type]
     services = getattr(travel, collection)
     new_id_key = f"new_{id_field}"
@@ -366,14 +379,14 @@ def _modify_departure(travel: Travel, b: Booking, changes: dict, today: date) ->
             raise ToolError(f"{b.type.capitalize()} {changes[new_id_key]} does not depart on {new_date}.")
     else:
         day = _date_arg({"d": new_date}, "d", b.start_date)
-        number = b.item_id.split("-")[0]
+        number = _service_number(b.item_id)
         service = next(
-            (s for s in services if getattr(s, id_field).split("-")[0] == number and s.departure_date == day),
+            (s for s in services if _service_number(getattr(s, id_field)) == number and s.departure_date == day),
             None,
         )
         if service is None:
             raise ToolError(f"No {b.type} {number} departs on {day.isoformat()}.")
-    if service.departure_date < today:
+    if _departed(world, service):
         raise ToolError(f"{b.type.capitalize()} {getattr(service, id_field)} has already departed.")
     if getattr(service, id_field) != b.item_id and service.seats_left < len(b.travelers):
         raise ToolError(f"Only {service.seats_left} seats left on {getattr(service, id_field)}.")
@@ -402,8 +415,10 @@ def _modify_stay(travel: Travel, b: Booking, changes: dict, today: date) -> None
         raise ToolError(f"Supported changes for a {b.type} booking: {start_key}, {end_key}.")
     start = _date_arg(changes, start_key, b.start_date)
     end = _date_arg(changes, end_key, b.end_date)
-    if start < today:
+    if start_key in changes and start < today:
         raise ToolError(f"{start_key} is in the past.")
+    if end < today:
+        raise ToolError(f"{end_key} is in the past.")
     if b.type == "hotel":
         if end <= start:
             raise ToolError("Check-out must be after check-in.")
@@ -431,7 +446,9 @@ def modify_booking(world: World, args: ModifyBookingArgs) -> dict:
         raise ToolError(f"Booking {b.booking_id} is completed and cannot be modified.")
     before = (b.item_id, b.start_date, b.end_date, b.price)
     if b.type in _KINDS:
-        _modify_departure(travel, b, args.changes, world.today)
+        if _booking_departed(world, travel, b):
+            raise ToolError(f"Booking {b.booking_id} has already departed and can no longer be modified.")
+        _modify_departure(world, travel, b, args.changes)
     else:
         _modify_stay(travel, b, args.changes, world.today)
     difference = round(b.price - before[3], 2)
@@ -481,6 +498,7 @@ def _search_departures(
         _departure_view(s, id_field, carrier_field, leg)
         for s in getattr(_travel(world), collection)
         if s.departure_date == day
+        and not _departed(world, s)
         and s.seats_left >= passengers
         and _place_matches(origin, s.origin, s.origin_city)
         and _place_matches(destination, s.destination, s.destination_city)
@@ -494,7 +512,7 @@ def _book_departure(world: World, kind: str, item_id: str, email: str, travelers
     service = _departure(travel, kind, item_id)
     if service is None:
         raise ToolError(f"No {kind} with id {item_id!r}.")
-    if service.departure_date < world.today:
+    if _departed(world, service):
         raise ToolError(f"{kind.capitalize()} {item_id} has already departed.")
     if service.seats_left < len(travelers):
         raise ToolError(f"Only {service.seats_left} seats left on {item_id}.")
@@ -790,7 +808,7 @@ def submit_review(world: World, args: SubmitReviewArgs) -> dict:
     if any(r.booking_id == b.booking_id for r in travel.reviews):
         raise ToolError(f"Booking {b.booking_id} has already been reviewed.")
     review = Review(
-        review_id=f"RV-{len(travel.reviews) + 1:05d}",
+        review_id=fresh_id(lambda n: f"RV-{n:05d}", (r.review_id for r in travel.reviews), len(travel.reviews) + 1),
         entity_type=b.type,
         entity_id=b.item_id,
         rating=args.rating,
