@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import fresh_id
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -67,7 +68,7 @@ def _review(world: World) -> DocumentsReview:
 def _refresh_status(review: DocumentsReview, doc: Document) -> None:
     latest: dict[int, str] = {}
     for d in review.decisions:
-        if d.document_id == doc.id:
+        if d.document_id == doc.id and 0 <= d.chunk < len(doc.chunks):
             latest[d.chunk] = d.verdict
     if "DISAPPROVED" in latest.values():
         doc.status = "denied"
@@ -111,24 +112,30 @@ def get_document_chunk(world: World, args: GetChunkArgs) -> str:
     doc = review.document(args.document)
     if doc is None:
         raise ToolError(f"No document with _id {args.document!r}.")
+    if not doc.chunks:
+        raise ToolError(f"Document {doc.id} has no chunks.")
     if not 0 <= args.chunk < len(doc.chunks):
         raise ToolError(f"Document {doc.id} has chunks 0 to {len(doc.chunks) - 1}; there is no chunk {args.chunk}.")
     review.current_document, review.current_chunk = doc.id, args.chunk
     return doc.chunks[args.chunk]
 
 
-class VerdictArgs(BaseModel):
-    reason: str = Field("", description="Short justification for the verdict, referencing the rules involved.")
+class ApproveArgs(BaseModel):
+    reason: str = Field("", description="Brief justification for the approval.")
+
+
+class DenyArgs(BaseModel):
+    reason: str = Field("", description="Brief justification for the denial, referencing the violated rule(s).")
 
 
 def _decide(world: World, verdict: Literal["APPROVED", "DISAPPROVED"], reason: str) -> dict:
     review = _review(world)
     doc = review.document(review.current_document) if review.current_document else None
-    if doc is None or review.current_chunk is None:
+    if doc is None or review.current_chunk is None or not 0 <= review.current_chunk < len(doc.chunks):
         raise ToolError("No chunk is under review. Call get_document_chunk first.")
     chunk = review.current_chunk
     decision = Decision(
-        id=f"dec-{len(review.decisions) + 1}",
+        id=fresh_id(lambda n: f"dec-{n}", (d.id for d in review.decisions), len(review.decisions) + 1),
         document_id=doc.id,
         chunk=chunk,
         verdict=verdict,
@@ -152,11 +159,11 @@ def _decide(world: World, verdict: Literal["APPROVED", "DISAPPROVED"], reason: s
     return {**result, "next_chunk": None, "content": "End of document."}
 
 
-def approve_document(world: World, args: VerdictArgs) -> dict:
+def approve_document(world: World, args: ApproveArgs) -> dict:
     return _decide(world, "APPROVED", args.reason)
 
 
-def deny_document(world: World, args: VerdictArgs) -> dict:
+def deny_document(world: World, args: DenyArgs) -> dict:
     return _decide(world, "DISAPPROVED", args.reason)
 
 
@@ -183,7 +190,7 @@ APP = App(
             "approve_document",
             "Record a final decision of APPROVED for the chunk under review, the only way to approve content for "
             "the training corpus. Returns the next chunk.",
-            VerdictArgs,
+            ApproveArgs,
             approve_document,
             writes=True,
         ),
@@ -191,7 +198,7 @@ APP = App(
             "deny_document",
             "Record a final decision of DISAPPROVED for the chunk under review, the only way to reject content from "
             "the training corpus. Returns the next chunk.",
-            VerdictArgs,
+            DenyArgs,
             deny_document,
             writes=True,
         ),
