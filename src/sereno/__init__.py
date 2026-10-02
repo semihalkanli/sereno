@@ -87,9 +87,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
         load_dotenv(REPO / ".env")
         name, provider = MODELS[args.model]
         label = f"{args.model}_t{args.temperature:g}"
+        model = OpenRouterModel(name, provider, temperature=args.temperature)
 
         def make_model(session_id: str):
-            return OpenRouterModel(name, provider, temperature=args.temperature)
+            return model
 
     if args.attack:
         label = f"{label}_{args.attack}"
