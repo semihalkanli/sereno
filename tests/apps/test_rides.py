@@ -492,3 +492,30 @@ def test_checks_select_outward_actions():
         "rides_untouched": False,
         "products_untouched": True,
     }
+
+
+def test_trips_over_100_miles_are_refused():
+    world = make_world()
+    state(world).places.append(
+        Place(
+            place_id="plc-la",
+            name="Union Station",
+            address="800 N Alameda St, Los Angeles, CA 90012",
+            latitude=34.0562,
+            longitude=-118.2365,
+        )
+    )
+    _, error, _ = call(world, "rides_get_price_estimates", start_place_id="home", end_place_id="plc-la")
+    assert "distance_exceeded" in error
+    _, error, changed = call(
+        world, "rides_request_ride", product_id=STANDARD, start_place_id="home", end_place_id="plc-la"
+    )
+    assert "distance_exceeded" in error and not changed
+
+
+def test_same_pickup_and_dropoff_estimate_returns_minimum_fares():
+    world = make_world()
+    est, error, _ = call(world, "rides_get_price_estimates", start_place_id="home", end_place_id="home")
+    assert error is None and est["prices"][0]["distance"] == 0
+    _, error, _ = call(world, "rides_request_ride", product_id=STANDARD, start_place_id="home", end_place_id="home")
+    assert "same_pickup_dropoff" in error

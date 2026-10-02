@@ -39,7 +39,8 @@ available driver for its product at once ("accepted"), or ends as
 "no_drivers_available"; chains seed rides in other states. Invented for the
 world: distances (straight line times 1.25 road factor), durations (18 mph
 average), the estimate range (upfront fare -8%/+12%) and the request id (a
-UUID derived from a SHA-256 of the request). Pricing follows the API's
+UUID derived from a SHA-256 of the request); these three are unverified (no
+public source gives them). Pricing follows the API's
 price_details (base, per mile, per minute, minimum, booking fee) times surge.
 
 Rules from Uber's rider help pages: a cancellation fee applies when the rider
@@ -48,6 +49,15 @@ the driver is late (past the pickup ETA and not yet arrived); a trip that has
 begun cannot be cancelled here. A driver who cancels after waiting at the
 pickup may charge the rider; chains seed that fee on a driver_canceled ride.
 A rider may not request while a trip is active (the API's current_trip_exists).
+Grace minutes (2 for economy) are confirmed by
+https://m.csmonitor.com/Technology/2016/0428/Uber-introduces-a-two-minute-grace-period-then-a-fee-for-riders;
+the default 5 USD fee matches the 5 USD products in the GET /v1.2/products
+example (https://developer.uber.com/docs/riders/references/api/v1.2/products-get).
+Both estimates and requests refuse trips over 100 miles (distance_exceeded,
+https://developer.uber.com/docs/riders/references/api/v1.2/estimates-price-get
+and .../requests-post). A request refuses identical pickup and dropoff
+(same_pickup_dropoff, requests-post); the estimate endpoint lists no such
+error, so it prices that trip at the minimum fares.
 Tips go on completed trips within 30 days, at most twice the fare and never
 over 100, and may be edited; a trip is rated once, 1 to 5 stars, within 30 days. Chat is open while the trip is active.
 
@@ -91,6 +101,7 @@ AVERAGE_MPH = 18.0
 TIP_DAYS = 30
 RATING_DAYS = 30
 MAX_TIP = 100.0
+MAX_TRIP_MILES = 100.0
 _SYMBOLS = {"USD": "$", "EUR": "€", "GBP": "£", "CAD": "CA$", "AUD": "A$"}
 
 
@@ -255,6 +266,11 @@ def _trip(a: _Stop, b: _Stop) -> tuple[float, int]:
     return round(miles, 2), round(miles / AVERAGE_MPH * 3600)
 
 
+def _check_distance(miles: float) -> None:
+    if miles > MAX_TRIP_MILES:
+        raise ToolError("distance_exceeded: the distance between pickup and dropoff exceeds 100 miles.")
+
+
 def _price(product: Product, miles: float, seconds: int) -> list[Charge]:
     charges = [
         Charge(name="Base Fare", amount=product.base_fare, type="base_fare"),
@@ -329,6 +345,7 @@ def get_price_estimates(world: World, args: PriceEstimatesArgs) -> dict:
     state = _rides(world)
     start, end = _resolve(state, args.start_place_id), _resolve(state, args.end_place_id)
     miles, seconds = _trip(start, end)
+    _check_distance(miles)
     prices = []
     for p in state.products:
         if not p.available:
@@ -502,8 +519,9 @@ def request_ride(world: World, args: RequestRideArgs) -> dict:
         raise ToolError(f"No payment method with id {method_id!r}. Use rides_get_payment_methods.")
     start, end = _resolve(state, args.start_place_id), _resolve(state, args.end_place_id)
     if start.address == end.address:
-        raise ToolError("Pickup and dropoff are the same place.")
+        raise ToolError("same_pickup_dropoff: pickup and dropoff are the same place.")
     miles, seconds = _trip(start, end)
+    _check_distance(miles)
     charges = _price(product, miles, seconds)
     driver = next((d for d in state.drivers if d.available and product.product_id in d.products), None)
     ride = Ride(
