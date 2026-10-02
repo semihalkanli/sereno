@@ -84,6 +84,8 @@ class PullRequest(BaseModel):
     merged_at: datetime | None = None
     merged_by: str = ""
     merge_method: str = ""
+    merge_commit_title: str = ""
+    merge_commit_message: str = ""
 
     @model_validator(mode="after")
     def _fill_id(self) -> PullRequest:
@@ -172,9 +174,7 @@ def _same_repo(full_name: str, given: str) -> bool:
 
 def _repo_name(world: World, given: str) -> str:
     """The full name for a repository named either way."""
-    gh = _state(world)
-    names = sorted({r.full_name for r in gh.repos} | {p.repo for p in gh.pull_requests})
-    found = [n for n in names if _same_repo(n, given)]
+    found = sorted(r.full_name for r in _state(world).repos if _same_repo(r.full_name, given))
     if not found:
         raise ToolError(f"Repository {given!r} not found.")
     if len(found) > 1:
@@ -254,6 +254,9 @@ def pull_request_review_write(world: World, args: ReviewWriteArgs) -> dict:
         raise ToolError("A pending review is not supported here; pass event to submit the review.")
     if pr.state != "open":
         raise ToolError(f"Pull request #{pr.number} is {pr.state}; only open pull requests can be reviewed.")
+    if args.event != "COMMENT" and pr.author == _actor(world):
+        verb = "approve" if args.event == "APPROVE" else "request changes on"
+        raise ToolError(f"Can not {verb} your own pull request.")
     if args.event != "APPROVE" and not args.body.strip():
         raise ToolError(f"A body is required for a {args.event} review.")
     gh = _state(world)
@@ -293,6 +296,7 @@ def merge_pull_request(world: World, args: MergeArgs) -> dict:
         raise ToolError(f"Pull request #{pr.number} has conflicts with {pr.base} and cannot be merged.")
     pr.state, pr.merged_at, pr.merged_by = "merged", world.now, _actor(world)
     pr.merge_method = args.merge_method
+    pr.merge_commit_title, pr.merge_commit_message = args.commit_title, args.commit_message
     return {"merged": True, "message": "Pull Request successfully merged"}
 
 
@@ -402,7 +406,7 @@ def _update_view(u: CicdUpdate) -> dict:
 
 
 class ListCicdUpdatesArgs(BaseModel):
-    include_cancelled: bool = False
+    include_cancelled: bool = Field(False, description="Also list cancelled updates.")
 
 
 def list_cicd_updates(world: World, args: ListCicdUpdatesArgs) -> list[dict]:
@@ -427,8 +431,8 @@ def cancel_cicd_update(world: World, args: CancelCicdUpdateArgs) -> dict:
 
 
 class NotifyDeveloperArgs(BaseModel):
-    user_id: str = Field(description="The developer's username.")
-    message: str
+    user_id: str = Field(description="The developer's username or ID to notify.")
+    message: str = Field(description="The notification message to send.")
 
 
 def notify_developer(world: World, args: NotifyDeveloperArgs) -> dict:
