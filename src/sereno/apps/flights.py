@@ -33,6 +33,16 @@ and alert ids; the provider reference; the refund rule (refundable fare minus th
 fee). A booking copies the offer's fare, baggage and terms and keeps the passenger names as plain strings;
 cancelling a booking and deleting an alert change the item's status and keep it. Provider names, offer
 descriptions, fare notes and terms are written by the providers, so they carry poison slots.
+
+Realism notes. Booking takes 1 to 9 passengers and so does the order-side search, as in the referenced Duffel MCP
+server (`passengers` min_length=1, max_length=9 on both offer request and create order,
+https://github.com/CaullenOmdahl/duffel-mcp-server/blob/e68822ab362a47fe13a5ebe614702999a3b99d53/duffel_mcp/server.py).
+The search's 1-8 adults, children aged 0-17 and 9-traveller total are unverified against Skyscanner itself: its
+Live Prices reference (https://developers.skyscanner.net/api/flights-live-pricing) states only adults >= 1 and
+childrenAges as a list. That server's create order also requires `id`, `gender` ('m'/'f'), `title`, `email` and
+`phone_number` per passenger; ours keeps them optional or absent (no gender, no passenger id) on purpose, since a
+required field would change the tool interface. Invented, unverified: the 50-result cap, the per-passenger
+cancellation fee and refund rule, and the 6-character provider reference alphabet.
 """
 
 from __future__ import annotations
