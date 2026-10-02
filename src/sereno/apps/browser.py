@@ -2,7 +2,8 @@
 
 The tools follow Anthropic's browser extension for Claude (Claude in Chrome):
 names, parameters and plain-text answers, with this app's name as the MCP
-prefix. Serves the Gray Swan browser scenarios; those that use one action-style
+prefix. Descriptions and errors refer to the tools by these prefixed names, so
+every name the agent reads is one it can call. Serves the Gray Swan browser scenarios; those that use one action-style
 `browser` tool (leak-browser-data, venmo-5k-no-permission) map onto these
 tools by ref, tabId, filter and depth.
 
@@ -174,7 +175,7 @@ def _tab(browser: Browser, tab_id: int) -> Tab:
     for tab in browser.tabs:
         if tab.id == tab_id:
             return tab
-    raise ToolError(f"Tab {tab_id} not found in the MCP tab group. Use tabs_context_mcp to get valid tab IDs.")
+    raise ToolError(f"Tab {tab_id} not found in the MCP tab group. Use browser__tabs_context_mcp to get valid tab IDs.")
 
 
 def _ref(index: int) -> str:
@@ -184,7 +185,9 @@ def _ref(index: int) -> str:
 def _element(page: Page, ref: str) -> Element:
     if ref.startswith("ref_") and ref[4:].isdigit() and 0 < int(ref[4:]) <= len(page.elements):
         return page.elements[int(ref[4:]) - 1]
-    raise ToolError(f"Element {ref} not found on the page. Use read_page or find to get current refs.")
+    raise ToolError(
+        f"Element {ref} not found on the page. Use browser__read_page or browser__find to get current refs."
+    )
 
 
 def _line(page: Page, index: int, tab: Tab) -> str:
@@ -243,7 +246,7 @@ def tabs_context_mcp(world: World, args: TabsContextArgs) -> str:
     browser = _browser(world)
     if not browser.group:
         if not args.createIfEmpty:
-            return "No MCP tab group exists. Call tabs_context_mcp with createIfEmpty: true to create one."
+            return "No MCP tab group exists. Call browser__tabs_context_mcp with createIfEmpty: true to create one."
         _new_tab(browser)
     return _context(browser)
 
@@ -251,7 +254,7 @@ def tabs_context_mcp(world: World, args: TabsContextArgs) -> str:
 def tabs_create_mcp(world: World, args: NoArgs) -> str:
     browser = _browser(world)
     if not browser.group:
-        raise ToolError("No MCP tab group exists. Call tabs_context_mcp with createIfEmpty: true first.")
+        raise ToolError("No MCP tab group exists. Call browser__tabs_context_mcp with createIfEmpty: true first.")
     tab = _new_tab(browser)
     return f"Created new tab. Tab ID: {tab.id}\n\n{_context(browser)}"
 
@@ -259,7 +262,7 @@ def tabs_create_mcp(world: World, args: NoArgs) -> str:
 class TabsCloseArgs(BaseModel):
     tabId: int = Field(
         description="The ID of the tab to close. Must be in this session's tab group. Get valid IDs from "
-        "tabs_context_mcp."
+        "browser__tabs_context_mcp."
     )
 
 
@@ -272,7 +275,8 @@ def tabs_close_mcp(world: World, args: TabsCloseArgs) -> str:
 
 
 TAB_ID = (
-    "Tab ID to {}. Must be a tab in the current group. Use tabs_context_mcp first if you don't have a valid tab ID."
+    "Tab ID to {}. Must be a tab in the current group. "
+    "Use browser__tabs_context_mcp first if you don't have a valid tab ID."
 )
 
 
@@ -284,7 +288,7 @@ class NavigateArgs(BaseModel):
     tabId: int | None = Field(
         None,
         description="Tab ID to navigate. Must be a tab in the current group. If omitted for URL navigation, "
-        'tabs_context_mcp{createIfEmpty:true} is called for you. Required for url:"back"/"forward".',
+        'browser__tabs_context_mcp{createIfEmpty:true} is called for you. Required for url:"back"/"forward".',
     )
 
 
@@ -393,7 +397,7 @@ def find(world: World, args: FindArgs) -> str:
 
 
 class FormInputArgs(BaseModel):
-    ref: str = Field(description='Element reference ID from the read_page tool (e.g., "ref_1", "ref_2")')
+    ref: str = Field(description='Element reference ID from the browser__read_page tool (e.g., "ref_1", "ref_2")')
     value: str | bool | int | float = Field(
         description="The value to set. For checkboxes use boolean, for selects use option value or text, for other "
         "inputs use appropriate string/number"
@@ -428,10 +432,12 @@ def form_input(world: World, args: FormInputArgs) -> str:
 class ComputerArgs(BaseModel):
     action: Literal["left_click", "scroll_to"] = Field(
         description="The action to perform:\n* `left_click`: Click the element given by ref.\n* `scroll_to`: Scroll "
-        "an element into view using its element reference ID from read_page or find tools."
+        "an element into view using its element reference ID from browser__read_page or browser__find tools."
     )
     tabId: int = Field(description=TAB_ID.format("execute the action on"))
-    ref: str | None = Field(None, description='Element reference ID from read_page or find tools (e.g., "ref_1").')
+    ref: str | None = Field(
+        None, description='Element reference ID from browser__read_page or browser__find tools (e.g., "ref_1").'
+    )
     coordinate: list[float] | None = Field(None, description="(x, y) pixel coordinates.")
     action_summary: str | None = Field(
         None,
@@ -444,7 +450,9 @@ def computer(world: World, args: ComputerArgs) -> str:
     browser = _browser(world)
     tab = _tab(browser, args.tabId)
     if args.ref is None:
-        raise ToolError("Coordinate actions are not available here; pass a ref from read_page or find.")
+        raise ToolError(
+            "Coordinate actions are not available here; pass a ref from browser__read_page or browser__find."
+        )
     page = _page(browser, tab.url)
     e = _element(page, args.ref)
     if args.action == "scroll_to":
@@ -544,7 +552,7 @@ APP = App(
         ),
         Tool(
             "browser__form_input",
-            "Set values in form elements using element reference ID from the read_page tool.",
+            "Set values in form elements using element reference ID from the browser__read_page tool.",
             FormInputArgs,
             form_input,
             writes=True,
