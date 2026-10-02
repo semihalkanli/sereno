@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 from pydantic import AfterValidator, BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find
+from sereno.apps._common import find, fresh_id, money
 from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
@@ -366,7 +366,9 @@ def _transmit(
         raise ToolError("A recipient is required.")
     portal = _portal(world)
     transmission = Transmission(
-        transmission_id=f"TX-{len(portal.transmissions) + 1:05d}",
+        transmission_id=fresh_id(
+            lambda n: f"TX-{n:05d}", (t.transmission_id for t in portal.transmissions), len(portal.transmissions) + 1
+        ),
         kind=kind,
         item_ids=item_ids,
         recipient_identifier=recipient,
@@ -377,6 +379,14 @@ def _transmit(
     )
     portal.transmissions.append(transmission)
     return transmission
+
+
+def _payment_id(portal: PatientPortal) -> str:
+    return fresh_id(lambda n: f"PMT-{n:05d}", (p.payment_id for p in portal.payments), len(portal.payments) + 1)
+
+
+def _released(portal: PatientPortal, now: datetime) -> list[LabResult]:
+    return [r for r in portal.lab_results if r.released_datetime <= now]
 
 
 def _appointment_view(portal: PatientPortal, a: Appointment) -> dict:
@@ -495,22 +505,30 @@ def schedule_appointment(world: World, args: ScheduleAppointmentArgs) -> dict:
         provider = _find(portal.providers, "provider_id", args.provider_id, "provider")
         if provider.department_id != department.department_id:
             raise ToolError(f"{provider.full_name} does not see patients in {department.name}.")
+        end = args.preferred_datetime + timedelta(minutes=Appointment.model_fields["duration_minutes"].default)
         taken = any(
-            a.provider_id == provider.provider_id and a.status != "cancelled" and a.start == args.preferred_datetime
+            a.provider_id == provider.provider_id
+            and a.status != "cancelled"
+            and a.start < end
+            and args.preferred_datetime < a.start + timedelta(minutes=a.duration_minutes)
             for a in portal.appointments
         )
         if taken:
             raise ToolError(f"{provider.full_name} has no opening at {_iso(args.preferred_datetime)}.")
     count = len(portal.appointments) + 1
     appointment = Appointment(
-        appointment_id=f"APPT-{args.preferred_datetime:%Y%m%d-%H%M}-{count:03d}",
+        appointment_id=fresh_id(
+            lambda n: f"APPT-{args.preferred_datetime:%Y%m%d-%H%M}-{n:03d}",
+            (a.appointment_id for a in portal.appointments),
+            count,
+        ),
         patient_id=portal.profile.patient_id,
         start=args.preferred_datetime,
         department_id=department.department_id,
         provider_id=args.provider_id or "",
         visit_reason=args.visit_reason,
         status="scheduled" if args.provider_id else "requested",
-        request_id=f"REQ-{count:05d}",
+        request_id=fresh_id(lambda n: f"REQ-{n:05d}", (a.request_id for a in portal.appointments), count),
         additional_notes=args.additional_notes,
     )
     portal.appointments.append(appointment)
@@ -576,13 +594,15 @@ def complete_visit_check_in(world: World, args: CheckInArgs) -> dict:
         raise ToolError(f"No appointment with id {args.appointment_id!r}.")
     if appointment.status == "cancelled":
         raise ToolError(f"Appointment {args.appointment_id} is cancelled.")
+    if appointment.status == "requested":
+        raise ToolError(f"Appointment {args.appointment_id} is still a request; the clinic has not confirmed it.")
     if appointment.start <= world.now:
         raise ToolError(f"Appointment {args.appointment_id} has already started or passed.")
     if appointment.start - world.now > timedelta(days=CHECK_IN_WINDOW_DAYS):
         raise ToolError(f"eCheck-In opens {CHECK_IN_WINDOW_DAYS} days before the appointment.")
     receipt = ""
     if args.copay_amount:
-        if args.copay_amount > appointment.copay_due:
+        if money(args.copay_amount) > appointment.copay_due:
             raise ToolError(f"The copay due for this visit is ${appointment.copay_due:.2f}.")
         method = next((m for m in portal.payment_methods if m.default), None) or next(
             iter(portal.payment_methods), None
@@ -590,15 +610,15 @@ def complete_visit_check_in(world: World, args: CheckInArgs) -> dict:
         if method is None:
             raise ToolError("No saved payment method.")
         payment = Payment(
-            payment_id=f"PMT-{len(portal.payments) + 1:05d}",
+            payment_id=_payment_id(portal),
             appointment_id=appointment.appointment_id,
-            amount=args.copay_amount,
+            amount=money(args.copay_amount),
             payment_method_id=method.id,
             payment_note="Copay at eCheck-In",
             paid_at=world.now,
         )
         portal.payments.append(payment)
-        appointment.copay_due = round(appointment.copay_due - args.copay_amount, 2)
+        appointment.copay_due = money(appointment.copay_due - payment.amount)
         receipt = f"{payment.payment_id}: ${payment.amount:.2f} charged to {method.label}"
     appointment.checked_in = True
     appointment.checked_in_at = world.now
@@ -696,7 +716,9 @@ def send_secure_message(world: World, args: SendSecureMessageArgs) -> dict:
     if not args.message_body.strip():
         raise ToolError("The message is empty.")
     message = SecureMessage(
-        message_id=f"MSG-{len(portal.messages) + 1:05d}",
+        message_id=fresh_id(
+            lambda n: f"MSG-{n:05d}", (m.message_id for m in portal.messages), len(portal.messages) + 1
+        ),
         direction="outgoing",
         recipient_id=recipient.recipient_id,
         sender=portal.profile.name,
@@ -761,9 +783,8 @@ class ListLabResultsArgs(BaseModel):
 def list_lab_results(world: World, args: ListLabResultsArgs) -> list[dict]:
     found = [
         r
-        for r in _portal(world).lab_results
-        if r.released_datetime <= world.now
-        and (args.from_date is None or r.collected_datetime.date() >= args.from_date)
+        for r in _released(_portal(world), world.now)
+        if args.from_date is None or r.collected_datetime.date() >= args.from_date
     ]
     found.sort(key=lambda r: r.collected_datetime, reverse=True)
     return [
@@ -784,7 +805,11 @@ class ViewLabPanelArgs(BaseModel):
 
 
 def view_lab_panel(world: World, args: ViewLabPanelArgs) -> dict:
-    p = _find(_portal(world).lab_panels, "panel_id", args.lab_panel_id, "lab panel")
+    portal = _portal(world)
+    p = _find(portal.lab_panels, "panel_id", args.lab_panel_id, "lab panel")
+    results = [r for r in portal.lab_results if r.lab_panel_id == p.panel_id]
+    if results and not any(r.released_datetime <= world.now for r in results):
+        raise ToolError(f"Results for {p.panel_name} have not been released yet.")
     return {
         "panel_id": p.panel_id,
         "panel_name": p.panel_name,
@@ -805,9 +830,9 @@ class ShareLabResultsArgs(BaseModel):
 def share_lab_results(world: World, args: ShareLabResultsArgs) -> dict:
     if not args.lab_result_ids:
         raise ToolError("Choose at least one lab result.")
-    portal = _portal(world)
+    released = _released(_portal(world), world.now)
     for result_id in args.lab_result_ids:
-        _find(portal.lab_results, "lab_result_id", result_id, "lab result")
+        _find(released, "lab_result_id", result_id, "lab result")
     channel = _channel(args.recipient_identifier, args.delivery_channel)
     t = _transmit(world, "lab_results", args.lab_result_ids, args.recipient_identifier, channel, args.message_note)
     return {
@@ -849,7 +874,7 @@ def send_immunization_record(world: World, args: SendImmunizationRecordArgs) -> 
     if not portal.immunizations:
         raise ToolError("There are no immunizations on record.")
     ids = [i.immunization_id for i in portal.immunizations]
-    channel = "email" if "@" in args.destination_identifier else "direct_message"
+    channel = _channel(args.destination_identifier, None)
     t = _transmit(
         world,
         "immunization_record",
@@ -910,7 +935,11 @@ def request_medication_refill(world: World, args: RequestRefillArgs) -> dict:
         raise ToolError(f"A refill request for {medication.name} is already pending.")
     pharmacy = _pharmacy(portal, args.pharmacy_id)
     request = RefillRequest(
-        refill_request_id=f"RFL-{len(portal.refill_requests) + 1:05d}",
+        refill_request_id=fresh_id(
+            lambda n: f"RFL-{n:05d}",
+            (r.refill_request_id for r in portal.refill_requests),
+            len(portal.refill_requests) + 1,
+        ),
         medication_id=medication.medication_id,
         pharmacy_id=pharmacy.pharmacy_id,
         patient_note=args.patient_note,
@@ -959,7 +988,9 @@ def place_medication_order(world: World, args: PlaceMedicationOrderArgs) -> dict
         "mail": datetime.combine(_add_business_days(world.today, 3), world.now.time()),
     }[args.delivery_option]
     order = MedicationOrder(
-        order_id=f"RXO-{len(portal.medication_orders) + 1:05d}",
+        order_id=fresh_id(
+            lambda n: f"RXO-{n:05d}", (o.order_id for o in portal.medication_orders), len(portal.medication_orders) + 1
+        ),
         prescription_id=prescription.prescription_id,
         pharmacy_id=pharmacy.pharmacy_id,
         delivery_option=args.delivery_option,
@@ -1029,7 +1060,7 @@ def pay_patient_bill(world: World, args: PayPatientBillArgs) -> dict:
     statement = _find(portal.billing_statements, "statement_id", args.statement_id, "billing statement")
     if statement.balance_due <= 0:
         raise ToolError(f"Statement {statement.statement_id} has no balance due.")
-    if round(args.amount, 2) > statement.balance_due:
+    if money(args.amount) > statement.balance_due:
         raise ToolError(f"The amount exceeds the balance due of ${statement.balance_due:.2f}.")
     if args.payment_method_id is not None:
         method = _find(portal.payment_methods, "id", args.payment_method_id, "payment method")
@@ -1040,15 +1071,15 @@ def pay_patient_bill(world: World, args: PayPatientBillArgs) -> dict:
         if method is None:
             raise ToolError("No saved payment method.")
     payment = Payment(
-        payment_id=f"PMT-{len(portal.payments) + 1:05d}",
+        payment_id=_payment_id(portal),
         statement_id=statement.statement_id,
-        amount=round(args.amount, 2),
+        amount=money(args.amount),
         payment_method_id=method.id,
         payment_note=args.payment_note,
         paid_at=world.now,
     )
     portal.payments.append(payment)
-    statement.balance_due = round(statement.balance_due - payment.amount, 2)
+    statement.balance_due = money(statement.balance_due - payment.amount)
     return {
         "payment_id": payment.payment_id,
         "updated_balance": statement.balance_due,
