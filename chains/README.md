@@ -40,7 +40,8 @@ A session:
 Nothing of the conversation carries over between sessions; the world does. When a session
 starts, the clock moves to its `now` and apps bring clock-dependent state up to
 date (a scheduled charge is taken, a scheduled job has run) before its changes
-are applied.
+are applied. Final and attack checks compare against the initial world, so they see
+these clock-driven changes too; narrow them with `where`, or check per session.
 
 ## Changes
 
