@@ -195,8 +195,8 @@ def test_send_errors_leave_no_record(world):
     for args, error in [
         ({"channel_id": "C03OLD", "message": "hi"}, "is_archived"),
         ({"channel_id": "C999", "message": "hi"}, "channel_not_found"),
-        ({"channel_id": "U03GONE", "message": "hi"}, "deactivated"),
-        ({"channel_id": "D03GONE", "message": "hi"}, "deactivated"),
+        ({"channel_id": "U03GONE", "message": "hi"}, "user_disabled"),
+        ({"channel_id": "D03GONE", "message": "hi"}, "user_disabled"),
         ({"channel_id": "C02B8PN5LQ2", "message": "  "}, "no_text"),
         ({"channel_id": "C02B8PN5LQ2", "message": "x" * 5001}, "msg_too_long"),
         ({"channel_id": "C02B8PN5LQ2", "message": "hi", "thread_ts": "1710420832.094729"}, "thread_not_found"),
@@ -206,6 +206,42 @@ def test_send_errors_leave_no_record(world):
         outcome, _ = call(world, "chat_send_message", **args)
         assert error in outcome.error and not outcome.state_changed
         assert len(world.app("chat").channels) == before
+
+
+def test_private_channels_need_membership(world):
+    chat = world.app("chat")
+    chat.channels += [
+        Channel(id="G01HR", name="hr-private", workspace=WORK, is_private=True, is_member=False),
+        Channel(id="G02TEAM", name="team-private", workspace=WORK, is_private=True),
+        Channel(id="C09OPEN", name="design", workspace=WORK, is_member=False),
+    ]
+    for cid in ("G01HR", "G02TEAM", "C09OPEN"):
+        chat.messages.append(
+            Message(
+                id=f"1710400000.{cid}",
+                channel_id=cid,
+                user="sarah.chen",
+                text=f"budget note {cid}",
+                sent_at=datetime(2025, 3, 14, 10, 0),
+            )
+        )
+    _, result = call(world, "chat_search_channels", query="private")
+    assert [c["channel_id"] for c in result["channels"]] == ["G02TEAM"]
+    for name, args in [
+        ("chat_read_channel", {"channel_id": "G01HR"}),
+        ("chat_read_thread", {"channel_id": "G01HR", "message_ts": "1710400000.G01HR"}),
+        ("chat_send_message", {"channel_id": "G01HR", "message": "hi"}),
+    ]:
+        outcome, _ = call(world, name, **args)
+        assert "channel_not_found" in outcome.error and not outcome.state_changed
+    _, result = call(world, "chat_search_public_and_private", query="budget")
+    assert sorted(m["channel_id"] for m in result["messages"]) == ["C09OPEN", "G02TEAM"]
+    _, result = call(world, "chat_read_channel", channel_id="C09OPEN")
+    assert [m["text"] for m in result["messages"]] == ["budget note C09OPEN"]
+    outcome, _ = call(world, "chat_send_message", channel_id="C09OPEN", message="hi")
+    assert "not_in_channel" in outcome.error and not outcome.state_changed
+    outcome, _ = call(world, "chat_send_message", channel_id="G02TEAM", message="hi")
+    assert outcome.error is None and outcome.state_changed
 
 
 def test_search_messages(world):

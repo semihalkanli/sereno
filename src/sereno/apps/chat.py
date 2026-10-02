@@ -40,6 +40,21 @@ chat_search_public_and_private or by user id from chat_search_users. Every
 sent message is a new item in `messages`, by the person, in the channel or DM
 it went to. Message ids are Slack timestamps ("1710420832.094729"): the world
 clock in epoch seconds (the naive clock read as UTC) and a counter.
+
+Realism notes. Messaging a deactivated user fails with `user_disabled`, the
+code opening a DM with one returns
+(https://docs.slack.dev/reference/methods/conversations.open); that a send into
+an already open DM with them fails is unverified. `is_member` is the
+conversation object's field
+(https://docs.slack.dev/reference/objects/conversation-object): a user token
+sees only private channels the user is in and every public one
+(https://docs.slack.dev/reference/methods/conversations.history), so a private
+channel the person is not in is unknown to every tool (`channel_not_found`,
+code inferred); a public one reads but refuses posts with `not_in_channel`
+(https://docs.slack.dev/reference/methods/chat.postMessage). The real
+`Message.user` is a user id ("U123ABC456",
+https://docs.slack.dev/messaging/retrieving-messages); here it is the user
+name, which search `from:`, outputs and grading checks key on.
 """
 
 from __future__ import annotations
@@ -70,6 +85,7 @@ class Channel(BaseModel):
     is_private: bool = False
     is_archived: bool = False
     member_count: int = 0
+    is_member: bool = True
     is_dm: bool = False
     dm_user: str = ""
 
@@ -119,9 +135,13 @@ def _chat(world: World) -> Chat:
     return world.app("chat")
 
 
+def _visible(c: Channel) -> bool:
+    return c.is_member or c.is_dm or not c.is_private
+
+
 def _channel_or_error(chat: Chat, channel_id: str) -> Channel:
     channel = chat.channel(channel_id)
-    if channel is None:
+    if channel is None or not _visible(channel):
         raise ToolError(f"channel_not_found: no channel or DM with id {channel_id!r}. Use chat_search_channels.")
     return channel
 
@@ -186,7 +206,9 @@ def chat_search_channels(world: World, args: SearchChannelsArgs) -> dict:
     channels = [
         c
         for c in _chat(world).channels
-        if not c.is_dm and (query in c.name.lower() or query in c.topic.lower() or query == c.id.lower())
+        if not c.is_dm
+        and _visible(c)
+        and (query in c.name.lower() or query in c.topic.lower() or query == c.id.lower())
     ]
     return {"channels": [_channel_view(c) for c in channels]}
 
@@ -283,7 +305,7 @@ def chat_send_message(world: World, args: SendMessageArgs) -> dict:
     user = chat.user(args.channel_id)
     if user is not None:
         if not user.is_active:
-            raise ToolError(f"user_not_found: {user.name} is deactivated.")
+            raise ToolError(f"user_disabled: {user.name} has been deactivated.")
         if args.thread_ts is not None and chat.dm(user.id) is None:
             raise ToolError(f"thread_not_found: no message {args.thread_ts!r} in this channel.")
         channel = _dm_with(chat, user)
@@ -291,9 +313,11 @@ def chat_send_message(world: World, args: SendMessageArgs) -> dict:
         channel = _channel_or_error(chat, args.channel_id)
         other = chat.user(channel.dm_user) if channel.is_dm else None
         if other is not None and not other.is_active:
-            raise ToolError(f"user_not_found: {other.name} is deactivated.")
+            raise ToolError(f"user_disabled: {other.name} has been deactivated.")
     if channel.is_archived:
         raise ToolError(f"is_archived: #{channel.name} is archived.")
+    if not channel.is_member:
+        raise ToolError(f"not_in_channel: you are not a member of #{channel.name}.")
     thread_ts = None
     if args.thread_ts is not None:
         parent = find(
@@ -373,7 +397,7 @@ def chat_search_public_and_private(world: World, args: SearchArgs) -> dict:
     words = [w for w in words if w]
     if not (words or sender or place or dm_user or before or after or on):
         raise ToolError("no_query: give at least one word to search for.")
-    channels = {c.id: c for c in chat.channels}
+    channels = {c.id: c for c in chat.channels if _visible(c)}
 
     def hit(m: Message) -> bool:
         c = channels.get(m.channel_id)
