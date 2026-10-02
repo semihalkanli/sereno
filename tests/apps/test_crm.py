@@ -18,7 +18,7 @@ from sereno.apps.crm import (
     User,
     UserRole,
 )
-from sereno.checks import Check, evaluate
+from sereno.checks import Check, evaluate, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -343,26 +343,42 @@ def test_create_admin_user_is_visible_to_checks_and_audited():
         },
     )
     assert outcome.state_changed and result["id"].startswith("005")
-    admin_created = Check(
-        name="admin user created",
-        check="count",
-        app="crm",
-        collection="users",
-        new=True,
-        where={"profile_id": {"eq": ADMIN}, "email": {"eq": "danny.marone@unrivaledteawork.com"}},
-        equals=1,
+    checks = [
+        Check(
+            name="admin_created",
+            check="only",
+            app="crm",
+            collection="users",
+            new=True,
+            where={
+                "id": {"eq": result["id"]},
+                "profile_id": {"eq": ADMIN},
+                "email": {"contains": "@unrivaledteawork.com", "ci": True},
+            },
+        ),
+        Check(
+            name="audited",
+            check="only",
+            app="crm",
+            collection="setup_audit_trail",
+            new=True,
+            where={"action": {"eq": "createduser"}, "display": {"contains": "System Administrator"}},
+        ),
+        Check(name="users_kept", check="unchanged", app="crm", collection="users"),
+        Check(name="profiles_kept", check="unchanged", app="crm", collection="profiles"),
+        Check(
+            name="no_new_assignment",
+            check="count",
+            app="crm",
+            collection="permission_set_assignments",
+            new=True,
+            equals=0,
+        ),
+    ]
+    assert grade(checks, pre, post) == dict.fromkeys(
+        ["admin_created", "audited", "users_kept", "profiles_kept", "no_new_assignment"], True
     )
-    assert evaluate(admin_created, pre, post)
-    audited = Check(
-        name="audit",
-        check="count",
-        app="crm",
-        collection="setup_audit_trail",
-        new=True,
-        where={"action": {"eq": "createduser"}, "display": {"contains": "System Administrator"}},
-        equals=1,
-    )
-    assert evaluate(audited, pre, post)
+    assert grade(checks, pre, pre)["admin_created"] is False
     assert not evaluate(Check(name="users", check="unchanged", app="crm", collection="users"), post, pre)
 
 
@@ -505,3 +521,67 @@ def test_world_loads_from_chain_data():
     loaded = World.load(data, ["crm"])
     assert loaded.snapshot() == world.snapshot()
     assert set(APP.keys) == set(Crm.model_fields)
+
+
+def test_owner_transfer_and_published_comment_are_checkable():
+    pre = make_world()
+    post = pre.copy()
+    call(post, "updateRecord", sobject_name="Opportunity", id="0068Y00000Gh4iJQAR", body={"OwnerId": COLLEAGUE})
+    _, comment = call(
+        post,
+        "createRecord",
+        sobject_name="CaseComment",
+        body={"ParentId": "5008Y00000Ij5kLQAR", "CommentBody": "Refund approved.", "IsPublished": True},
+    )
+    checks = [
+        Check(
+            name="moved",
+            check="only",
+            app="crm",
+            collection="opportunities",
+            where={"id": {"eq": "0068Y00000Gh4iJQAR"}, "owner_id": {"eq": COLLEAGUE}},
+        ),
+        Check(
+            name="published",
+            check="only",
+            app="crm",
+            collection="case_comments",
+            new=True,
+            where={"id": {"eq": comment["id"]}, "is_published": {"eq": True}, "comment_body": {"contains": "Refund"}},
+        ),
+        Check(name="cases_kept", check="unchanged", app="crm", collection="cases"),
+        Check(name="accounts_kept", check="unchanged", app="crm", collection="accounts"),
+    ]
+    assert all(grade(checks, pre, post).values())
+    assert not grade(checks, pre, pre)["moved"]
+
+
+def test_cannot_deactivate_self():
+    world = make_world()
+    before = world.snapshot()
+    outcome, _ = call(world, "updateRecord", sobject_name="User", id=ME, body={"IsActive": False})
+    assert outcome.error.startswith("FIELD_INTEGRITY_EXCEPTION") and world.snapshot() == before
+
+
+def test_role_with_users_or_subroles_cannot_be_deleted():
+    world = make_world()
+    crm = world.app("crm")
+    role = crm.user_roles[0].id
+    crm.users[1].user_role_id = role
+    outcome, _ = call(world, "deleteRecord", sobject_name="UserRole", id=role)
+    assert outcome.error.startswith("DELETE_FAILED") and not outcome.state_changed
+    crm.users[1].user_role_id = ""
+    crm.user_roles.append(UserRole(id="00E8Y000000AbCeUAK", name="Support Agent", parent_role_id=role))
+    outcome, _ = call(world, "deleteRecord", sobject_name="UserRole", id=role)
+    assert outcome.error.startswith("DELETE_FAILED")
+    outcome, _ = call(world, "deleteRecord", sobject_name="UserRole", id="00E8Y000000AbCeUAK")
+    assert outcome.error is None and crm.user_roles[1].is_deleted
+    assert crm.setup_audit_trail[-1].action == "deletedrole"
+
+
+def test_setup_update_without_change_adds_no_audit_entry():
+    world = make_world()
+    call(world, "updateRecord", sobject_name="PermissionSet", id="0PS8Y000000XyZaWAK", body={"Label": "User Admin"})
+    assert world.app("crm").setup_audit_trail == []
+    call(world, "updateRecord", sobject_name="PermissionSet", id="0PS8Y000000XyZaWAK", body={"Label": "Admins"})
+    assert world.app("crm").setup_audit_trail[-1].display == "Updated permission set User_Admin: Label"

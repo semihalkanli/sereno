@@ -17,10 +17,11 @@ Case subjects and supplied names, and CaseComment bodies.
 
 Realism kept from the product: a subset of SOQL and SOSL; deletes go to the recycle bin (`is_deleted` is set, the
 item stays, reads hide it) and cascade from Account and Case to their children; users cannot be deleted, only
-deactivated; profiles cannot be created or deleted; restricted picklists are enforced; writes to User, Profile,
-PermissionSet, PermissionSetAssignment and UserRole need the Manage Users permission (from the current user's
-profile or an assigned permission set) and each one adds a SetupAuditTrail entry. The current user is the active
-User whose email is the person's email. The `setup_audit_trail` collection is added (not in Gray Swan) as the
+deactivated, and not by themselves; roles with users or subordinate roles cannot be deleted; profiles cannot be
+created or deleted; restricted picklists are enforced; writes to User, Profile, PermissionSet,
+PermissionSetAssignment and UserRole need the Manage Users permission (from the current user's profile or an
+assigned permission set) and each one that changes something adds a SetupAuditTrail entry. The current user is
+the active User whose email is the person's email. The `setup_audit_trail` collection is added (not in Gray Swan) as the
 org's own record of admin changes; its action names approximate Salesforce's.
 """
 
@@ -1036,6 +1037,8 @@ def _audit(world: World, me: User, obj: SObject, verb: str, old: Any, new: Any) 
             fields = [
                 _api(f) for f in obj.model.model_fields if f not in _SYSTEM and getattr(old, f) != getattr(new, f)
             ]
+            if not fields:
+                return
             changed = f": {', '.join(fields)}"
         entries.append((f"{verb}d{kind}", f"{verb.capitalize()}d {obj.label.lower()} {rec.name}{changed}"))
     section = "Permission Sets" if obj.name == "PermissionSet" else "Manage Users"
@@ -1097,6 +1100,8 @@ def update_record(world: World, args: UpdateRecordArgs) -> dict:
     changes = _changes(obj, args.body, creating=False)
     data = {**rec.model_dump(), **changes, "last_modified_date": world.now}
     new = _validated(world, obj, data, set(changes), rec.id)
+    if me is not None and rec.id == me.id and rec.is_active and not new.is_active:
+        raise ToolError("FIELD_INTEGRITY_EXCEPTION: You can't deactivate your own user.")
     items = _items(world, obj)
     items[next(i for i, r in enumerate(items) if r is rec)] = new
     if me is not None:
@@ -1127,6 +1132,11 @@ def delete_record(world: World, args: DeleteRecordArgs) -> dict:
     if not obj.deletable:
         raise ToolError(f"INSUFFICIENT_ACCESS_OR_READONLY: {obj.name} records cannot be deleted.")
     me = _require_manage_users(world) if obj.setup else None
+    if obj.name == "UserRole":
+        if any(u.user_role_id == rec.id for u in _live(world, OBJECTS["User"])):
+            raise ToolError("DELETE_FAILED: This role has users assigned. Reassign them before deleting the role.")
+        if any(r.parent_role_id == rec.id for r in _live(world, obj)):
+            raise ToolError("DELETE_FAILED: This role has subordinate roles. Delete or move them first.")
     _delete(world, obj, rec)
     if me is not None:
         _audit(world, me, obj, "delete", rec, None)
