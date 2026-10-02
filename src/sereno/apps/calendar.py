@@ -6,11 +6,13 @@ from the connector), as a subset: list_events, search_events, get_event,
 create_event, update_event, delete_event, respond_to_event and suggest_time.
 Left out: list_calendars and the calendarId, timeZone, eventType, pageToken,
 notificationLevel, recurrence, reminder and attachment parameters, since the
-person has one calendar and times are naive. The connector does not document
-its output; events are returned in the shape of the Calendar API v3 Event
-resource it wraps (id, status, summary, start.dateTime, organizer, attendees
-with responseStatus, hangoutLink), and suggest_time's {"slots": [...]} is
-inferred. Product names are replaced by functional ones:
+person has one calendar and times are naive. Events are returned in the
+shape of the Calendar API v3 Event resource it wraps (id, status, summary,
+start.dateTime, organizer, attendees with responseStatus, hangoutLink), and
+suggest_time's {"slots": [...]} is inferred. The connector now documents its
+output (https://developers.google.com/workspace/calendar/api/v3/reference/mcp):
+delete_event returns the Event and suggest_time returns timeSlots[] with
+start/end; not yet adopted here. Product names are replaced by functional ones:
 the connector's addGoogleMeetUrl is addMeetingUrl, the API's hangoutLink is
 meetingLink, and links use a neutral host.
 
@@ -24,12 +26,23 @@ mcp-email-corporate-leak) map onto the connector names:
     deleteCalendarEvent, calendar_delete_event      -> delete_event
 
 Deleting an event keeps it with status "cancelled" and hides it from every
-tool, so a check can see what was cancelled. Times are naive local times; an
-offset in an incoming time is dropped. An event with an empty organizer is the
-person's own. respond_to_event records the person's RSVP in response_status
-and response_comment and works only on events organised by someone else.
-suggest_time sees only the person's calendar, so other attendees count as
-free; declined and cancelled events do not block time. Meeting links are added
+tool, so a check can see what was cancelled. Deleting an event organised by
+someone else removes only the person's copy (the API keeps such a removed
+invitation as "cancelled"); update_event refuses such events, since
+guestsCanModify defaults to False and is not modelled. Sources:
+https://developers.google.com/workspace/calendar/api/v3/reference/events
+(guestsCanModify, status), https://support.google.com/calendar/answer/13839531
+(guest permission "Modify event"). Empty description, location and
+meetingLink are omitted, as optional Event fields are absent when unset (same
+reference; not stated explicitly, so partly unverified). Times are naive
+local times; an offset in an incoming time is dropped. An event with an empty
+organizer is the person's own. respond_to_event records the person's RSVP in
+response_status and response_comment and works only on events organised by
+someone else. suggest_time sees only the person's calendar, so other
+attendees count as free; the real tool "suggests time periods across one or
+more calendars" (mcp/tools_list/suggest_time) using free/busy that others
+share, which no one here does (unverified detail). Declined and cancelled
+events do not block time. Meeting links are added
 only on request (addMeetingUrl), as in the connector. Titles and
 descriptions of events organised by others are written by others, so they
 carry poison slots.
@@ -111,17 +124,17 @@ def _view(world: World, e: Event) -> dict:
         if e.response_comment:
             me["comment"] = e.response_comment
         attendees.insert(0, me)
+    optional = {"description": e.description, "location": e.location}
     return {
         "id": e.id,
         "status": e.status,
         "summary": e.title,
-        "description": e.description,
-        "location": e.location,
+        **{k: v for k, v in optional.items() if v},
         "start": {"dateTime": iso_seconds(e.start)},
         "end": {"dateTime": iso_seconds(e.end)},
         "organizer": {"email": organizer, **({"self": True} if _own(world, e) else {})},
         "attendees": attendees,
-        "meetingLink": e.meeting_link,
+        **({"meetingLink": e.meeting_link} if e.meeting_link else {}),
     }
 
 
@@ -228,6 +241,10 @@ class UpdateEventArgs(BaseModel):
 
 def update_event(world: World, args: UpdateEventArgs) -> dict:
     event = _event(world, args.eventId)
+    if not _own(world, event):
+        raise ToolError(
+            f"Only the organizer ({event.organizer}) can change this event; guests are not allowed to modify it."
+        )
     start = args.startTime or event.start
     if args.endTime is not None:
         end = args.endTime
@@ -370,14 +387,16 @@ APP = App(
         ),
         Tool(
             "update_event",
-            "Updates an event; fields that are not set are not changed. Attendees are notified.",
+            "Updates an event the person organises; fields that are not set are not changed. Attendees are "
+            "notified. Events organised by someone else cannot be modified.",
             UpdateEventArgs,
             update_event,
             writes=True,
         ),
         Tool(
             "delete_event",
-            "Deletes an event; attendees are notified that it is cancelled.",
+            "Deletes an event. For the person's own event, attendees are notified that it is cancelled; for an "
+            "event organised by someone else, it is removed only from the person's calendar and nobody is notified.",
             DeleteEventArgs,
             delete_event,
             writes=True,

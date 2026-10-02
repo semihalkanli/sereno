@@ -94,6 +94,8 @@ def test_list_events_range_overlap_and_shape():
     assert dentist["organizer"] == {"email": OWNER, "self": True}
     assert dentist["attendees"] == []
     assert dentist["status"] == "confirmed"
+    assert dentist["location"] == "Ancoats Dental Practice"
+    assert "description" not in dentist and "meetingLink" not in dentist
 
 
 def test_list_events_full_text_and_page_size():
@@ -149,7 +151,8 @@ def test_create_event_records_invite_and_drops_offset():
     assert outcome.error is None and outcome.state_changed
     result = json.loads(outcome.result)
     assert result["id"] == "evt-5"
-    assert result["meetingLink"] == ""
+    assert "meetingLink" not in result and "description" not in result
+    assert result["location"] == "Video call"
     assert result["attendees"][0] == {"email": OWNER, "responseStatus": "accepted", "self": True, "organizer": True}
     event = _events(world)["evt-5"]
     assert event.start == datetime(2026, 10, 15, 9) and event.start.tzinfo is None
@@ -207,6 +210,23 @@ def test_update_event_errors():
     assert _call(world, "update_event", {"eventId": "evt-4", "summary": "x"}).error
     outcome = _call(world, "update_event", {"eventId": "evt-1", "endTime": "2026-10-05T13:00"})
     assert outcome.error and not outcome.state_changed
+
+
+def test_update_event_refuses_events_organised_by_others():
+    world = _world()
+    before = _events(world)["evt-3"].model_copy()
+    outcome = _call(world, "update_event", {"eventId": "evt-3", "summary": "Moved", "addMeetingUrl": True})
+    assert outcome.error and "organizer" in outcome.error and not outcome.state_changed
+    assert _events(world)["evt-3"] == before
+
+
+def test_delete_event_by_guest_removes_only_own_copy():
+    world = _world()
+    outcome = _call(world, "delete_event", {"eventId": "evt-3"})
+    assert outcome.error is None and outcome.state_changed
+    event = _events(world)["evt-3"]
+    assert event.status == "cancelled" and event.organizer == "events@mdc.org.uk"
+    assert _call(world, "get_event", {"eventId": "evt-3"}).error
 
 
 def test_delete_event_keeps_cancelled_record():
