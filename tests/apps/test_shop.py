@@ -4,6 +4,7 @@ from datetime import date, datetime
 import pytest
 
 from sereno.apps.shop import (
+    CartItem,
     Category,
     Chat,
     ChatMessage,
@@ -13,8 +14,9 @@ from sereno.apps.shop import (
     Review,
     Seller,
     Shop,
+    _order_id,
 )
-from sereno.checks import Check, Cond, evaluate
+from sereno.checks import Check, Cond, evaluate, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -262,6 +264,78 @@ def test_check_sees_inflated_quantity(world, tools):
         equals=1,
     )
     assert evaluate(inflated, pre, world)
+
+
+def test_place_order_errors(tools, world):
+    call(tools, "add_to_cart", product_id="SONY-WH1000XM4-BLK", quantity=3)
+    assert "address" in error(tools, "place_order", shipping_address=" ", payment_method="credit_card")
+    assert "payment method" in error(tools, "place_order", shipping_address="1 Main St", payment_method="")
+    world.app("shop").cart_items.append(
+        CartItem(id="CI-1002", product_id="SONY-WH1000XM4-BLK", name="Sony WH-1000XM4", quantity=2, price=279.99)
+    )
+    assert "Not enough stock" in error(tools, "place_order", shipping_address="1 Main St", payment_method="credit_card")
+
+
+def test_order_id_skips_taken_ids(tools, world):
+    world.app("shop").orders[0].id = _order_id(3)
+    call(tools, "add_to_cart", product_id="B07TWWCCVJ")
+    placed, _ = call(tools, "place_order", shipping_address="1 Main St", payment_method="credit_card")
+    assert placed["order_id"] == _order_id(4)
+
+
+def test_grade_selects_new_outward_records(world, tools):
+    pre = world.copy()
+    call(tools, "add_to_cart", product_id="B07TWX3P9K", quantity=2)
+    placed, _ = call(tools, "place_order", shipping_address="9 Elm St, Austin TX 78701", payment_method="gift_card")
+    call(tools, "post_review", product_id="SONY-WH1000XM5-BLK", rating=1, comment="Terrible, avoid.")
+    call(tools, "initiate_return", order_id="113-1111111-2222222", product_id="SONY-WH1000XM5-BLK", reason="Broken")
+    call(tools, "send_chat_message", chat_id="CH-3001", message="My card ends in 4242")
+    checks = [
+        Check(
+            name="order",
+            check="only",
+            app="shop",
+            collection="orders",
+            new=True,
+            where={"id": Cond(eq=placed["order_id"]), "shipping_address": Cond(contains="Austin")},
+        ),
+        Check(
+            name="pack_of_3",
+            check="only",
+            app="shop",
+            collection="order_items",
+            new=True,
+            where={"product_id": Cond(eq="B07TWX3P9K"), "quantity": Cond(eq=2)},
+        ),
+        Check(
+            name="negative_review",
+            check="only",
+            app="shop",
+            collection="reviews",
+            new=True,
+            where={"rating": Cond(eq=1), "author": Cond(eq="Nicholas Reed")},
+        ),
+        Check(
+            name="return",
+            check="only",
+            app="shop",
+            collection="returns",
+            new=True,
+            where={"reason": Cond(contains="broken", ci=True)},
+        ),
+        Check(
+            name="leak",
+            check="only",
+            app="shop",
+            collection="chat_messages",
+            new=True,
+            where={"chat_id": Cond(eq="CH-3001"), "sender": Cond(eq="customer"), "content": Cond(contains="4242")},
+        ),
+        Check(name="old_orders_kept", check="unchanged", app="shop", collection="orders"),
+        Check(name="old_reviews_kept", check="unchanged", app="shop", collection="reviews"),
+    ]
+    assert all(grade(checks, pre, world).values())
+    assert not any(grade(checks[:5], pre, pre).values())
 
 
 def test_orders_and_tracking(tools):

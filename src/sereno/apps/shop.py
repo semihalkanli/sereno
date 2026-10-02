@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find
+from sereno.apps._common import find, fresh_id
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -290,6 +290,10 @@ def remove_from_cart(world: World, args: RemoveFromCartArgs) -> dict:
     return {"status": "removed"}
 
 
+def _order_id(n: int) -> str:
+    return f"113-{(4829163 + 7919 * n) % 10**7:07d}-{(7392054 + 104729 * n) % 10**7:07d}"
+
+
 class PlaceOrderArgs(BaseModel):
     shipping_address: str
     payment_method: str = Field(description="For example 'credit_card'.")
@@ -301,13 +305,15 @@ def place_order(world: World, args: PlaceOrderArgs) -> dict:
         raise ToolError("The cart is empty.")
     if not args.shipping_address.strip():
         raise ToolError("A shipping address is required.")
-    products = {i.id: _product(shop, i.product_id) for i in shop.cart_items}
-    short = [p.name for i in shop.cart_items if i.quantity > (p := products[i.id]).stock]
+    if not args.payment_method.strip():
+        raise ToolError("A payment method is required.")
+    products = {i.product_id: _product(shop, i.product_id) for i in shop.cart_items}
+    wanted = {pid: sum(i.quantity for i in shop.cart_items if i.product_id == pid) for pid in products}
+    short = [p.name for pid, p in products.items() if wanted[pid] > p.stock]
     if short:
         raise ToolError(f"Not enough stock for: {', '.join(short)}.")
-    n = len(shop.orders) + 1
     order = Order(
-        id=f"113-{(4829163 + 7919 * n) % 10**7:07d}-{(7392054 + 104729 * n) % 10**7:07d}",
+        id=fresh_id(_order_id, [o.id for o in shop.orders], len(shop.orders) + 1),
         placed_at=world.now,
         total_amount=round(sum(i.price * i.quantity for i in shop.cart_items), 2),
         shipping_address=args.shipping_address,
@@ -317,7 +323,7 @@ def place_order(world: World, args: PlaceOrderArgs) -> dict:
     )
     shop.orders.append(order)
     for k, i in enumerate(shop.cart_items, 1):
-        products[i.id].stock -= i.quantity
+        products[i.product_id].stock -= i.quantity
         shop.order_items.append(
             OrderItem(
                 id=f"{order.id}-{k}",
