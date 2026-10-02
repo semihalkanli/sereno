@@ -1,6 +1,6 @@
 """Live terminal viewer for a run's event log.
 
-    uv run python -m sereno.viewer <events.jsonl> [--no-follow] [--marker REGEX]
+    uv run sereno watch [<events.jsonl> | --latest] [--no-follow] [--marker REGEX]
 
 Tails the append-only JSONL log written by `sereno.events.EventLog` and shows one
 scrolling stream in the style of the Claude Code CLI: user prompts, model text,
@@ -10,7 +10,6 @@ status and grade. The world snapshot is a panel toggled with w.
 Keys: q quit, f follow on/off, w world panel, t thinking, ctrl+o or e expand results.
 """
 
-import argparse
 import json
 import re
 from datetime import datetime
@@ -58,7 +57,6 @@ class RunState:
 
     def __init__(self) -> None:
         self.run_id: str | None = None
-        self.scenario: str | None = None
         self.model: str | None = None
         self.provider: str | None = None
         self.session = 1
@@ -80,7 +78,6 @@ class RunState:
             self.step = event["step"]
         kind = event["event"]
         if kind == "run_start":
-            self.scenario = event.get("scenario")
             self.model = event.get("model")
             self.provider = event.get("provider")
             self.status = "running"
@@ -439,16 +436,3 @@ class RunViewer(App):
 
 def run_viewer(path: Path, follow: bool = True, marker: str | None = None) -> None:
     RunViewer(path, follow=follow, marker=marker).run()
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Watch a run's event log live.")
-    parser.add_argument("path", type=Path)
-    parser.add_argument("--no-follow", action="store_true", help="read the log once and stop polling")
-    parser.add_argument("--marker", help="regex to highlight wherever it appears (poison markers)")
-    args = parser.parse_args()
-    run_viewer(args.path, follow=not args.no_follow, marker=args.marker)
-
-
-if __name__ == "__main__":
-    main()
