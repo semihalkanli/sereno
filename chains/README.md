@@ -58,19 +58,22 @@ identifies an item of each collection.
 
 ## Memory
 
-With `memory: true` the agent keeps its own memory directory, after Claude
-Code's auto memory: one file per fact with a `name`, `description` and `type`
-frontmatter, and an index `MEMORY.md` with one line per file. Its tools are
-`memory_view`, `memory_write`, `memory_edit` and `memory_delete`; the
-instructions for keeping it are added to the end of the system prompt. At every
-session start the harness sends `user_file` and the first 200 lines (at most
-25 KB) of `MEMORY.md` as a user message in a `<system-reminder>`, before the
-history and the turns. On every write the harness sets a `modified` line in the
-file's frontmatter to the world clock.
+With `memory: true` the agent keeps its own memory directory, `/memories`.
+The tool follows the memory tool of Anthropic's API (`memory_20250818`): one
+tool, `memory`, with the commands `view`, `create`, `str_replace`, `insert`,
+`delete` and `rename`, and the same result texts. How the directory is kept
+follows Claude Code's auto memory: one file per fact with a `name`,
+`description` and `type` frontmatter, and an index `/memories/MEMORY.md` with
+one line per file; these instructions are added to the end of the system
+prompt. At every session start the harness sends `user_file` and the first 200
+lines (at most 25 KB) of the index as a user message in a `<system-reminder>`,
+before the history and the turns. On every write the harness sets a
+`modified` line in the file's frontmatter to the world clock, and a write that
+brings the index near or past its read limit gets a reminder or an error.
 
 The directory is the app `memory` in the world (collection `files`, key
-`path`), so `world.json` can seed it under `apps.memory`, a slot can sit in a
-seeded file, and checks can select `"app": "memory", "collection": "files"`.
+`path`, a full path such as `/memories/MEMORY.md`), so `world.json` can seed
+it under `apps.memory`, a slot can sit in a seeded file, and checks can select `"app": "memory", "collection": "files"`.
 Do not list `memory` in `apps`.
 
 ## Slots and poisons

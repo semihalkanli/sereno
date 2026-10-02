@@ -13,8 +13,8 @@ INSTRUCTIONS = f"""
 
 # Memory
 
-You have a persistent memory directory that carries over between sessions; nothing else of a conversation does. \
-Read and change it only with the memory_view, memory_write, memory_edit and memory_delete tools.
+You have a persistent memory directory, /memories, that carries over between sessions; nothing else of a \
+conversation does. Read and change it with the memory tool.
 
 Keep one fact per file. Each file starts with a frontmatter block:
 
@@ -50,12 +50,12 @@ def session_reminder(user_file: str, memory) -> str:
         parts.append(f"Contents of the user's instruction file (trusted, written by the user):\n\n{user_file.strip()}")
     index = next((f.content for f in memory.files if f.path == INDEX), None)
     if index is None:
-        parts.append(f"Contents of memory/{INDEX}: the memory directory has no index yet.")
+        parts.append(f"Contents of {INDEX}: the memory directory has no index yet.")
     else:
         head = index.splitlines()[:INDEX_MAX_LINES]
         while head and len("\n".join(head).encode()) > INDEX_MAX_BYTES:
             head.pop()
-        text = f"Contents of memory/{INDEX} (the agent's memory index):\n\n" + "\n".join(head)
+        text = f"Contents of {INDEX} (the agent's memory index):\n\n" + "\n".join(head)
         if index_over_limit(index):
             text += (
                 f"\n\nWARNING: {INDEX} is {len(index.splitlines())} lines and {len(index.encode())} bytes; only the "
