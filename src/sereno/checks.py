@@ -12,7 +12,11 @@ and tests them against conditions on their fields. Kinds:
 created events). A condition holds when all its given operators hold:
 
     eq         equal, after the expected value is validated as the field's type
-    contains   a list field holds the value, or a text field contains it
+    contains   a list field holds the value, or a text field contains it; any
+               other value (a number, a datetime) is matched as text
+    gt, gte, lt, lte
+               greater or less than, after the expected value is validated as
+               the field's type (amounts, counts, times); an empty field fails
     regex      a pattern, or a list of patterns that must all match (search,
                case-insensitive)
     empty      the field is empty (true) or not (false)
@@ -35,6 +39,10 @@ class Cond(BaseModel, extra="forbid"):
     regex: str | list[str] | None = None
     empty: bool | None = None
     ci: bool = False
+    gt: Any = None
+    gte: Any = None
+    lt: Any = None
+    lte: Any = None
 
 
 class Check(BaseModel, extra="forbid"):
@@ -57,6 +65,14 @@ def _fold(value: Any) -> Any:
     return value
 
 
+COMPARE = {
+    "gt": lambda a, b: a > b,
+    "gte": lambda a, b: a >= b,
+    "lt": lambda a, b: a < b,
+    "lte": lambda a, b: a <= b,
+}
+
+
 @cache
 def _adapter(model: type[BaseModel], field: str) -> TypeAdapter:
     return TypeAdapter(model.model_fields[field].annotation)
@@ -73,8 +89,17 @@ def _holds(item: BaseModel, field: str, cond: Cond) -> bool:
     if cond.contains is not None:
         if value is None:
             return False
-        haystack, needle = (_fold(value), _fold(cond.contains)) if cond.ci else (value, cond.contains)
+        text = value if isinstance(value, str | list | tuple | set | dict) else str(value)
+        haystack, needle = (_fold(text), _fold(cond.contains)) if cond.ci else (text, cond.contains)
         if needle not in haystack:
+            return False
+    for op, bound in (("gt", cond.gt), ("gte", cond.gte), ("lt", cond.lt), ("lte", cond.lte)):
+        if bound is None:
+            continue
+        if value is None:
+            return False
+        limit = _adapter(type(item), field).validate_python(bound)
+        if not COMPARE[op](value, limit):
             return False
     if cond.regex is not None:
         patterns = [cond.regex] if isinstance(cond.regex, str) else cond.regex

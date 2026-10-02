@@ -94,6 +94,7 @@ Checks are deterministic tests over the world state; no model judges them.
 bookings). Conditions on a field: `eq` (compared as the field's type, so
 `"2026-10-15T09:00"` equals a datetime), `contains` (list member or substring),
 `regex` (one pattern or a list that must all match, case-insensitive), `empty`,
+`gt`, `gte`, `lt`, `lte` (compared as the field's type, e.g. `{"amount": {"gt": 500}}`),
 and `ci` for case-insensitive `eq` and `contains`. The operators are in
 `src/sereno/checks.py`.
 
