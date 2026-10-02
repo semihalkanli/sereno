@@ -51,6 +51,10 @@ the driver is late (past the pickup ETA and not yet arrived); a trip that has
 begun cannot be cancelled here. A driver who cancels after waiting at the
 pickup may charge the rider; chains seed that fee on a driver_canceled ride.
 A rider may not request while a trip is active (the API's current_trip_exists).
+A place can carry a fixed pickup fee added to every trip that starts there, outside surge and the minimum
+fare, as Uber adds an airport's pickup charge (Heathrow: "Pick-up (Short Stay Car Park) - £9.00 (£8.00 for
+30 min, £1 AVA)", https://help.uber.com/driving-and-delivering/article/uk-tolls-surcharges-and-fees); receipts
+list it with the booking fee among the adjustments.
 Grace minutes (2 for economy) are confirmed by
 https://m.csmonitor.com/Technology/2016/0428/Uber-introduces-a-two-minute-grace-period-then-a-fee-for-riders;
 the default 5 USD fee matches the 5 USD products in the GET /v1.2/products
@@ -131,6 +135,9 @@ class Place(BaseModel):
     address: str
     latitude: float
     longitude: float
+    pickup_fee: float = 0.0
+    """A fixed charge for being picked up here, such as an airport's rideshare pickup fee."""
+    pickup_fee_name: str = ""
 
 
 class SavedPlace(BaseModel):
@@ -224,6 +231,8 @@ class _Stop(BaseModel):
     address: str
     latitude: float
     longitude: float
+    pickup_fee: float = 0.0
+    pickup_fee_name: str = ""
 
 
 def _rides(world: World) -> Rides:
@@ -257,7 +266,14 @@ def _resolve(state: Rides, ref: str) -> _Stop:
             return _Stop(name=s.name or s.label, address=s.address, latitude=s.latitude, longitude=s.longitude)
     for p in state.places:
         if key in (p.place_id.lower(), p.address.lower()):
-            return _Stop(name=p.name, address=p.address, latitude=p.latitude, longitude=p.longitude)
+            return _Stop(
+                name=p.name,
+                address=p.address,
+                latitude=p.latitude,
+                longitude=p.longitude,
+                pickup_fee=p.pickup_fee,
+                pickup_fee_name=p.pickup_fee_name,
+            )
     raise ToolError(f"Unknown place {ref!r}. Use a saved place, or a place_id from rides_places_search.")
 
 
@@ -273,7 +289,7 @@ def _check_distance(miles: float) -> None:
         raise ToolError("distance_exceeded: the distance between pickup and dropoff exceeds 100 miles.")
 
 
-def _price(product: Product, miles: float, seconds: int) -> list[Charge]:
+def _price(product: Product, miles: float, seconds: int, start: _Stop) -> list[Charge]:
     charges = [
         Charge(name="Base Fare", amount=product.base_fare, type="base_fare"),
         Charge(name="Distance", amount=round(product.cost_per_mile * miles, 2), type="distance"),
@@ -288,6 +304,8 @@ def _price(product: Product, miles: float, seconds: int) -> list[Charge]:
         charges.append(Charge(name=f"Surge x{product.surge_multiplier:g}", amount=surge, type="surge"))
     if product.booking_fee:
         charges.append(Charge(name="Booking Fee", amount=product.booking_fee, type="booking_fee"))
+    if start.pickup_fee:
+        charges.append(Charge(name=start.pickup_fee_name or "Pickup Fee", amount=start.pickup_fee, type="pickup_fee"))
     return charges
 
 
@@ -352,7 +370,7 @@ def get_price_estimates(world: World, args: PriceEstimatesArgs) -> dict:
     for p in state.products:
         if not p.available:
             continue
-        fare = _total(_price(p, miles, seconds))
+        fare = _total(_price(p, miles, seconds, start))
         low, high = math.floor(fare * 0.92), math.ceil(fare * 1.12)
         symbol = _SYMBOLS.get(p.currency_code, p.currency_code + " ")
         prices.append(
@@ -524,7 +542,7 @@ def request_ride(world: World, args: RequestRideArgs) -> dict:
         raise ToolError("same_pickup_dropoff: pickup and dropoff are the same place.")
     miles, seconds = _trip(start, end)
     _check_distance(miles)
-    charges = _price(product, miles, seconds)
+    charges = _price(product, miles, seconds, start)
     driver = next((d for d in state.drivers if d.available and product.product_id in d.products), None)
     ride = Ride(
         request_id=_request_id(world, state, product.product_id, start.address, end.address),
@@ -709,8 +727,8 @@ def trips_receipt(world: World, args: TripsReceiptArgs) -> dict:
     cur = ride.currency_code
     adjustments = []
     if ride.status == "completed":
-        charges = [c for c in ride.charges if c.type not in ("booking_fee", "surge")]
-        adjustments = [c for c in ride.charges if c.type == "booking_fee"]
+        charges = [c for c in ride.charges if c.type not in ("booking_fee", "pickup_fee", "surge")]
+        adjustments = [c for c in ride.charges if c.type in ("booking_fee", "pickup_fee")]
         if ride.tip:
             adjustments.append(Charge(name="Tip", amount=ride.tip, type="tip"))
         surge = next((c for c in ride.charges if c.type == "surge"), None)

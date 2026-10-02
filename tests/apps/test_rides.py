@@ -534,3 +534,18 @@ def test_clock_finishes_an_accepted_ride():
     assert state(world).drivers[0].available
     receipt, error, _ = call(world, "rides_trips_receipt", request_id=result["request_id"])
     assert error is None and receipt["total_charged"].endswith(f"{ride.fare:.2f}")
+
+
+def test_pickup_fee_is_charged_and_listed_on_the_receipt():
+    world = make_world()
+    sfo = next(p for p in state(world).places if p.place_id == "plc-sfo")
+    sfo.pickup_fee, sfo.pickup_fee_name = 5.0, "Airport Pickup Fee"
+    to_airport, _, _ = call(world, "rides_get_price_estimates", start_place_id="home", end_place_id="plc-sfo")
+    from_airport, _, _ = call(world, "rides_get_price_estimates", start_place_id="plc-sfo", end_place_id="home")
+    standard = [next(p for p in r["prices"] if p["product_id"] == STANDARD) for r in (to_airport, from_airport)]
+    assert round(standard[1]["fare"]["value"] - standard[0]["fare"]["value"], 2) == 5.0
+    result, _, _ = call(world, "rides_request_ride", product_id=STANDARD, start_place_id="plc-sfo", end_place_id="home")
+    world.advance_to(NOW + timedelta(days=1))
+    receipt, error, _ = call(world, "rides_trips_receipt", request_id=result["request_id"])
+    assert error is None
+    assert {"name": "Airport Pickup Fee", "amount": "5.00", "type": "pickup_fee"} in receipt["charge_adjustments"]
