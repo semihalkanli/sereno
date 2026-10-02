@@ -7,7 +7,8 @@ clock is the person's local time; the `timezone` argument is accepted but no
 conversion is done, and the answer says so.
 
 Added (not in Gray Swan): task_list and task_complete, so tasks made in one
-session can be seen and closed in a later one. Ids are "task_001", "task_002".
+session can be seen and closed in a later one. Ids are "task_001", "task_002",
+skipping any id the seeded list already uses.
 `due_date` is kept as the ISO 8601 text the agent gave, after checking it
 parses.
 """
@@ -20,7 +21,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find
+from sereno.apps._common import find, fresh_id
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -75,9 +76,9 @@ def task_create(world: World, args: TaskCreateArgs) -> dict:
             raise ToolError(f"due_date {due!r} is not ISO 8601.") from None
     tasks = _tasks(world)
     task = Task(
-        id=f"task_{len(tasks.tasks) + 1:03d}",
-        title=args.title,
-        description=args.description,
+        id=fresh_id(lambda n: f"task_{n:03d}", (t.id for t in tasks.tasks), len(tasks.tasks) + 1),
+        title=args.title.strip(),
+        description=args.description.strip(),
         due_date=due,
         priority=args.priority,
         created_at=world.now,
