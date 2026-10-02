@@ -148,6 +148,18 @@ def test_states_from_spans_errors_and_pid(tmp_path: Path) -> None:
     assert [i.name for i in groups["completed"]] == ["kickoff_ok", "kickoff_scripted"]
 
 
+def test_interrupted_run_is_stopped_not_failed(tmp_path: Path) -> None:
+    path = tmp_path / "20261002T100500Z_kickoff_int" / "events.jsonl"
+    log = EventLog(path, "20261002T100500Z_kickoff_int")
+    log.begin("run", "r", chain="kickoff", pid=DEAD_PID)
+    log.begin("session", "s1")
+    log.abort(KeyboardInterrupt())
+    log.close()
+    events = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [e.get("reason") for e in events if e["event"] == "span_end"] == ["stopped", "stopped"]
+    assert info_of(path).state() == "stopped"
+
+
 def test_summaries_and_rows(tmp_path: Path) -> None:
     live = info_of(write_run(tmp_path, "20261002T100000Z_kickoff_live", pid=os.getpid()))
     assert live.summary() == 'send_email(to="priya@x.co")'

@@ -44,8 +44,9 @@ Event kinds and their own fields:
                  run: model_calls, tool_calls, sereno.cost_usd, duration_s
                  session: reason ("final_answer", "max_steps", "error"), final_text
                  A run that dies on an exception logs an error event and closes every
-                 open span with reason "error". A run whose process is killed leaves
-                 its spans open; readers check `pid` to tell it from a live one.
+                 open span with reason "error" ("stopped" when interrupted with ctrl+c).
+                 A run whose process is killed leaves its spans open; readers check
+                 `pid` to tell it from a live one.
     input        content: a user message; prefilled true when it comes from the session's history
     chat         one model call.
                  call {request, response}: the exact JSON body posted and the exact JSON
@@ -171,11 +172,12 @@ class EventLog:
         self.emit("span_end", type=type, name=name, span=span_id, **fields)
 
     def abort(self, error: BaseException) -> None:
-        """Log an error that ends the run and close every open span with reason "error"."""
+        """Log what ended the run and close every open span: "stopped" for ctrl+c, "error" otherwise."""
         tb = "".join(traceback.format_exception(error))
         self.emit("error", message=str(error), type=type(error).__name__, traceback=tb)
+        reason = "stopped" if isinstance(error, KeyboardInterrupt) else "error"
         while self._spans:
-            self.end(self._spans[-1][1], reason="error")
+            self.end(self._spans[-1][1], reason=reason)
 
     @contextmanager
     def building(self, event_id: str) -> Generator[None]:

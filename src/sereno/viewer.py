@@ -206,6 +206,8 @@ class RunInfo:
     def state(self) -> str:
         if self.legacy:
             return "completed"
+        if self.end is not None and self.end.get("reason") == "stopped":
+            return "stopped"
         if self.errors or (self.end is not None and self.end.get("reason") == "error"):
             return "failed"
         if self.end is not None:
