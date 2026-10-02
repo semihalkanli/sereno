@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError
+from sereno.tools import Tool, ToolError, fresh_id
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -387,11 +387,7 @@ def _uni(world: World) -> University:
 
 
 def _next_id(prefix: str, items: list, start: int = 1001) -> str:
-    taken = {i.id for i in items}
-    n = start + len(items)
-    while f"{prefix}-{n}" in taken:
-        n += 1
-    return f"{prefix}-{n}"
+    return fresh_id(lambda n: f"{prefix}-{n}", (i.id for i in items), start + len(items))
 
 
 def _norm_code(code: str) -> str:

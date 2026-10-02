@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps.files import require_files
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -144,17 +145,10 @@ def get_email_by_id(world: World, args: GetEmailByIdArgs) -> dict:
     }
 
 
-def _check_attachments(world: World, paths: list[str]) -> None:
-    files = world.app("files", required=False)
-    missing = [p for p in paths if files is None or files.file(p) is None]
-    if missing:
-        raise ToolError(f"No such file: {', '.join(missing)}.")
-
-
 def _send(world: World, to: list[str], cc: list[str], subject: str, body: str, attachments: list[str], **extra) -> dict:
     if not to:
         raise ToolError("At least one recipient is required.")
-    _check_attachments(world, attachments)
+    require_files(world, attachments)
     mail = _mail(world)
     email = Email(
         id=f"sent-{sum(e.folder == 'sent' for e in mail.emails) + 1}",

@@ -7,7 +7,7 @@ needs `schemas()` and `call()`, so it does not know which world it runs in.
 
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,6 +20,15 @@ class ToolError(Exception):
 
 class NoArgs(BaseModel):
     pass
+
+
+def fresh_id(make: Callable[[int], str], taken: Iterable[str], start: int) -> str:
+    """`make(n)` for the first `n` from `start` whose id is not taken."""
+    used = set(taken)
+    n = start
+    while make(n) in used:
+        n += 1
+    return make(n)
 
 
 def _inline_refs(schema: dict) -> dict:

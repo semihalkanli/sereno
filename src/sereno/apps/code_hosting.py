@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError
+from sereno.tools import Tool, ToolError, fresh_id
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -161,11 +161,7 @@ def _utc(dt: datetime | None) -> str | None:
 
 
 def _next_id(prefix: str, items: list) -> str:
-    used = {i.id for i in items}
-    n = len(items) + 1
-    while f"{prefix}{n}" in used:
-        n += 1
-    return f"{prefix}{n}"
+    return fresh_id(lambda n: f"{prefix}{n}", (i.id for i in items), len(items) + 1)
 
 
 def _same_repo(full_name: str, given: str) -> bool:

@@ -55,7 +55,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError
+from sereno.tools import Tool, ToolError, fresh_id
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -481,11 +481,7 @@ def accommodations_reviews(world: World, args: AccommodationsReviewsArgs) -> dic
 
 
 def _next_id(items: list, fmt: str, start: int) -> str:
-    used = {i.id for i in items}
-    n = start + len(items)
-    while fmt.format(n) in used:
-        n += 1
-    return fmt.format(n)
+    return fresh_id(fmt.format, (i.id for i in items), start + len(items))
 
 
 class AccommodationsOrderCreateArgs(BaseModel):

@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError
+from sereno.tools import Tool, ToolError, fresh_id
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -449,10 +449,7 @@ def get_itinerary(world: World, args: GetItineraryArgs) -> dict:
 
 
 def _next_id(used: set[str], make) -> str:
-    n = len(used) + 1
-    while make(n) in used:
-        n += 1
-    return make(n)
+    return fresh_id(make, used, len(used) + 1)
 
 
 def _pnr(seed: str) -> str:

@@ -25,14 +25,14 @@ remove_from_cart -> marketplace_remove_from_cart, get_orders -> marketplace_get_
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import NoArgs, Tool, ToolError
+from sereno.apps.files import require_files
+from sereno.tools import NoArgs, Tool, ToolError, fresh_id
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -99,14 +99,6 @@ class Marketplace(BaseModel):
 
 def _market(world: World) -> Marketplace:
     return world.app("marketplace")
-
-
-def _fresh(make: Callable[[int], str], taken: Iterable[str], start: int) -> str:
-    used = set(taken)
-    n = start
-    while make(n) in used:
-        n += 1
-    return make(n)
 
 
 def _listing(state: Marketplace, item_id: str) -> Listing:
@@ -191,7 +183,7 @@ def add_to_cart(world: World, args: AddToCartArgs) -> dict:
     state = _market(world)
     listing = _listing(state, args.item_id)
     _check_buyable(state, listing, args.quantity)
-    line_id = _fresh(lambda n: f"cart-{n}", (c.id for c in state.cart), len(state.cart) + 1)
+    line_id = fresh_id(lambda n: f"cart-{n}", (c.id for c in state.cart), len(state.cart) + 1)
     line = CartLine(id=line_id, item_id=listing.id, quantity=args.quantity, added_at=world.now)
     state.cart.append(line)
     return {"status": "added", "cart_line_id": line.id, "item": _summary(listing), "quantity": line.quantity}
@@ -232,7 +224,9 @@ class CheckoutArgs(BaseModel):
 
 
 def _order_id(state: Marketplace) -> str:
-    return _fresh(lambda n: f"26-{13500 + n:05d}-{82100 + n:05d}", (o.id for o in state.orders), len(state.orders) + 1)
+    return fresh_id(
+        lambda n: f"26-{13500 + n:05d}-{82100 + n:05d}", (o.id for o in state.orders), len(state.orders) + 1
+    )
 
 
 def _place(world: World, state: Marketplace, listing: Listing, quantity: int) -> Order:
@@ -301,13 +295,6 @@ def get_active_listings(world: World, args: NoArgs) -> list[dict]:
     ]
 
 
-def _check_photos(world: World, photos: list[str]) -> None:
-    files = world.app("files", required=False)
-    missing = [p for p in photos if files is None or files.file(p) is None]
-    if missing:
-        raise ToolError(f"No such file: {', '.join(missing)}.")
-
-
 class CreateListingArgs(BaseModel):
     title: str = Field(max_length=80)
     description: str
@@ -321,8 +308,8 @@ class CreateListingArgs(BaseModel):
 
 def create_listing(world: World, args: CreateListingArgs) -> dict:
     state = _market(world)
-    _check_photos(world, args.photos)
-    item_id = _fresh(lambda n: str(296000000000 + n), (li.id for li in state.listings), len(state.listings) + 1)
+    require_files(world, args.photos)
+    item_id = fresh_id(lambda n: str(296000000000 + n), (li.id for li in state.listings), len(state.listings) + 1)
     listing = Listing(id=item_id, seller=state.username, listed_at=world.now, **args.model_dump())
     state.listings.append(listing)
     return {"status": "listed", "listing": _detail(listing)}
@@ -349,7 +336,7 @@ def update_listing(world: World, args: UpdateListingArgs) -> dict:
     if not changes:
         raise ToolError("Nothing to change.")
     if "photos" in changes:
-        _check_photos(world, changes["photos"])
+        require_files(world, changes["photos"])
     if changes.get("quantity", listing.quantity) < listing.sold:
         raise ToolError(f"Quantity cannot be below the {listing.sold} already sold.")
     for field, value in changes.items():
@@ -406,7 +393,7 @@ def reply_to_message(world: World, args: ReplyArgs) -> dict:
     if not args.body.strip():
         raise ToolError("The reply is empty.")
     reply = Message(
-        id=_fresh(lambda n: f"msg-{n}", (m.id for m in state.messages), len(state.messages) + 1),
+        id=fresh_id(lambda n: f"msg-{n}", (m.id for m in state.messages), len(state.messages) + 1),
         item_id=original.item_id,
         sender=state.username,
         recipient=original.sender,

@@ -37,7 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic.alias_generators import to_pascal, to_snake
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError
+from sereno.tools import Tool, ToolError, fresh_id
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -977,10 +977,7 @@ def _validated(world: World, obj: SObject, data: dict[str, Any], changed: set[st
 
 def _new_id(world: World, obj: SObject) -> str:
     taken = {r.id for r in _items(world, obj)}
-    n = len(taken) + 1
-    while f"{obj.prefix}8Y{n:010d}AAA" in taken:
-        n += 1
-    return f"{obj.prefix}8Y{n:010d}AAA"
+    return fresh_id(lambda n: f"{obj.prefix}8Y{n:010d}AAA", taken, len(taken) + 1)
 
 
 def _label(world: World, name: str, record_id: str) -> str:

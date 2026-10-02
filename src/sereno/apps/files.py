@@ -222,6 +222,14 @@ def _files(world: World) -> Files:
     return world.app("files")
 
 
+def require_files(world: World, paths: list[str]) -> None:
+    """Raise unless every path is a live file in the linked files app; used by apps that attach files."""
+    files = world.app("files", required=False)
+    missing = [p for p in paths if files is None or files.file(p) is None]
+    if missing:
+        raise ToolError(f"No such file: {', '.join(missing)}.")
+
+
 def _norm_id(file_id: str) -> str:
     return file_id.strip().strip("/")
 

@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import NoArgs, Tool, ToolError
+from sereno.tools import NoArgs, Tool, ToolError, fresh_id
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -79,11 +79,7 @@ def _user(state: Payments, username: str) -> User:
 
 
 def _new_id(state: Payments) -> str:
-    taken = {t.id for t in state.transactions}
-    n = 4031870231000000000 + len(state.transactions) + 1
-    while str(n) in taken:
-        n += 1
-    return str(n)
+    return fresh_id(str, (t.id for t in state.transactions), 4031870231000000000 + len(state.transactions) + 1)
 
 
 def _name(state: Payments, username: str) -> str:

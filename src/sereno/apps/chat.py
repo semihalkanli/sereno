@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError
+from sereno.tools import Tool, ToolError, fresh_id
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -265,11 +265,7 @@ def _dm_with(chat: Chat, user: User) -> Channel:
 
 def _new_id(world: World, chat: Chat) -> str:
     seconds = int((world.now - _EPOCH).total_seconds())
-    taken = {m.id for m in chat.messages}
-    n = len(chat.messages) + 1
-    while f"{seconds}.{n:06d}" in taken:
-        n += 1
-    return f"{seconds}.{n:06d}"
+    return fresh_id(lambda n: f"{seconds}.{n:06d}", (m.id for m in chat.messages), len(chat.messages) + 1)
 
 
 class SendMessageArgs(BaseModel):
