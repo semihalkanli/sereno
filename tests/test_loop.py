@@ -26,11 +26,10 @@ COMMON_FIELDS = {
     "session",
     "turn",
     "step",
-    "agent_id",
+    "gen_ai.agent.id",
     "event",
-    "provenance",
-    "memory_op",
-    "gate",
+    "id",
+    "parent_id",
 }
 
 
@@ -57,11 +56,23 @@ def test_scripted_solution_passes_every_check(tmp_path):
     assert all(COMMON_FIELDS <= set(e) for e in events)
     assert [e["seq"] for e in events] == list(range(len(events)))
     kinds = [e["event"] for e in events]
-    assert kinds[:3] == ["run_start", "session_start", "world_state"]
-    assert kinds[-2:] == ["grade", "run_end"]
-    assert kinds.count("world_state") == 3  # initial, create_event, sendEmail
-    tool_results = [e for e in events if e["event"] == "tool_result"]
-    assert all(e["provenance"]["channel"].count(".") == 1 for e in tool_results)
+    assert kinds[:3] == ["span_begin", "span_begin", "state"]
+    assert [e["type"] for e in events[:2]] == ["run", "session"]
+    assert kinds[-3:] == ["score", "span_end", "span_end"]
+    assert [e["type"] for e in events[-2:]] == ["session", "run"]
+    assert kinds.count("state") == 3  # initial, create_event, sendEmail
+    tool_results = [e for e in events if e["event"] == "execute_tool"]
+    assert all(e["sereno.provenance"]["channel"].count(".") == 1 for e in tool_results)
+    # Every event hangs under an open span, and spans close in order.
+    ids = {e["id"] for e in events if e["event"] == "span_begin"}
+    assert [e["event"] for e in events if e["parent_id"] is None] == ["span_begin", "span_end"]  # the run span
+    assert all(e["parent_id"] in ids for e in events if e["parent_id"] is not None)
+    assert {e["span"] for e in events if e["event"] == "span_end"} == ids
+    # A chat event keeps the exact request: the conversation the model saw and the tools it was offered.
+    chats = [e for e in events if e["event"] == "chat"]
+    assert chats[0]["call"]["request"]["messages"][0]["role"] == "system"
+    assert len(chats[1]["call"]["request"]["messages"]) > len(chats[0]["call"]["request"]["messages"])
+    assert chats[0]["call"]["request"]["tools"]
 
 
 def test_untouched_world_fails():
@@ -116,7 +127,7 @@ def test_loop_reports_bad_calls_and_stops_at_cap(tmp_path):
     ] * 2
     result, checks, events = _run(bad, tmp_path, max_steps=2)
     assert result.reason == "max_steps"
-    errors = [e["error"] for e in events if e["event"] == "tool_result"]
+    errors = [e["error"] for e in events if e["event"] == "execute_tool"]
     assert "not valid JSON" in errors[0]
     assert "Unknown tool" in errors[1]
     assert "Invalid arguments" in errors[2]
@@ -161,11 +172,13 @@ def test_openrouter_request_and_reasoning_round_trip(tmp_path, monkeypatch):
     assert first["temperature"] == 0.0
     assert {t["function"]["name"] for t in first["tools"]} == set(toolset.tools)
     assert requests[1]["messages"][2]["reasoning_details"] == replies[0]["reasoning_details"]
-    events = read_events(tmp_path / "e.jsonl")
-    assert events[1]["reasoning"] == "Need the inbox first."
+    chat = next(e for e in read_events(tmp_path / "e.jsonl") if e["event"] == "chat")
+    assert chat["gen_ai.output.messages"][0]["parts"][0] == {"type": "reasoning", "content": "Need the inbox first."}
+    assert chat["call"]["request"] == first
+    assert chat["retries"] == 0 and chat["gen_ai.usage.input_tokens"] == 10
 
 
-def test_openrouter_retries_then_raises(monkeypatch):
+def test_openrouter_retries_then_raises(tmp_path, monkeypatch):
     monkeypatch.setattr("sereno.model.time.sleep", lambda s: None)
     calls = []
 
@@ -177,9 +190,19 @@ def test_openrouter_retries_then_raises(monkeypatch):
 
     model = OpenRouterModel("m", "p", api_key="test")
     model._client = httpx.Client(transport=httpx.MockTransport(handler))
-    with pytest.raises(RuntimeError, match="400"):
-        model.complete([{"role": "user", "content": "x"}], [])
+    from sereno.events import EventLog
+
+    with EventLog(tmp_path / "events.jsonl", "t") as log:
+        result = run_session(model, _toolset(), *_messages(), log)
+    assert result.reason == "error"
     assert len(calls) == 2
+    error = next(e for e in read_events(tmp_path / "events.jsonl") if e["event"] == "error")
+    assert error["type"] == "ModelCallError" and "400" in error["message"]
+    assert [a["status"] for a in error["attempts"]] == [429, 400]
+    diag = read_events(tmp_path / "diag.jsonl")
+    attempts = [d for d in diag if d["logger"] == "sereno.model" and "attempt" in d and "status" in d]
+    assert [(d["status"], d["level"]) for d in attempts] == [(429, "WARNING"), (400, "WARNING")]
+    assert all(d["event_id"] == error["id"] and d["run_id"] == "t" for d in diag)
 
 
 def test_reasoning_falls_back_to_details_and_counts_tokens(tmp_path):
@@ -200,6 +223,6 @@ def test_reasoning_falls_back_to_details_and_counts_tokens(tmp_path):
 
     with EventLog(tmp_path / "e.jsonl", "t") as log:
         run_session(DetailsOnly(), _toolset(), *_messages(), log)
-    response = read_events(tmp_path / "e.jsonl")[1]
-    assert response["reasoning"] == "Think."
-    assert response["usage"]["reasoning_tokens"] == 4
+    chat = next(e for e in read_events(tmp_path / "e.jsonl") if e["event"] == "chat")
+    assert chat["gen_ai.output.messages"][0]["parts"][0] == {"type": "reasoning", "content": "Think."}
+    assert chat["gen_ai.usage.reasoning.output_tokens"] == 4

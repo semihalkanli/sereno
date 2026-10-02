@@ -7,7 +7,9 @@ checkpoints and compaction come later (plan phase 3).
 """
 
 import json
+import os
 import subprocess
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,7 +17,7 @@ from pathlib import Path
 from sereno.chain import LoadedChain, Message, apply_change
 from sereno.checks import grade
 from sereno.events import EventLog
-from sereno.loop import SessionResult, run_session, run_tool_call
+from sereno.loop import SessionResult, output_messages, run_session, run_tool_call
 from sereno.tools import Toolset
 
 REPO = Path(__file__).resolve().parents[2]
@@ -65,7 +67,7 @@ def _history(history: list[Message], toolset: Toolset, log: EventLog) -> list[di
     for entry in history:
         if entry.role == "user":
             messages.append({"role": "user", "content": entry.content})
-            log.emit("user_message", text=entry.content, prefilled=True)
+            log.emit("input", content=entry.content, prefilled=True)
             continue
         calls = []
         for call in entry.calls:
@@ -77,15 +79,9 @@ def _history(history: list[Message], toolset: Toolset, log: EventLog) -> list[di
                     "function": {"name": call.name, "arguments": json.dumps(call.args)},
                 }
             )
-        messages.append({"role": "assistant", "content": entry.content, **({"tool_calls": calls} if calls else {})})
-        log.emit(
-            "model_response",
-            text=entry.content,
-            tool_calls=[
-                {"id": c["id"], "name": c["function"]["name"], "args": c["function"]["arguments"]} for c in calls
-            ],
-            prefilled=True,
-        )
+        message = {"role": "assistant", "content": entry.content, **({"tool_calls": calls} if calls else {})}
+        messages.append(message)
+        log.emit("chat", prefilled=True, **{"gen_ai.output.messages": output_messages(message)})
         messages.extend(run_tool_call(toolset, call, log, None, prefilled=True) for call in calls)
     return messages
 
@@ -102,65 +98,81 @@ def run_chain(
     `make_model(session_id)` returns the model for one session, so a scripted
     model can replay a per-session solution.
     """
+    result = ChainResult()
+    with EventLog(log_path, run_id) as log:
+        try:
+            _run(loaded, make_model, log, run_id, max_steps, result)
+        except BaseException as e:
+            log.abort(e)
+            raise
+    return result
+
+
+def _run(loaded: LoadedChain, make_model, log: EventLog, run_id: str, max_steps: int, result: ChainResult) -> None:
     chain = loaded.chain
     world = loaded.initial_world()
     start = world.copy()
-    result = ChainResult()
-
-    with EventLog(log_path, run_id) as log:
-        for number, session in enumerate(chain.sessions, start=1):
-            model = make_model(session.id)
-            log.session, log.turn = number, 1
-            if number == 1:
-                log.emit(
-                    "run_start",
-                    scenario=chain.id,
-                    chain=chain.id,
-                    attack=loaded.attack.id if loaded.attack else None,
-                    marker=loaded.attack.marker if loaded.attack else None,
-                    model=model.name,
-                    provider=model.provider,
-                    temperature=model.temperature,
-                    max_steps=max_steps,
-                    git=git_state(),
-                )
-            if session.now < world.now:
-                raise ValueError(f"session {session.id} starts at {session.now}, before the world clock {world.now}")
-            world.now = session.now
-            for change in session.changes:
-                apply_change(world, change)
-            toolset = Toolset(world, world.tools())
-            system_prompt = loaded.system_prompt(world)
-            log.emit(
-                "session_start",
-                session_id=session.id,
-                date=world.today.isoformat(),
-                owner=world.owner.model_dump(),
-                tools=list(toolset.tools),
-                system_prompt=system_prompt,
-                changes=[c.model_dump(exclude_none=True) for c in session.changes],
+    started = time.monotonic()
+    for number, session in enumerate(chain.sessions, start=1):
+        model = make_model(session.id)
+        if number == 1:
+            log.begin(
+                "run",
+                run_id,
+                chain=chain.id,
+                attack=loaded.attack.id if loaded.attack else None,
+                marker=loaded.attack.marker if loaded.attack else None,
+                max_steps=max_steps,
+                git=git_state(),
+                pid=os.getpid(),
+                **{
+                    "gen_ai.request.model": model.name,
+                    "gen_ai.provider.name": "openrouter" if model.provider else None,
+                    "sereno.upstream_provider": model.provider,
+                    "gen_ai.request.temperature": model.temperature,
+                },
             )
-            log.emit("world_state", reason="initial" if number == 1 else "session_start", state=world.snapshot())
-            pre = world.copy()
-            messages = [{"role": "system", "content": system_prompt}, *_history(session.history, toolset, log)]
-            outcome = run_session(model, toolset, messages, session.turns, log, max_steps=max_steps)
-            result.sessions.append(outcome)
-            checks = grade(session.checks, pre, world)
-            result.checks[session.id] = checks
-            log.emit("grade", session_id=session.id, group=session.id, checks=checks, passed=all(checks.values()))
-
-        if chain.final_checks:
-            checks = grade(chain.final_checks, start, world)
-            result.checks["final"] = checks
-            log.emit("grade", group="final", checks=checks, passed=all(checks.values()))
-        if loaded.attack and loaded.attack.checks:
-            checks = grade(loaded.attack.checks, start, world)
-            result.checks["attack"] = checks
-            log.emit("grade", group="attack", checks=checks, passed=all(checks.values()))
-        log.emit(
-            "run_end",
-            cost_usd=round(result.cost_usd, 8),
-            model_calls=result.model_calls,
-            tool_calls=result.tool_calls,
+        log.session, log.turn = number, None
+        if session.now < world.now:
+            raise ValueError(f"session {session.id} starts at {session.now}, before the world clock {world.now}")
+        world.now = session.now
+        for change in session.changes:
+            apply_change(world, change)
+        toolset = Toolset(world, world.tools())
+        system_prompt = loaded.system_prompt(world)
+        log.begin(
+            "session",
+            session.id,
+            session_id=session.id,
+            date=world.today.isoformat(),
+            owner=world.owner.model_dump(),
+            changes=[c.model_dump(exclude_none=True) for c in session.changes],
+            **{"gen_ai.system_instructions": system_prompt, "gen_ai.tool.definitions": toolset.schemas()},
         )
-    return result
+        log.emit("state", reason="initial" if number == 1 else "session_start", snapshot=world.snapshot())
+        pre = world.copy()
+        messages = [{"role": "system", "content": system_prompt}, *_history(session.history, toolset, log)]
+        outcome = run_session(model, toolset, messages, session.turns, log, max_steps=max_steps)
+        result.sessions.append(outcome)
+        log.turn = None
+        checks = grade(session.checks, pre, world)
+        result.checks[session.id] = checks
+        log.emit("score", group=session.id, checks=checks, passed=all(checks.values()))
+        log.end("session", reason=outcome.reason, final_text=outcome.final_text)
+
+    log.session = None
+    if chain.final_checks:
+        checks = grade(chain.final_checks, start, world)
+        result.checks["final"] = checks
+        log.emit("score", group="final", checks=checks, passed=all(checks.values()))
+    if loaded.attack and loaded.attack.checks:
+        checks = grade(loaded.attack.checks, start, world)
+        result.checks["attack"] = checks
+        log.emit("score", group="attack", checks=checks, passed=all(checks.values()))
+    log.end(
+        "run",
+        model_calls=result.model_calls,
+        tool_calls=result.tool_calls,
+        duration_s=round(time.monotonic() - started, 3),
+        **{"sereno.cost_usd": round(result.cost_usd, 8)},
+    )

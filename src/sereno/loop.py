@@ -8,12 +8,17 @@ event log.
 """
 
 import json
+import logging
+import time
+import traceback
 from dataclasses import dataclass
 from typing import Any
 
-from sereno.events import EventLog
+from sereno.events import EventLog, new_id
 from sereno.model import ChatModel
 from sereno.tools import ToolOutcome, Toolset
+
+logger = logging.getLogger("sereno.loop")
 
 
 @dataclass
@@ -43,13 +48,38 @@ def _reasoning_text(message: dict[str, Any]) -> str | None:
     return "\n".join(p for p in parts if p) or None
 
 
+def output_messages(message: dict[str, Any], finish_reason: str | None = None) -> list[dict[str, Any]]:
+    """The assistant message in the OpenTelemetry GenAI shape: role and typed parts."""
+    parts: list[dict[str, Any]] = []
+    reasoning = _reasoning_text(message)
+    if reasoning:
+        parts.append({"type": "reasoning", "content": reasoning})
+    if message.get("content"):
+        parts.append({"type": "text", "content": message["content"]})
+    for call in message.get("tool_calls") or []:
+        parts.append(
+            {
+                "type": "tool_call",
+                "id": call.get("id"),
+                "name": call["function"]["name"],
+                "arguments": call["function"].get("arguments"),
+            }
+        )
+    out = {"role": "assistant", "parts": parts}
+    if finish_reason is not None:
+        out["finish_reason"] = finish_reason
+    return [out]
+
+
 def _usage(usage: dict[str, Any]) -> dict[str, Any]:
-    details = usage.get("completion_tokens_details") or {}
+    completion = usage.get("completion_tokens_details") or {}
+    prompt = usage.get("prompt_tokens_details") or {}
     return {
-        "prompt_tokens": usage.get("prompt_tokens"),
-        "completion_tokens": usage.get("completion_tokens"),
-        "reasoning_tokens": details.get("reasoning_tokens"),
-        "cost": usage.get("cost"),
+        "gen_ai.usage.input_tokens": usage.get("prompt_tokens"),
+        "gen_ai.usage.output_tokens": usage.get("completion_tokens"),
+        "gen_ai.usage.reasoning.output_tokens": completion.get("reasoning_tokens"),
+        "gen_ai.usage.cache_read.input_tokens": prompt.get("cached_tokens"),
+        "sereno.cost_usd": usage.get("cost"),
     }
 
 
@@ -83,33 +113,54 @@ def run_session(
 
     for turn, user_prompt in enumerate(turns, start=1):
         log.turn = turn
+        log.begin("turn", f"turn {turn}", content=user_prompt)
         messages.append({"role": "user", "content": user_prompt})
-        log.emit("user_message", text=user_prompt)
+        log.emit("input", content=user_prompt)
         while True:
             if step >= max_steps:
-                log.emit("session_end", step=max_steps - 1, reason="max_steps", final_text=None)
+                log.end("turn")
                 return SessionResult("max_steps", None, messages, max_steps, tool_calls_run, cost)
+            event_id = new_id()
             try:
-                completion = model.complete(messages, schemas)
+                with log.building(event_id):
+                    try:
+                        completion = model.complete(messages, schemas)
+                    except Exception:
+                        logger.exception("model call failed")
+                        raise
             except Exception as e:
-                log.emit("session_end", step=step, reason="error", final_text=None, error=repr(e))
+                log.emit(
+                    "error",
+                    step=step,
+                    id=event_id,
+                    message=str(e),
+                    type=type(e).__name__,
+                    traceback=traceback.format_exc(),
+                    attempts=getattr(e, "attempts", None),
+                )
+                log.end("turn")
                 return SessionResult("error", None, messages, step, tool_calls_run, cost)
 
             message = completion.message
             calls = message.get("tool_calls") or []
             cost += completion.usage.get("cost") or 0.0
+            response = completion.response
             log.emit(
-                "model_response",
+                "chat",
                 step=step,
-                text=message.get("content"),
-                reasoning=_reasoning_text(message),
-                tool_calls=[
-                    {"id": c.get("id"), "name": c["function"]["name"], "args": c["function"].get("arguments")}
-                    for c in calls
-                ],
-                finish_reason=completion.finish_reason,
-                usage=_usage(completion.usage),
-                latency_s=completion.latency_s,
+                id=event_id,
+                call={"request": completion.request, "response": response},
+                **{
+                    "gen_ai.request.model": completion.request.get("model"),
+                    "gen_ai.response.id": response.get("id"),
+                    "gen_ai.response.model": response.get("model"),
+                    "gen_ai.response.finish_reasons": [completion.finish_reason],
+                    "gen_ai.output.messages": output_messages(message, completion.finish_reason),
+                },
+                **_usage(completion.usage),
+                duration_s=completion.latency_s,
+                retries=len(completion.attempts) - 1,
+                attempts=completion.attempts,
             )
             messages.append(_history_message(message))
             step += 1
@@ -120,8 +171,8 @@ def run_session(
             for call in calls:
                 tool_calls_run += 1
                 messages.append(run_tool_call(toolset, call, log, step - 1))
+        log.end("turn")
 
-    log.emit("session_end", step=step - 1, reason="final_answer", final_text=text)
     return SessionResult("final_answer", text, messages, step, tool_calls_run, cost)
 
 
@@ -130,25 +181,33 @@ def run_tool_call(
 ) -> dict[str, Any]:
     """Run one tool call on the world, log it, and return the tool message for the conversation."""
     name = call["function"]["name"]
-    args, parse_error = _parse_args(call["function"].get("arguments"))
+    raw_args = call["function"].get("arguments")
+    args, parse_error = _parse_args(raw_args)
+    t0 = time.monotonic()
     if parse_error is None:
         outcome = toolset.call(name, args or {})
     else:
         outcome = ToolOutcome("", parse_error, {"channel": f"loop.{name}"}, False)
+    duration = round(time.monotonic() - t0, 3)
     result, error = outcome.result, outcome.error
+    if error:
+        logger.info("tool %s returned an error: %s", name, error, extra={"tool": name})
     extra = {"prefilled": True} if prefilled else {}
     log.emit(
-        "tool_result",
+        "execute_tool",
         step=step,
-        provenance=outcome.provenance,
-        call_id=call.get("id"),
-        name=name,
-        args=args,
-        result=result,
+        **{
+            "gen_ai.tool.name": name,
+            "gen_ai.tool.call.id": call.get("id"),
+            "gen_ai.tool.call.arguments": args if parse_error is None else raw_args,
+            "gen_ai.tool.call.result": None if error else result,
+            "sereno.provenance": outcome.provenance,
+            "sereno.state_changed": outcome.state_changed,
+        },
         error=error,
-        state_changed=outcome.state_changed,
+        duration_s=duration,
         **extra,
     )
     if outcome.snapshot is not None:
-        log.emit("world_state", step=step, reason=name, state=outcome.snapshot)
+        log.emit("state", step=step, reason=name, snapshot=outcome.snapshot)
     return {"role": "tool", "tool_call_id": call.get("id"), "content": f"Error: {error}" if error else result}
