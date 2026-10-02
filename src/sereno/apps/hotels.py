@@ -55,7 +55,8 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError, fresh_id
+from sereno.apps._common import fresh_id, money, plain_stamp
+from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -196,14 +197,6 @@ class Hotels(BaseModel):
 
 def _hotels(world: World) -> Hotels:
     return world.app("hotels")
-
-
-def _stamp(t: datetime | None) -> str | None:
-    return t.strftime("%Y-%m-%d %H:%M:%S") if t else None
-
-
-def _money(x: float) -> float:
-    return round(x, 2)
 
 
 def _property(world: World, accommodation_id: str) -> Property:
@@ -347,8 +340,8 @@ def accommodations_search(world: World, args: AccommodationsSearchArgs) -> dict:
                 "hotel_rating": prop.stars,
                 "latitude": prop.latitude,
                 "longitude": prop.longitude,
-                "price_per_night": _money(per_night),
-                "price_per_stay": _money(per_night * nights),
+                "price_per_night": money(per_night),
+                "price_per_stay": money(per_night * nights),
                 "review_count": prop.review_count,
                 "review_rating": prop.review_score,
                 "top_amenities": prop.facilities[:5],
@@ -420,10 +413,10 @@ def accommodations_room_search(world: World, args: AccommodationsRoomSearchArgs)
                 "max_occupancy": room.max_occupancy,
                 "number_available": left,
                 "meal_plan": room.meal_plan,
-                "price": {"per_night": _money(per_night), "total": _money(per_night * nights)},
+                "price": {"per_night": money(per_night), "total": money(per_night * nights)},
                 "cancellation": {
                     "type": "free_cancellation" if deadline else "non_refundable",
-                    "free_cancellation_until": _stamp(deadline),
+                    "free_cancellation_until": plain_stamp(deadline),
                     "policy": _policy_text(deadline),
                 },
                 "payment_timings": _timings(world, room, args.arrival),
@@ -515,7 +508,7 @@ def accommodations_order_create(world: World, args: AccommodationsOrderCreateArg
     if args.payment_timing not in timings:
         raise ToolError(f"Payment timing {args.payment_timing!r} is not offered; choose one of {', '.join(timings)}.")
     deadline = _deadline(world, room, args.arrival)
-    total = _money(room.price_per_night * args.rooms * nights)
+    total = money(room.price_per_night * args.rooms * nights)
     status, paid, due = {
         "pay_online_now": ("paid", total, None),
         "pay_online_later": ("scheduled", 0.0, deadline.date() if deadline else None),
@@ -566,7 +559,7 @@ def accommodations_order_create(world: World, args: AccommodationsOrderCreateArg
             "amount_charged": order.amount_paid,
             "charge_date": order.payment_due_date.isoformat() if order.payment_due_date else None,
         },
-        "free_cancellation_until": _stamp(order.free_cancellation_until),
+        "free_cancellation_until": plain_stamp(order.free_cancellation_until),
     }
 
 
@@ -616,7 +609,7 @@ def accommodations_order_details(world: World, args: AccommodationsOrderDetailsA
         "order_id": o.id,
         "pincode": o.pincode,
         "status": o.status,
-        "created": _stamp(o.created_at),
+        "created": plain_stamp(o.created_at),
         "accommodation": {
             "id": o.accommodation_id,
             "name": o.accommodation_name,
@@ -635,9 +628,9 @@ def accommodations_order_details(world: World, args: AccommodationsOrderDetailsA
             "charge_date": o.payment_due_date.isoformat() if o.payment_due_date else None,
         },
         "cancellation": {
-            "free_cancellation_until": _stamp(o.free_cancellation_until),
+            "free_cancellation_until": plain_stamp(o.free_cancellation_until),
             "policy": _policy_text(o.free_cancellation_until),
-            "cancelled_at": _stamp(o.cancelled_at),
+            "cancelled_at": plain_stamp(o.cancelled_at),
             "reason": o.cancellation_reason,
             "fee": o.cancellation_fee,
             "refund": o.refund_amount,
@@ -667,11 +660,11 @@ def accommodations_order_cancel(world: World, args: AccommodationsOrderCancelArg
     elif o.free_cancellation_until is None:
         fee = o.total_price
     else:
-        fee = _money(o.total_price / nights)
+        fee = money(o.total_price / nights)
     charged = o.amount_paid
     if o.payment_timing == "pay_online_later" and o.payment_due_date and world.today >= o.payment_due_date:
         charged = o.total_price
-    refund = _money(max(charged - fee, 0.0))
+    refund = money(max(charged - fee, 0.0))
     if fee > 0:
         status = "partially_refunded" if refund > 0 else "fee_charged"
     else:
@@ -690,7 +683,7 @@ def accommodations_order_cancel(world: World, args: AccommodationsOrderCancelArg
         "cancellation_fee": fee,
         "refund_amount": refund,
         "currency": o.currency,
-        "cancelled_at": _stamp(o.cancelled_at),
+        "cancelled_at": plain_stamp(o.cancelled_at),
     }
 
 
@@ -717,7 +710,7 @@ def accommodations_messages_list(world: World, args: AccommodationsMessagesListA
                         "message_id": m.id,
                         "sender": {"type": m.sender, "name": m.sender_name},
                         "content": m.content,
-                        "time": _stamp(m.sent_at),
+                        "time": plain_stamp(m.sent_at),
                     }
                     for m in msgs
                 ],
@@ -750,7 +743,7 @@ def accommodations_messages_send(world: World, args: AccommodationsMessagesSendA
         sent_at=world.now,
     )
     hotels.messages.append(message)
-    return {"message": message.id, "conversation": message.conversation, "time": _stamp(message.sent_at)}
+    return {"message": message.id, "conversation": message.conversation, "time": plain_stamp(message.sent_at)}
 
 
 class AccommodationsReviewSubmitArgs(BaseModel):

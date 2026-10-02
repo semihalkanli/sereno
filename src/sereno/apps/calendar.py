@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from sereno.apps import App
+from sereno.apps._common import iso_seconds
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -72,10 +73,6 @@ class Calendar(BaseModel):
 
 def _calendar(world: World) -> Calendar:
     return world.app("calendar")
-
-
-def _stamp(t: datetime) -> str:
-    return t.isoformat(timespec="seconds")
 
 
 def _own(world: World, e: Event) -> bool:
@@ -125,8 +122,8 @@ def _view(world: World, e: Event) -> dict:
         "summary": e.title,
         "description": e.description,
         "location": e.location,
-        "start": {"dateTime": _stamp(e.start)},
-        "end": {"dateTime": _stamp(e.end)},
+        "start": {"dateTime": iso_seconds(e.start)},
+        "end": {"dateTime": iso_seconds(e.end)},
         "organizer": {"email": organizer, **({"self": True} if _own(world, e) else {})},
         "attendees": attendees,
         "hangoutLink": e.meeting_link,
@@ -347,7 +344,7 @@ def suggest_time(world: World, args: SuggestTimeArgs) -> dict:
             for b_start, b_end in [*busy, (hi, hi)]:
                 gap_end = min(b_start, hi)
                 if gap_end - cursor >= need:
-                    slots.append({"startTime": _stamp(cursor), "endTime": _stamp(gap_end)})
+                    slots.append({"startTime": iso_seconds(cursor), "endTime": iso_seconds(gap_end)})
                 cursor = max(cursor, b_end)
                 if cursor >= hi:
                     break

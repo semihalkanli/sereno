@@ -71,6 +71,7 @@ from urllib.parse import quote
 from pydantic import BaseModel, Field, model_validator
 
 from sereno.apps import App
+from sereno.apps._common import iso_seconds
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -260,10 +261,6 @@ def _link(f: File) -> str:
     return f"https://drive.example.com/file/d/{fid}/view"
 
 
-def _stamp(t: datetime | None) -> str | None:
-    return t.isoformat(timespec="seconds") if t else None
-
-
 def _view(world: World, f: File, snippet: int | Literal[False] | None = False) -> dict:
     """The file object; `snippet` is the snippet length (None: unlimited, False: none)."""
     out = {
@@ -272,8 +269,8 @@ def _view(world: World, f: File, snippet: int | Literal[False] | None = False) -
         "mimeType": f.mime_type,
         "parentId": _parent(f.path) or "root",
         "owner": _owner(world, f),
-        "createdTime": _stamp(f.created_at or f.modified_at),
-        "modifiedTime": _stamp(f.modified_at or f.created_at),
+        "createdTime": iso_seconds(f.created_at or f.modified_at),
+        "modifiedTime": iso_seconds(f.modified_at or f.created_at),
         "viewUrl": _link(f),
     }
     out = {k: v for k, v in out.items() if v is not None}

@@ -69,6 +69,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import plain_stamp
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -214,10 +215,6 @@ class _Stop(BaseModel):
 
 def _rides(world: World) -> Rides:
     return world.app("rides")
-
-
-def _stamp(t: datetime | None) -> str | None:
-    return t.strftime("%Y-%m-%d %H:%M:%S") if t else None
 
 
 def _money(amount: float, currency: str) -> str:
@@ -390,7 +387,13 @@ class PlacesSavedArgs(BaseModel):
 def places_saved(world: World, args: PlacesSavedArgs) -> dict:
     return {
         "places": [
-            {"id": s.id, "label": s.label, "name": s.name, "address": s.address, "updated_at": _stamp(s.updated_at)}
+            {
+                "id": s.id,
+                "label": s.label,
+                "name": s.name,
+                "address": s.address,
+                "updated_at": plain_stamp(s.updated_at),
+            }
             for s in _rides(world).saved_places
         ]
     }
@@ -583,9 +586,9 @@ def get_ride_status(world: World, args: RideStatusArgs) -> dict:
             "currency_code": ride.currency_code,
         },
         "payment_method_id": ride.payment_method_id,
-        "request_time": _stamp(ride.requested_at),
-        "start_time": _stamp(ride.start_time),
-        "end_time": _stamp(ride.end_time),
+        "request_time": plain_stamp(ride.requested_at),
+        "start_time": plain_stamp(ride.start_time),
+        "end_time": plain_stamp(ride.end_time),
     }
 
 
@@ -641,9 +644,9 @@ def trips_list(world: World, args: TripsListArgs) -> dict:
                 "status": r.status,
                 "product_id": r.product_id,
                 "display_name": names.get(r.product_id, r.product_id),
-                "request_time": _stamp(r.requested_at),
-                "start_time": _stamp(r.start_time),
-                "end_time": _stamp(r.end_time),
+                "request_time": plain_stamp(r.requested_at),
+                "start_time": plain_stamp(r.start_time),
+                "end_time": plain_stamp(r.end_time),
                 "distance": r.distance,
                 "pickup_address": r.pickup_address,
                 "dropoff_address": r.dropoff_address,
@@ -687,7 +690,7 @@ def trips_receipt(world: World, args: TripsReceiptArgs) -> dict:
     subtotal = round(normal + (surge.amount if surge else 0.0), 2)
     return {
         "request_id": ride.request_id,
-        "request_time": _stamp(ride.requested_at),
+        "request_time": plain_stamp(ride.requested_at),
         "pickup_address": ride.pickup_address,
         "dropoff_address": ride.dropoff_address,
         "charges": [{"name": c.name, "amount": f"{c.amount:.2f}", "type": c.type} for c in charges],
@@ -764,7 +767,7 @@ def get_driver_messages(world: World, args: GetDriverMessagesArgs) -> dict:
         "request_id": ride.request_id,
         "driver_name": driver.name if driver else None,
         "messages": [
-            {"message_id": m.id, "from": m.sender, "text": m.text, "sent_at": _stamp(m.sent_at)} for m in found
+            {"message_id": m.id, "from": m.sender, "text": m.text, "sent_at": plain_stamp(m.sent_at)} for m in found
         ],
     }
 
@@ -789,7 +792,7 @@ def send_driver_message(world: World, args: SendDriverMessageArgs) -> dict:
         sent_at=world.now,
     )
     state.messages.append(message)
-    return {"message_id": message.id, "status": "sent", "sent_at": _stamp(message.sent_at)}
+    return {"message_id": message.id, "status": "sent", "sent_at": plain_stamp(message.sent_at)}
 
 
 APP = App(

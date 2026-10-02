@@ -51,7 +51,8 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError, fresh_id
+from sereno.apps._common import fresh_id, iso_seconds
+from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -125,10 +126,6 @@ def _channel_or_error(chat: Chat, channel_id: str) -> Channel:
     return channel
 
 
-def _stamp(t: datetime) -> str:
-    return t.isoformat(timespec="seconds")
-
-
 def _is_reply(m: Message) -> bool:
     return m.thread_ts is not None and m.thread_ts != m.id
 
@@ -167,7 +164,7 @@ def _message_view(m: Message, reply_count: int | None = None) -> dict:
         "ts": m.id,
         "user": m.user,
         "text": m.text,
-        "time": _stamp(m.sent_at),
+        "time": iso_seconds(m.sent_at),
         "thread_ts": m.thread_ts,
         "reactions": [r.model_dump() for r in m.reactions],
     }
@@ -397,7 +394,7 @@ def chat_search_public_and_private(world: World, args: SearchArgs) -> dict:
                 "ts": m.id,
                 "user": m.user,
                 "text": m.text,
-                "time": _stamp(m.sent_at),
+                "time": iso_seconds(m.sent_at),
                 "thread_ts": m.thread_ts,
                 "permalink": _permalink(channels[m.channel_id], m.id),
             }

@@ -44,7 +44,8 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError, fresh_id
+from sereno.apps._common import fresh_id, money
+from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -195,10 +196,6 @@ def _stamp(t: datetime) -> str:
     return t.strftime("%Y-%m-%dT%H:%M")
 
 
-def _money(x: float) -> float:
-    return round(x, 2)
-
-
 def _places(state: Flights, query: str) -> set[str]:
     q = query.strip().lower()
     codes = {a.iata for a in state.airports if q in (a.iata.lower(), a.city.lower(), a.name.lower())}
@@ -318,8 +315,8 @@ def live_search(world: World, args: LiveSearchArgs) -> dict:
                     "agent_name": agent.name,
                     "agent_type": agent.type,
                     "fare_name": o.fare_name,
-                    "price": _money(o.price),
-                    "total_price": _money(o.price * passengers),
+                    "price": money(o.price),
+                    "total_price": money(o.price * passengers),
                 }
             )
         itineraries.append(
@@ -384,7 +381,7 @@ def indicative_search(world: World, args: IndicativeSearchArgs) -> dict:
         quote = {
             "outbound_date": it.legs[0].departure.date().isoformat(),
             "inbound_date": it.legs[1].departure.date().isoformat() if args.return_trip else None,
-            "min_price": _money(price),
+            "min_price": money(price),
             "is_direct": all(leg.stops == 0 for leg in it.legs),
             "carriers": list(dict.fromkeys(s.carrier for leg in it.legs for s in leg.segments)),
             "itinerary_id": it.id,
@@ -433,12 +430,12 @@ def get_itinerary(world: World, args: GetItineraryArgs) -> dict:
             {
                 "offer_id": o.id,
                 "agent": agent.model_dump(),
-                "price": _money(o.price),
+                "price": money(o.price),
                 "currency": state.currency,
                 "fare_name": o.fare_name,
                 "baggage": o.baggage.model_dump(),
                 "refundable": o.refundable,
-                "cancellation_fee": _money(o.cancellation_fee),
+                "cancellation_fee": money(o.cancellation_fee),
                 "description": o.description,
                 "fare_notes": o.fare_notes,
                 "terms": o.terms,
@@ -491,8 +488,8 @@ def book_offer(world: World, args: BookOfferArgs) -> dict:
         fare_name=offer.fare_name,
         passengers=args.passengers,
         baggage=offer.baggage.model_copy(),
-        price_per_passenger=_money(offer.price),
-        total_price=_money(offer.price * len(args.passengers)),
+        price_per_passenger=money(offer.price),
+        total_price=money(offer.price * len(args.passengers)),
         currency=state.currency,
         refundable=offer.refundable,
         cancellation_fee=offer.cancellation_fee,
@@ -564,7 +561,7 @@ def cancel_booking(world: World, args: CancelBookingArgs) -> dict:
     refund = booking.total_price - booking.cancellation_fee * len(booking.passengers) if booking.refundable else 0.0
     booking.status = "cancelled"
     booking.cancelled_at = world.now
-    booking.refund_amount = _money(max(refund, 0.0))
+    booking.refund_amount = money(max(refund, 0.0))
     return {
         "booking_id": booking.id,
         "status": booking.status,
@@ -637,7 +634,7 @@ def list_price_alerts(world: World, args: ListPriceAlertsArgs) -> dict:
                 "cabin_class": a.cabin_class,
                 "price_when_created": was,
                 "current_price": now,
-                "change": _money(now - was) if now is not None and was is not None else None,
+                "change": money(now - was) if now is not None and was is not None else None,
                 "created_at": _stamp(a.created_at),
             }
         )

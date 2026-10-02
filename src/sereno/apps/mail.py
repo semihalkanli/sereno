@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import plain_stamp
 from sereno.apps.files import require_files
 from sereno.tools import Tool, ToolError
 
@@ -52,10 +53,6 @@ class Mail(BaseModel):
 
 def _mail(world: World) -> Mail:
     return world.app("mail")
-
-
-def _stamp(t: datetime) -> str:
-    return t.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _email(world: World, email_id: str) -> Email:
@@ -116,7 +113,7 @@ def list_emails(world: World, args: ListEmailsArgs) -> dict:
                 "from": e.sender,
                 "subject": e.subject,
                 "snippet": _snippet(e.body),
-                "timestamp": _stamp(e.sent_at),
+                "timestamp": plain_stamp(e.sent_at),
                 "is_read": e.read,
             }
             for e in found[: args.max_results]
@@ -137,7 +134,7 @@ def get_email_by_id(world: World, args: GetEmailByIdArgs) -> dict:
         "cc": e.cc,
         "subject": e.subject,
         "body": e.body,
-        "timestamp": _stamp(e.sent_at),
+        "timestamp": plain_stamp(e.sent_at),
         "is_read": e.read,
         "attachments": [{"file_id": p, "filename": p.rsplit("/", 1)[-1]} for p in e.attachments],
     }
@@ -162,7 +159,7 @@ def _send(world: World, to: list[str], cc: list[str], subject: str, body: str, a
         **extra,
     )
     mail.emails.append(email)
-    return {"message_id": email.id, "status": "sent", "timestamp": _stamp(email.sent_at)}
+    return {"message_id": email.id, "status": "sent", "timestamp": plain_stamp(email.sent_at)}
 
 
 class SendEmailArgs(BaseModel):
@@ -206,7 +203,7 @@ def forward_email(world: World, args: ForwardEmailArgs) -> dict:
     original = _email(world, args.email_id)
     body = (
         f"{args.comment}\n\n---------- Forwarded message ---------\nFrom: {original.sender}\n"
-        f"Date: {_stamp(original.sent_at)}\nSubject: {original.subject}\nTo: {', '.join(original.to)}\n\n"
+        f"Date: {plain_stamp(original.sent_at)}\nSubject: {original.subject}\nTo: {', '.join(original.to)}\n\n"
         f"{original.body}"
     ).lstrip()
     subject = original.subject if original.subject.lower().startswith("fwd:") else f"Fwd: {original.subject}"

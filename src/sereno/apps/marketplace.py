@@ -31,8 +31,9 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import fresh_id
 from sereno.apps.files import require_files
-from sereno.tools import NoArgs, Tool, ToolError, fresh_id
+from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
     from sereno.world import World
