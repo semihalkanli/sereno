@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import has_words
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -184,8 +185,7 @@ def _booking(travel: Travel, booking_id: str) -> Booking:
 
 
 def _place_matches(query: str, *fields: str) -> bool:
-    text = " ".join(fields).lower()
-    return all(w in text for w in query.lower().split())
+    return has_words(query.lower().split(), *fields)
 
 
 def _clock(time: str, depart: date, arrive: date) -> str:

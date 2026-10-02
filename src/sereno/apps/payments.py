@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import fresh_id
+from sereno.apps._common import fresh_id, has_words
 from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
@@ -133,7 +133,7 @@ class SearchUsersArgs(BaseModel):
 
 def search_users(world: World, args: SearchUsersArgs) -> list[dict]:
     words = _handle(args.query).lower().split()
-    found = [u for u in _payments(world).users if all(w in f"{u.username} {u.display_name}".lower() for w in words)]
+    found = [u for u in _payments(world).users if has_words(words, u.username, u.display_name)]
     return [{"username": f"@{u.username}", "display_name": u.display_name, "friend": u.friend} for u in found[:10]]
 
 

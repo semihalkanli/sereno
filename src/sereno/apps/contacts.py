@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import has_words
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -44,9 +45,7 @@ def contact_search(world: World, args: ContactSearchArgs) -> dict:
     if not words:
         raise ToolError("The query is empty.")
     found = [
-        c
-        for c in world.app("contacts").contacts
-        if all(w in f"{c.name} {c.email} {c.title} {c.department} {c.company}".lower() for w in words)
+        c for c in world.app("contacts").contacts if has_words(words, c.name, c.email, c.title, c.department, c.company)
     ]
     return {
         "query": args.query,

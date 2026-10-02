@@ -69,7 +69,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find, plain_stamp
+from sereno.apps._common import find, has_words, plain_stamp
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -363,7 +363,7 @@ def places_search(world: World, args: PlacesSearchArgs) -> dict:
     words = args.query.lower().split()
     if not words:
         raise ToolError("Query must not be empty.")
-    found = [p for p in _rides(world).places if all(w in f"{p.name} {p.address}".lower() for w in words)]
+    found = [p for p in _rides(world).places if has_words(words, p.name, p.address)]
     return {
         "places": [
             {

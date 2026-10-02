@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find, fresh_id, iso_seconds
+from sereno.apps._common import find, fresh_id, has_words, iso_seconds
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -383,7 +383,7 @@ def chat_search_public_and_private(world: World, args: SearchArgs) -> dict:
             and (before is None or day < before)
             and (after is None or day > after)
             and (on is None or day == on)
-            and all(w in m.text.lower() for w in words)
+            and has_words(words, m.text)
             and not any(w in m.text.lower() for w in excluded)
         )
 
@@ -413,9 +413,7 @@ class SearchUsersArgs(BaseModel):
 def chat_search_users(world: World, args: SearchUsersArgs) -> dict:
     words = args.query.lower().lstrip("@").split()
     users = [
-        u
-        for u in _chat(world).users
-        if u.is_active and all(w in " ".join((u.id, u.name, u.real_name, u.email, u.title)).lower() for w in words)
+        u for u in _chat(world).users if u.is_active and has_words(words, u.id, u.name, u.real_name, u.email, u.title)
     ]
     return {"users": [_user_view(u) for u in users]}
 

@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find, fresh_id
+from sereno.apps._common import find, fresh_id, has_words
 from sereno.apps.files import require_files
 from sereno.tools import NoArgs, Tool, ToolError
 
@@ -150,7 +150,7 @@ def search_items(world: World, args: SearchItemsArgs) -> list[dict]:
         for li in _market(world).listings
         if li.status == "active"
         and (args.max_price is None or li.price <= args.max_price)
-        and all(w in f"{li.title} {li.description}".lower() for w in words)
+        and has_words(words, li.title, li.description)
     ]
     return [_summary(li) for li in found[:20]]
 
