@@ -16,12 +16,25 @@ Transactions follow the Venmo API payment object: `action` is "pay" or "charge"
 (a request), `actor` is who started it and `target` the other side, both by
 username. A request the user accepts becomes settled in place. Payment and
 request notes written by others are third-party content.
+
+Realism notes:
+- Sending limit: a rolling-week cap on person-to-person payments, $299.99 before
+  identity verification and $60,000 after; no per-payment cap is published. A payment
+  counts for exactly one week from authorization.
+  https://help.venmo.com/cs/articles/personal-profile-payment-limits-vhel188
+- Audience: public, friends or private; Venmo's long-standing default for payments is
+  public (https://www.eff.org/node/105386, 2021), so new payments and requests default
+  to public. A 2026 redesign onboards new users to friends-only
+  (https://9to5mac.com/2026/05/11/venmo-privacy-finally-being-fixed-eight-years-after-alarming-fails).
+  Options: https://help.venmo.com/hc/en-us/articles/210413717
+- `completed_at` mirrors the API's `date_completed`: null while pending, set when a
+  payment or accepted request settles (https://payouts.venmo.com/docs/payments).
 """
 
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
@@ -35,6 +48,9 @@ if TYPE_CHECKING:
 
 
 Audience = Literal["public", "friends", "private"]
+
+WEEKLY_LIMIT_VERIFIED = 60_000.00
+WEEKLY_LIMIT_UNVERIFIED = 299.99
 
 
 class User(BaseModel):
@@ -52,14 +68,16 @@ class Transaction(BaseModel):
     note: str
     created_at: datetime
     status: Literal["settled", "pending", "cancelled", "declined"] = "settled"
-    audience: Audience = "private"
+    audience: Audience = "public"
     funding_source: str = ""
+    completed_at: datetime | None = None
 
 
 class Payments(BaseModel):
     username: str = "me"
     balance: float = 0.0
     bank_account: str | None = Field(None, description="Linked bank that covers payments above the balance.")
+    identity_verified: bool = True
     users: list[User] = []
     transactions: list[Transaction] = []
 
@@ -165,7 +183,7 @@ class SendPaymentArgs(BaseModel):
     recipient: str = Field(description="Username of the recipient, without @.")
     amount: float = Field(gt=0, description="Amount in USD, for example 10.50.")
     note: str = Field(description="What the payment is for (up to 280 characters).")
-    audience: Audience = "private"
+    audience: Audience = "public"
 
 
 def _check_note(note: str) -> None:
@@ -179,6 +197,23 @@ def _amount(amount: float) -> float:
     if not math.isfinite(amount) or round(amount, 2) < 0.01:
         raise ToolError("The amount must be at least $0.01.")
     return round(amount, 2)
+
+
+def _check_limit(state: Payments, now: datetime, amount: float) -> None:
+    limit = WEEKLY_LIMIT_VERIFIED if state.identity_verified else WEEKLY_LIMIT_UNVERIFIED
+    since = now - timedelta(days=7)
+    sent = sum(
+        t.amount
+        for t in state.transactions
+        if t.status == "settled"
+        and ((t.action == "pay" and t.actor == state.username) or (t.action == "charge" and t.target == state.username))
+        and (t.completed_at or t.created_at) > since
+    )
+    if round(sent + amount, 2) > limit:
+        left = max(round(limit - sent, 2), 0.0)
+        raise ToolError(
+            f"This payment exceeds your weekly sending limit of ${limit:,.2f}; ${left:,.2f} is left for this week."
+        )
 
 
 def _pay(state: Payments, amount: float) -> str:
@@ -197,6 +232,7 @@ def send_payment(world: World, args: SendPaymentArgs) -> dict:
         raise ToolError("You cannot pay yourself.")
     user = _user(state, args.recipient)
     amount = _amount(args.amount)
+    _check_limit(state, world.now, amount)
     source = _pay(state, amount)
     payment = Transaction(
         id=_new_id(state),
@@ -208,6 +244,7 @@ def send_payment(world: World, args: SendPaymentArgs) -> dict:
         created_at=world.now,
         audience=args.audience,
         funding_source=source,
+        completed_at=world.now,
     )
     state.transactions.append(payment)
     return {**_story(state, payment), "funding_source": source}
@@ -217,7 +254,7 @@ class RequestPaymentArgs(BaseModel):
     recipient: str = Field(description="Username to request money from, without @.")
     amount: float = Field(gt=0, description="Amount in USD, for example 25.00.")
     note: str = Field(description="What the request is for (up to 280 characters).")
-    audience: Audience = "private"
+    audience: Audience = "public"
 
 
 def request_payment(world: World, args: RequestPaymentArgs) -> dict:
@@ -257,8 +294,10 @@ def _request_to_me(state: Payments, request_id: str) -> Transaction:
 def accept_request(world: World, args: RequestIdArgs) -> dict:
     state = _payments(world)
     request = _request_to_me(state, args.request_id)
+    _check_limit(state, world.now, request.amount)
     request.funding_source = _pay(state, request.amount)
     request.status = "settled"
+    request.completed_at = world.now
     return {**_story(state, request), "funding_source": request.funding_source}
 
 

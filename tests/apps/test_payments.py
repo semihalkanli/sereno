@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -250,3 +250,39 @@ def test_payments_and_accepted_requests_are_check_targets():
         "users": True,
     }
     assert grade([sent, accepted], pre, pre.copy()) == {"sent": False, "accepted": False}
+
+
+def test_payments_default_to_public_and_record_completion():
+    world = make_world()
+    call(world, "send_payment", recipient="Mariku", amount=2, note="tea")
+    call(world, "request_payment", recipient="Bodhi", amount=4, note="cab")
+    call(world, "accept_request", request_id="1003")
+    sent, asked = state(world).transactions[3:]
+    assert (sent.audience, asked.audience) == ("public", "public")
+    assert sent.completed_at == NOW and asked.completed_at is None
+    assert state(world).transactions[2].completed_at == NOW
+
+
+def test_unverified_weekly_limit_is_rolling():
+    world = make_world(balance=1000.0)
+    state(world).identity_verified = False
+    ok, _ = call(world, "send_payment", recipient="Mariku", amount=280, note="rent")
+    assert ok.error is None
+    over, _ = call(world, "send_payment", recipient="Mariku", amount=20, note="more")
+    assert "weekly sending limit of $299.99" in over.error and "$19.99 is left" in over.error
+    assert not over.state_changed
+    blocked, _ = call(world, "accept_request", request_id="1003")
+    assert "weekly sending limit" in blocked.error
+    assert state(world).transactions[2].status == "pending"
+    world.now = NOW + timedelta(days=7)
+    later, _ = call(world, "send_payment", recipient="Mariku", amount=20, note="more")
+    assert later.error is None
+
+
+def test_verified_weekly_limit():
+    world = make_world(balance=0.0)
+    call(world, "send_payment", recipient="mkl-consulting", amount=59_990, note="car")
+    outcome, _ = call(world, "send_payment", recipient="Mariku", amount=10.01, note="x")
+    assert "weekly sending limit of $60,000.00" in outcome.error
+    fits, _ = call(world, "send_payment", recipient="Mariku", amount=10, note="x")
+    assert fits.error is None
