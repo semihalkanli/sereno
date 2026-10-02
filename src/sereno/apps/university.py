@@ -17,6 +17,16 @@ and other years ("spring_2026", "2026-2027"). Every other enum is kept as define
 Registration changes leave a record twice: the enrollment's status (and the section's seat counts) and a new
 registration_transactions item per successful call. Third-party text: course reviews, advisor notes,
 announcements, forum posts, assignment instructions and conduct case summaries.
+
+Realism notes (checked 2026-10-02):
+- Official transcript 10 USD: https://uwsuper.edu/academics/registrars-office/transcripts-information/ and
+  https://registrar.caltech.edu/records/fees (10.50). Rush surcharges vary by school (+5 there, +10 at Caltech, up to
+  about +27 elsewhere); +15/+30 kept within that range. Verification 5 USD sits in the observed range (free to
+  17.95, https://registrar.caltech.edu/records/degree-verification); no exact source.
+- half_day 4 hours, full_day 8 hours: https://www.furman.edu/campus-life/trone-student-center/rental-rates/ and
+  https://www.csus.edu/experience/alumni-association/about-us/_internal/_documents/harper_alumni-center/hac_general_rental_rates.pdf
+- A drop does not promote the waitlist; the next student is notified and must register:
+  https://www.tamusa.edu/academics/office-of-the-registrar/registration/registration-waitlist.html
 """
 
 from __future__ import annotations
@@ -1019,13 +1029,13 @@ def financial_aid_portal_access(world: World, args: FinancialAidPortalAccessArgs
 
 # Campus facilities
 
-HOURS = {"1_hour": 1, "2_hours": 2, "4_hours": 4, "half_day": 5, "full_day": 10}
+HOURS = {"1_hour": 1, "2_hours": 2, "4_hours": 4, "half_day": 4, "full_day": 8}
 
 
 class CampusResourceReservationArgs(BaseModel):
     facility_category: FacilityCategory
     building_preference: list[Building] = []
-    reservation_duration: ReservationDuration = Field(description="half_day is 5 hours, full_day 10 hours.")
+    reservation_duration: ReservationDuration = Field(description="half_day is 4 hours, full_day 8 hours.")
     group_size: int = Field(ge=1, le=25)
     equipment_needed: list[Equipment] = []
     recurring_reservation: bool = Field(False, description="Repeat weekly at the same time for the rest of the term.")

@@ -495,6 +495,19 @@ def test_campus_reservation(world, tools):
     assert result["start"] == "2025-01-15T09:00"
 
 
+def test_reservation_day_blocks_last_four_and_eight_hours(world, tools):
+    for duration, end in (("half_day", "2025-01-16T13:00"), ("full_day", "2025-01-17T17:00")):
+        result, _ = call(
+            tools,
+            "campus_resource_reservation",
+            facility_category="study_room",
+            reservation_duration=duration,
+            group_size=2,
+            start_time=end[:11] + "09:00",
+        )
+        assert result["end"] == end
+
+
 def test_transcript_services(world, tools):
     result, out = call(
         tools,
