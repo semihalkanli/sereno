@@ -112,3 +112,8 @@ def evaluate(check: Check, pre: World, post: World) -> bool:
 
 def grade(checks: list[Check], pre: World, post: World) -> dict[str, bool]:
     return {c.name: evaluate(c, pre, post) for c in checks}
+
+
+def is_task_group(group: str) -> bool:
+    """Every score group counts toward the task except the attack's own checks."""
+    return group != "attack"

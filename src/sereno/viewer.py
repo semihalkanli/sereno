@@ -39,6 +39,9 @@ from textual.screen import Screen
 from textual.widgets import Input, OptionList, RichLog, Static
 from textual.widgets.option_list import Option
 
+from sereno.checks import is_task_group
+from sereno.events import ENVELOPE, read_events
+
 POLL_SECONDS = 0.3
 LIST_POLL_SECONDS = 0.5
 TAIL_BYTES = 1_000_000
@@ -52,9 +55,9 @@ ELBOW = "⎿"
 INDENT = "    "
 WORKING_FRAMES = "✢✳✶✻✽✻✶✳"
 GROUPS = ("working", "failed", "stopped", "completed")
-GROUP_TITLES = {"working": "Working", "failed": "Failed", "stopped": "Stopped", "completed": "Completed"}
 STATE_STYLE = {"working": "yellow", "failed": "red", "stopped": "grey50", "completed": "green"}
 TOOL_PREFIX = "gen_ai.tool."
+STATE_EVENT = b'"event": "state"'
 
 
 class LogTail:
@@ -70,7 +73,10 @@ class LogTail:
         self._partial = b""
 
     def read_new(self) -> list[dict[str, Any]]:
-        if not self.path.exists():
+        try:
+            if self.path.stat().st_size == self._offset:
+                return []
+        except FileNotFoundError:
             return []
         with self.path.open("rb") as f:
             f.seek(self._offset)
@@ -81,7 +87,8 @@ class LogTail:
         if self._skip_first and lines:
             lines = lines[1:]
             self._skip_first = False
-        return [json.loads(line) for line in lines if line.strip()]
+        # World snapshots are the largest lines and the viewer never shows them.
+        return [json.loads(line) for line in lines if line.strip() and STATE_EVENT not in line]
 
 
 def pid_alive(pid: int | None) -> bool:
@@ -135,7 +142,6 @@ class RunInfo:
     scores: dict[str, dict[str, Any]] = field(default_factory=dict)
     errors: list[dict[str, Any]] = field(default_factory=list)
     final_text: str | None = None
-    session_reason: str | None = None
     model_calls: int = 0
     tool_calls: int = 0
     retries: int = 0
@@ -178,7 +184,6 @@ class RunInfo:
             self.errors.append(event)
         elif kind == "span_end" and event.get("type") == "session":
             self.final_text = event.get("final_text")
-            self.session_reason = event.get("reason")
         elif kind == "span_end" and event.get("type") == "run":
             self.end = event
 
@@ -218,7 +223,7 @@ class RunInfo:
 
     def task_checks(self) -> tuple[int, int]:
         checks = [
-            ok for group, e in self.scores.items() if group != "attack" for ok in (e.get("checks") or {}).values()
+            ok for group, e in self.scores.items() if is_task_group(group) for ok in (e.get("checks") or {}).values()
         ]
         return sum(bool(ok) for ok in checks), len(checks)
 
@@ -311,6 +316,8 @@ class RunWatch:
             size = self.path.stat().st_size
             start = len(first) if size - len(first) <= TAIL_BYTES else size - TAIL_BYTES
             self.tail = LogTail(self.path, start)
+        elif self.info.end is not None or self.info.legacy:
+            return False
         new = self.tail.read_new()
         for event in new:
             self.info.apply(event)
@@ -417,6 +424,23 @@ def render_result(result: dict[str, Any] | None, expanded: bool) -> Text:
     return text
 
 
+def tool_line(text: Text, name: Any, args: Any, result: dict[str, Any] | None, expand: bool) -> None:
+    """A tool call as `● name(args)` with its result, or a pending marker, beneath."""
+    text.append(f"{DOT} ", style="bold green")
+    text.append(format_call(name, args), style="bold")
+    text.append_text(render_result(result, expand))
+
+
+def score_lines(text: Text, event: dict[str, Any], label: str) -> None:
+    """A score group's verdict, then one line per check."""
+    passed = bool(event.get("passed"))
+    text.append(label, style="bold")
+    text.append("PASS" if passed else "FAIL", style="bold green" if passed else "bold red")
+    for i, (name, ok) in enumerate((event.get("checks") or {}).items()):
+        text.append(f"\n  {ELBOW} " if i == 0 else f"\n{INDENT}")
+        text.append(("ok   " if ok else "FAIL ") + name, style="green" if ok else "red")
+
+
 @dataclass
 class Entry:
     """One block of the stream and the seq numbers of the events it shows."""
@@ -443,10 +467,8 @@ def _render_chat(event: dict[str, Any], results: dict[str, dict[str, Any]], expa
             text.append(f"{DOT} ", style="bold")
             text.append(part.get("content") or "")
         elif kind == "tool_call":
-            text.append(f"{DOT} ", style="bold green")
-            text.append(format_call(part.get("name"), part.get("arguments")), style="bold")
             result = results.get(part.get("id"))
-            text.append_text(render_result(result, expand))
+            tool_line(text, part.get("name"), part.get("arguments"), result, expand)
             if result is not None:
                 seqs.append(result["seq"])
     notes = []
@@ -459,81 +481,72 @@ def _render_chat(event: dict[str, Any], results: dict[str, dict[str, Any]], expa
     return Entry(text, seqs)
 
 
-def render_stream(events: list[dict[str, Any]], expand_results: bool, show_thinking: bool) -> list[Entry]:
-    """Renders the whole log as stream entries, pairing each tool call with its result by call id."""
+def render_event(
+    event: dict[str, Any], results: dict[str, dict[str, Any]], called: set[str], expand: bool, thinking: bool
+) -> Entry | None:
+    """One event as a stream entry; tool results show under their call, so they and turn spans give none."""
+    kind = event["event"]
+    span = event.get("type")
+    if kind == "chat":
+        return _render_chat(event, results, expand, thinking)
+    if kind == "state" or span == "turn" or (kind == "execute_tool" and event.get(TOOL_PREFIX + "call.id") in called):
+        return None
+    text = Text()
+    if kind == "span_begin" and span == "run":
+        text.append(
+            f"run {event.get('run_id')}  chain {event.get('chain')}  attack {event.get('attack')}  "
+            f"temperature {event.get('gen_ai.request.temperature')}  max_steps {event.get('max_steps')}",
+            style="dim",
+        )
+    elif kind == "span_begin" and span == "session":
+        text.append(f"session {event.get('session')} {event.get('name')}  date {event.get('date')}", style="bold cyan")
+        text.append(f"  {len(event.get('gen_ai.tool.definitions') or [])} tools", style="dim")
+    elif kind == "input":
+        text.append(f"> {event.get('content') or ''}", style="on grey19")
+        if event.get("prefilled"):
+            text.append("  (history)", style="dim")
+    elif kind == "execute_tool":
+        tool_line(text, event.get(TOOL_PREFIX + "name"), event.get(TOOL_PREFIX + "call.arguments"), event, expand)
+    elif kind == "span_end" and span == "session":
+        text.append(f"session ended: {event.get('reason')}", style="bold cyan")
+    elif kind == "span_end" and span == "run":
+        text.append(
+            f"run ended: USD {event.get('sereno.cost_usd')}, {event.get('model_calls')} model calls, "
+            f"{event.get('tool_calls')} tool calls, {event.get('duration_s')} s",
+            style="bold red" if event.get("reason") in ("error", "stopped") else "dim",
+        )
+    elif kind == "score":
+        score_lines(text, event, f"{DOT} score {event.get('group')} ")
+    elif kind == "error":
+        text.append(f"{DOT} error {event.get('type')}: {event.get('message')}", style="bold red")
+        for i, attempt in enumerate(event.get("attempts") or []):
+            text.append(f"\n  {ELBOW} " if i == 0 else f"\n{INDENT}", style="red")
+            text.append(
+                f"attempt {i + 1}: status {attempt.get('status')}, {attempt.get('duration_s')} s, "
+                f"{_one_line(attempt.get('error'), 80)}",
+                style="red",
+            )
+    else:
+        text.append(f"{kind} ", style="bold cyan")
+        text.append(
+            json.dumps({k: v for k, v in event.items() if k not in ENVELOPE}, ensure_ascii=False, default=str),
+            style="cyan",
+        )
+    return Entry(text, [event["seq"]])
+
+
+def tool_index(events: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], set[str]]:
+    """Tool results by call id, and the ids of calls a model response made."""
     results = {e.get(TOOL_PREFIX + "call.id"): e for e in events if e["event"] == "execute_tool"}
     called = {p.get("id") for e in events if e["event"] == "chat" for p in _parts(e) if p.get("type") == "tool_call"}
-    entries: list[Entry] = []
-    for event in events:
-        kind = event["event"]
-        span = event.get("type")
-        text = Text()
-        if kind == "chat":
-            entries.append(_render_chat(event, results, expand_results, show_thinking))
-            continue
-        if kind == "span_begin" and span == "run":
-            text.append(
-                f"run {event.get('run_id')}  chain {event.get('chain')}  attack {event.get('attack')}  "
-                f"temperature {event.get('gen_ai.request.temperature')}  max_steps {event.get('max_steps')}",
-                style="dim",
-            )
-        elif kind == "span_begin" and span == "session":
-            text.append(
-                f"session {event.get('session')} {event.get('name')}  date {event.get('date')}", style="bold cyan"
-            )
-            text.append(f"  {len(event.get('gen_ai.tool.definitions') or [])} tools", style="dim")
-        elif kind == "span_begin" and span == "turn":
-            continue
-        elif kind == "input":
-            text.append(f"> {event.get('content') or ''}", style="on grey19")
-            if event.get("prefilled"):
-                text.append("  (history)", style="dim")
-        elif kind == "execute_tool":
-            if event.get(TOOL_PREFIX + "call.id") in called:
-                continue
-            text.append(f"{DOT} ", style="bold green")
-            text.append(format_call(event.get(TOOL_PREFIX + "name"), event.get(TOOL_PREFIX + "call.arguments")))
-            text.append_text(render_result(event, expand_results))
-        elif kind == "state":
-            continue
-        elif kind == "span_end" and span == "turn":
-            continue
-        elif kind == "span_end" and span == "session":
-            text.append(f"session ended: {event.get('reason')}", style="bold cyan")
-        elif kind == "span_end" and span == "run":
-            text.append(
-                f"run ended: USD {event.get('sereno.cost_usd')}, {event.get('model_calls')} model calls, "
-                f"{event.get('tool_calls')} tool calls, {event.get('duration_s')} s",
-                style="bold red" if event.get("reason") == "error" else "dim",
-            )
-        elif kind == "score":
-            passed = bool(event.get("passed"))
-            text.append(f"{DOT} score {event.get('group')} ", style="bold")
-            text.append("PASS" if passed else "FAIL", style="bold green" if passed else "bold red")
-            for i, (name, ok) in enumerate((event.get("checks") or {}).items()):
-                text.append(f"\n  {ELBOW} " if i == 0 else f"\n{INDENT}")
-                text.append(("ok   " if ok else "FAIL ") + name, style="green" if ok else "red")
-        elif kind == "error":
-            text.append(f"{DOT} error {event.get('type')}: {event.get('message')}", style="bold red")
-            for i, attempt in enumerate(event.get("attempts") or []):
-                text.append(f"\n  {ELBOW} " if i == 0 else f"\n{INDENT}", style="red")
-                text.append(
-                    f"attempt {i + 1}: status {attempt.get('status')}, {attempt.get('duration_s')} s, "
-                    f"{_one_line(attempt.get('error'), 80)}",
-                    style="red",
-                )
-        else:
-            text.append(f"{kind} ", style="bold cyan")
-            text.append(
-                json.dumps({k: v for k, v in event.items() if k not in _COMMON}, ensure_ascii=False, default=str),
-                style="cyan",
-            )
-        if text:
-            entries.append(Entry(text, [event["seq"]]))
-    return entries
+    return results, called
 
 
-_COMMON = {"id", "parent_id", "ts", "seq", "run_id", "session", "turn", "step", "gen_ai.agent.id", "event"}
+def render_stream(events: list[dict[str, Any]], expand_results: bool, show_thinking: bool) -> list[Entry]:
+    """Renders the whole log as stream entries, pairing each tool call with its result by call id."""
+    results, called = tool_index(events)
+    entries = (render_event(e, results, called, expand_results, show_thinking) for e in events)
+    return [e for e in entries if e is not None]
 
 
 def event_label(event: dict[str, Any]) -> str:
@@ -577,17 +590,13 @@ def peek_text(info: RunInfo) -> Text:
             text.append(_one_line(info.last_text, 300))
         if info.last_tool is not None:
             tool = info.last_tool
-            text.append(f"\n{DOT} ", style="bold green")
-            text.append(format_call(tool.get(TOOL_PREFIX + "name"), tool.get(TOOL_PREFIX + "call.arguments")))
-            text.append_text(render_result(tool, expanded=False))
+            text.append("\n")
+            tool_line(text, tool.get(TOOL_PREFIX + "name"), tool.get(TOOL_PREFIX + "call.arguments"), tool, False)
     else:
         text.append(f"\nresult: {info.final_text or '(no answer)'}")
         for group, score in info.scores.items():
-            passed = bool(score.get("passed"))
-            text.append(f"\n{group} ", style="bold")
-            text.append("PASS" if passed else "FAIL", style="green" if passed else "red")
-            for name, ok in (score.get("checks") or {}).items():
-                text.append(f"\n  {'ok  ' if ok else 'FAIL'} {name}", style="green" if ok else "red")
+            text.append("\n")
+            score_lines(text, score, f"{group} ")
     if info.marker:
         text.highlight_regex(re.escape(info.marker), style=MARKER_STYLE)
     return text
@@ -599,7 +608,7 @@ def row_text(info: RunInfo, frame: int, width: int, now: datetime | None = None)
     if state == "working":
         icon = WORKING_FRAMES[frame % len(WORKING_FRAMES)]
     else:
-        icon = "✻" if pid_alive((info.start or {}).get("pid")) else "∙"
+        icon = "✻" if info.end is None and pid_alive((info.start or {}).get("pid")) else "∙"
     style = "grey50" if info.legacy else STATE_STYLE[state]
     left = Text("  ")
     left.append(icon, style=style)
@@ -708,6 +717,7 @@ class TranscriptScreen(Screen):
         self.tail = LogTail(path)
         self.events: list[dict[str, Any]] = []
         self.entries = 0
+        self.shown = 0
         self.expand_results = False
         self.show_thinking = False
         self.cursor: int | None = None
@@ -718,8 +728,8 @@ class TranscriptScreen(Screen):
 
     def on_mount(self) -> None:
         self.app.title = f"sereno watch {self.path}"
-        self.poll()
         self._timer = self.set_interval(POLL_SECONDS, self.poll, pause=not self.follow)
+        self.poll()
 
     @property
     def marker(self) -> re.Pattern | None:
@@ -731,33 +741,60 @@ class TranscriptScreen(Screen):
         new = self.tail.read_new()
         for event in new:
             self.info.apply(event)
-        self.events += [e for e in new if e["event"] != "state"]
+        self.events += new
         if new:
-            self.redraw()
+            self._append()
+        if self.info.end is not None or self.info.legacy:
+            self._timer.pause()
         self._redraw_status()
 
+    def _write(self, log: RichLog, entry: Entry, cursor_seq: int | None = None) -> int | None:
+        text = entry.text
+        if self.marker is not None:
+            text.highlight_regex(self.marker, style=MARKER_STYLE)
+        line = None
+        if cursor_seq is not None and cursor_seq in entry.seqs:
+            text = text.copy()
+            text.stylize(CURSOR_STYLE)
+            line = len(log.lines)
+        log.write(text)
+        log.write(Text(""))
+        self.entries += 1
+        return line
+
+    def _append(self) -> None:
+        """Writes the events not shown yet. A model response whose tool calls are still
+        running waits until their results arrive, so nothing already written changes."""
+        if self.info.legacy:
+            self.redraw()
+            return
+        log = self.query_one("#transcript", RichLog)
+        results, called = tool_index(self.events)
+        while self.shown < len(self.events):
+            event = self.events[self.shown]
+            if self.info.end is None and any(
+                p.get("type") == "tool_call" and p.get("id") not in results for p in _parts(event)
+            ):
+                break
+            entry = render_event(event, results, called, self.expand_results, self.show_thinking)
+            if entry is not None:
+                self._write(log, entry)
+            self.shown += 1
+
     def redraw(self) -> None:
+        """Rewrites the whole stream, for a toggle or a cursor move."""
         log = self.query_one("#transcript", RichLog)
         log.clear()
+        self.entries = 0
         if self.info.legacy:
             log.write(Text("This run uses the old log format; the agent view cannot show it.", style="dim"))
-            self.entries = 0
             return
-        entries = render_stream(self.events, self.expand_results, self.show_thinking)
         cursor_seq = self.cursor_event["seq"] if self.cursor_event is not None and self.cursor is not None else None
         cursor_line = None
-        marker = self.marker
-        for entry in entries:
-            text = entry.text
-            if marker is not None:
-                text.highlight_regex(marker, style=MARKER_STYLE)
-            if cursor_seq is not None and cursor_seq in entry.seqs:
-                text = text.copy()
-                text.stylize(CURSOR_STYLE)
-                cursor_line = len(log.lines)
-            log.write(text)
-            log.write(Text(""))
-        self.entries = len(entries)
+        for entry in render_stream(self.events, self.expand_results, self.show_thinking):
+            line = self._write(log, entry, cursor_seq)
+            cursor_line = line if line is not None else cursor_line
+        self.shown = len(self.events)
         if cursor_line is not None and not self.follow:
             log.scroll_to(y=cursor_line, animate=False)
 
@@ -816,7 +853,7 @@ class TranscriptScreen(Screen):
         if event is None:
             return
         diag_path = self.path.parent / "diag.jsonl"
-        diag = LogTail(diag_path).read_new() if diag_path.exists() else []
+        diag = read_events(diag_path) if diag_path.exists() else []
         self.app.push_screen(DetailScreen(event, diag))
 
 
@@ -884,7 +921,7 @@ class RunListScreen(Screen):
             if not members:
                 continue
             arrow = "▸" if group in self.collapsed else "▾"
-            title = Text(f"{arrow} {GROUP_TITLES[group]} ({len(members)})", style=f"bold {STATE_STYLE[group]}")
+            title = Text(f"{arrow} {group.capitalize()} ({len(members)})", style=f"bold {STATE_STYLE[group]}")
             options.append(Option(title, id=f"group:{group}"))
             if group not in self.collapsed:
                 options += [Option(row_text(i, self.frame, width), id=str(i.path)) for i in members]
@@ -896,15 +933,9 @@ class RunListScreen(Screen):
                 runs.highlighted = None
         if runs.highlighted is None and options:
             runs.highlighted = 1 if len(options) > 1 else 0
-        counts = {g: len(groups[g]) for g in GROUPS}
-        header = Text()
-        header.append(f"{counts['working']} working", style=STATE_STYLE["working"])
-        header.append(" · ")
-        header.append(f"{counts['completed']} completed", style=STATE_STYLE["completed"])
-        header.append(" · ")
-        header.append(f"{counts['failed']} failed", style=STATE_STYLE["failed"])
-        header.append(" · ")
-        header.append(f"{counts['stopped']} stopped", style=STATE_STYLE["stopped"])
+        header = Text(" · ").join(
+            Text(f"{len(groups[g])} {g}", style=STATE_STYLE[g]) for g in ("working", "completed", "failed", "stopped")
+        )
         self.query_one("#header", Static).update(header)
         self._update_peek()
 

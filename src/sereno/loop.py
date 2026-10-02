@@ -10,7 +10,6 @@ event log.
 import json
 import logging
 import time
-import traceback
 from dataclasses import dataclass
 from typing import Any
 
@@ -112,66 +111,53 @@ def run_session(
     text = None
 
     for turn, user_prompt in enumerate(turns, start=1):
-        log.turn = turn
-        log.begin("turn", f"turn {turn}", content=user_prompt)
-        messages.append({"role": "user", "content": user_prompt})
-        log.emit("input", content=user_prompt)
-        while True:
-            if step >= max_steps:
-                log.end("turn")
-                return SessionResult("max_steps", None, messages, max_steps, tool_calls_run, cost)
-            event_id = new_id()
-            try:
+        with log.span("turn", f"turn {turn}", turn=turn, content=user_prompt) as span_end:
+            messages.append({"role": "user", "content": user_prompt})
+            log.emit("input", content=user_prompt)
+            while True:
+                if step >= max_steps:
+                    span_end["reason"] = "max_steps"
+                    return SessionResult("max_steps", None, messages, max_steps, tool_calls_run, cost)
+                event_id = new_id()
                 with log.building(event_id):
                     try:
                         completion = model.complete(messages, schemas)
-                    except Exception:
+                    except Exception as e:
                         logger.exception("model call failed")
-                        raise
-            except Exception as e:
+                        log.error(e, step=step, id=event_id, attempts=getattr(e, "attempts", None))
+                        span_end["reason"] = "error"
+                        return SessionResult("error", None, messages, step, tool_calls_run, cost)
+
+                message = completion.message
+                calls = message.get("tool_calls") or []
+                cost += completion.usage.get("cost") or 0.0
+                response = completion.response
                 log.emit(
-                    "error",
+                    "chat",
                     step=step,
                     id=event_id,
-                    message=str(e),
-                    type=type(e).__name__,
-                    traceback=traceback.format_exc(),
-                    attempts=getattr(e, "attempts", None),
+                    call={"request": completion.request, "response": response},
+                    **{
+                        "gen_ai.request.model": completion.request.get("model"),
+                        "gen_ai.response.id": response.get("id"),
+                        "gen_ai.response.model": response.get("model"),
+                        "gen_ai.response.finish_reasons": [completion.finish_reason],
+                        "gen_ai.output.messages": output_messages(message, completion.finish_reason),
+                    },
+                    **_usage(completion.usage),
+                    duration_s=completion.latency_s,
+                    retries=len(completion.attempts) - 1,
+                    attempts=completion.attempts,
                 )
-                log.end("turn")
-                return SessionResult("error", None, messages, step, tool_calls_run, cost)
+                messages.append(_history_message(message))
+                step += 1
 
-            message = completion.message
-            calls = message.get("tool_calls") or []
-            cost += completion.usage.get("cost") or 0.0
-            response = completion.response
-            log.emit(
-                "chat",
-                step=step,
-                id=event_id,
-                call={"request": completion.request, "response": response},
-                **{
-                    "gen_ai.request.model": completion.request.get("model"),
-                    "gen_ai.response.id": response.get("id"),
-                    "gen_ai.response.model": response.get("model"),
-                    "gen_ai.response.finish_reasons": [completion.finish_reason],
-                    "gen_ai.output.messages": output_messages(message, completion.finish_reason),
-                },
-                **_usage(completion.usage),
-                duration_s=completion.latency_s,
-                retries=len(completion.attempts) - 1,
-                attempts=completion.attempts,
-            )
-            messages.append(_history_message(message))
-            step += 1
-
-            if not calls:
-                text = message.get("content")
-                break
-            for call in calls:
-                tool_calls_run += 1
-                messages.append(run_tool_call(toolset, call, log, step - 1))
-        log.end("turn")
+                if not calls:
+                    text = message.get("content")
+                    break
+                for call in calls:
+                    tool_calls_run += 1
+                    messages.append(run_tool_call(toolset, call, log, step - 1))
 
     return SessionResult("final_answer", text, messages, step, tool_calls_run, cost)
 

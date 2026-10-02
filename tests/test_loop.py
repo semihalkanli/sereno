@@ -219,7 +219,7 @@ def test_reasoning_falls_back_to_details_and_counts_tokens(tmp_path):
                 "reasoning_details": [{"type": "reasoning.text", "text": "Think."}, {"type": "reasoning.encrypted"}],
             }
             usage = {"completion_tokens": 9, "completion_tokens_details": {"reasoning_tokens": 4}, "cost": 0.0}
-            return Completion(message=message, finish_reason="stop", usage=usage, latency_s=0.0)
+            return Completion(message, "stop", usage, 0.0, request={}, response={}, attempts=[{"status": 200}])
 
     with EventLog(tmp_path / "e.jsonl", "t") as log:
         run_session(DetailsOnly(), _toolset(), *_messages(), log)

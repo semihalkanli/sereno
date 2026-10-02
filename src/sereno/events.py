@@ -40,17 +40,18 @@ Event kinds and their own fields:
                       gen_ai.tool.definitions (full schemas as sent), changes (outside changes
                       applied when the session started)
                  turn: content (the user's message)
-    span_end     type, name, span (id of the matching span_begin), and per type:
+    span_end     type, name, span (id of the matching span_begin), reason, and per type:
                  run: model_calls, tool_calls, sereno.cost_usd, duration_s
-                 session: reason ("final_answer", "max_steps", "error"), final_text
-                 A run that dies on an exception logs an error event and closes every
-                 open span with reason "error" ("stopped" when interrupted with ctrl+c).
-                 A run whose process is killed leaves its spans open; readers check
-                 `pid` to tell it from a live one.
+                 session: final_text; reason "final_answer", "max_steps" or "error"
+                 Any other span ends with reason "completed". An exception logs one error
+                 event and closes every open span with reason "error" ("stopped" for
+                 ctrl+c). A run whose process is killed leaves its spans open; readers
+                 check `pid` to tell it from a live one.
     input        content: a user message; prefilled true when it comes from the session's history
     chat         one model call.
                  call {request, response}: the exact JSON body posted and the exact JSON
                      returned; request.messages is the exact conversation the model saw.
+                     A scripted model records the request it was given and its reply.
                      Stored whole on every call, so the log grows with the square of
                      session length; that is the price of keeping it exact.
                  gen_ai.request.model, gen_ai.response.id, gen_ai.response.model,
@@ -90,13 +91,18 @@ from pathlib import Path
 from typing import Any
 
 AGENT_ID = "gen_ai.agent.id"
+ENVELOPE = ("id", "parent_id", "ts", "seq", "run_id", "session", "turn", "step", AGENT_ID, "event")
 
 current_event: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_event", default=None)
 current_run: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_run", default=None)
 
 
+def iso_ms(moment: datetime) -> str:
+    return moment.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 def now_iso() -> str:
-    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return iso_ms(datetime.now(UTC))
 
 
 def new_id() -> str:
@@ -108,7 +114,7 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         row = {
-            "ts": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "ts": iso_ms(datetime.fromtimestamp(record.created, UTC)),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -128,7 +134,7 @@ class EventLog:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._file = self.path.open("a", encoding="utf-8")
         self._seq = 0
-        self._spans: list[tuple[str, str, str]] = []
+        self._spans: list[tuple[str, str, str, tuple[int | None, int | None]]] = []
         self.session: int | None = None
         self.turn: int | None = None
         self.agent_id = "main"
@@ -141,43 +147,55 @@ class EventLog:
         logger.addHandler(self._diag)
 
     def emit(self, event: str, *, step: int | None = None, id: str | None = None, **fields: Any) -> dict[str, Any]:
-        row = {
-            "id": id or new_id(),
-            "parent_id": self._spans[-1][0] if self._spans else None,
-            "ts": now_iso(),
-            "seq": self._seq,
-            "run_id": self.run_id,
-            "session": self.session,
-            "turn": self.turn,
-            "step": step,
-            AGENT_ID: self.agent_id,
-            "event": event,
-            **fields,
-        }
+        parent = self._spans[-1][0] if self._spans else None
+        envelope = (id or new_id(), parent, now_iso(), self._seq, self.run_id, self.session, self.turn, step)
+        row = dict(zip(ENVELOPE, (*envelope, self.agent_id, event), strict=True)) | fields
         self._file.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
         self._file.flush()
         self._seq += 1
         return row
 
-    def begin(self, type: str, name: str, **fields: Any) -> str:
-        row = self.emit("span_begin", type=type, name=name, **fields)
-        self._spans.append((row["id"], type, name))
-        return row["id"]
+    def begin(self, type: str, name: str, *, session: int | None = None, turn: int | None = None, **fields: Any) -> str:
+        """Open a span. `session` and `turn` set the numbers stamped on events inside it."""
+        saved = self.session, self.turn
+        if session is not None:
+            self.session, self.turn = session, None
+        if turn is not None:
+            self.turn = turn
+        span_id = self.emit("span_begin", type=type, name=name, **fields)["id"]
+        self._spans.append((span_id, type, name, saved))
+        return span_id
 
-    def end(self, type: str, **fields: Any) -> None:
-        span_id, span_type, name = self._spans[-1]
-        if span_type != type:
-            raise ValueError(f"span_end {type!r} does not match the open span {span_type!r}")
-        self._spans.pop()
+    def end(self, **fields: Any) -> None:
+        """Close the innermost span; its reason is "completed" unless given."""
+        span_id, type, name, saved = self._spans.pop()
+        fields.setdefault("reason", "completed")
         self.emit("span_end", type=type, name=name, span=span_id, **fields)
+        self.session, self.turn = saved
 
-    def abort(self, error: BaseException) -> None:
-        """Log what ended the run and close every open span: "stopped" for ctrl+c, "error" otherwise."""
+    @contextmanager
+    def span(self, type: str, name: str, **fields: Any) -> Generator[dict[str, Any]]:
+        """A span around a block; the block fills the yielded dict with the span_end fields.
+
+        On ctrl+c the span closes with reason "stopped", on any other exception with
+        "error"; the exception is logged once as an error event and propagates.
+        """
+        self.begin(type, name, **fields)
+        end: dict[str, Any] = {}
+        try:
+            yield end
+        except BaseException as e:
+            if not getattr(e, "_sereno_logged", False):
+                self.error(e)
+                e._sereno_logged = True  # type: ignore[attr-defined]
+            end["reason"] = "stopped" if isinstance(e, KeyboardInterrupt) else "error"
+            raise
+        finally:
+            self.end(**end)
+
+    def error(self, error: BaseException, **fields: Any) -> None:
         tb = "".join(traceback.format_exception(error))
-        self.emit("error", message=str(error), type=type(error).__name__, traceback=tb)
-        reason = "stopped" if isinstance(error, KeyboardInterrupt) else "error"
-        while self._spans:
-            self.end(self._spans[-1][1], reason=reason)
+        self.emit("error", message=str(error), type=type(error).__name__, traceback=tb, **fields)
 
     @contextmanager
     def building(self, event_id: str) -> Generator[None]:

@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from sereno.chain import LoadedChain, Message, apply_change
-from sereno.checks import grade
+from sereno.checks import grade, is_task_group
 from sereno.events import EventLog
 from sereno.loop import SessionResult, output_messages, run_session, run_tool_call
 from sereno.tools import Toolset
@@ -47,7 +47,7 @@ class ChainResult:
         return self.sessions[-1].reason if self.sessions else "not_run"
 
     def task_passed(self) -> bool:
-        return all(all(c.values()) for group, c in self.checks.items() if group != "attack")
+        return all(all(c.values()) for group, c in self.checks.items() if is_task_group(group))
 
 
 def git_state() -> dict:
@@ -98,82 +98,73 @@ def run_chain(
     `make_model(session_id)` returns the model for one session, so a scripted
     model can replay a per-session solution.
     """
-    result = ChainResult()
-    with EventLog(log_path, run_id) as log:
-        try:
-            _run(loaded, make_model, log, run_id, max_steps, result)
-        except BaseException as e:
-            log.abort(e)
-            raise
-    return result
-
-
-def _run(loaded: LoadedChain, make_model, log: EventLog, run_id: str, max_steps: int, result: ChainResult) -> None:
     chain = loaded.chain
     world = loaded.initial_world()
     start = world.copy()
     started = time.monotonic()
-    for number, session in enumerate(chain.sessions, start=1):
-        model = make_model(session.id)
-        if number == 1:
-            log.begin(
-                "run",
-                run_id,
-                chain=chain.id,
-                sessions=len(chain.sessions),
-                attack=loaded.attack.id if loaded.attack else None,
-                marker=loaded.attack.marker if loaded.attack else None,
-                max_steps=max_steps,
-                git=git_state(),
-                pid=os.getpid(),
-                **{
-                    "gen_ai.request.model": model.name,
-                    "gen_ai.provider.name": "openrouter" if model.provider else None,
-                    "sereno.upstream_provider": model.provider,
-                    "gen_ai.request.temperature": model.temperature,
-                },
-            )
-        log.session, log.turn = number, None
-        if session.now < world.now:
-            raise ValueError(f"session {session.id} starts at {session.now}, before the world clock {world.now}")
-        world.now = session.now
-        for change in session.changes:
-            apply_change(world, change)
-        toolset = Toolset(world, world.tools())
-        system_prompt = loaded.system_prompt(world)
-        log.begin(
-            "session",
-            session.id,
-            session_id=session.id,
-            date=world.today.isoformat(),
-            owner=world.owner.model_dump(),
-            changes=[c.model_dump(exclude_none=True) for c in session.changes],
-            **{"gen_ai.system_instructions": system_prompt, "gen_ai.tool.definitions": toolset.schemas()},
-        )
-        log.emit("state", reason="initial" if number == 1 else "session_start", snapshot=world.snapshot())
-        pre = world.copy()
-        messages = [{"role": "system", "content": system_prompt}, *_history(session.history, toolset, log)]
-        outcome = run_session(model, toolset, messages, session.turns, log, max_steps=max_steps)
-        result.sessions.append(outcome)
-        log.turn = None
-        checks = grade(session.checks, pre, world)
-        result.checks[session.id] = checks
-        log.emit("score", group=session.id, checks=checks, passed=all(checks.values()))
-        log.end("session", reason=outcome.reason, final_text=outcome.final_text)
+    result = ChainResult()
 
-    log.session = None
-    if chain.final_checks:
-        checks = grade(chain.final_checks, start, world)
-        result.checks["final"] = checks
-        log.emit("score", group="final", checks=checks, passed=all(checks.values()))
-    if loaded.attack and loaded.attack.checks:
-        checks = grade(loaded.attack.checks, start, world)
-        result.checks["attack"] = checks
-        log.emit("score", group="attack", checks=checks, passed=all(checks.values()))
-    log.end(
-        "run",
-        model_calls=result.model_calls,
-        tool_calls=result.tool_calls,
-        duration_s=round(time.monotonic() - started, 3),
-        **{"sereno.cost_usd": round(result.cost_usd, 8)},
-    )
+    def score(group: str, specs, before) -> None:
+        checks = grade(specs, before, world)
+        result.checks[group] = checks
+        log.emit("score", group=group, checks=checks, passed=all(checks.values()))
+
+    first = make_model(chain.sessions[0].id)
+    with (
+        EventLog(log_path, run_id) as log,
+        log.span(
+            "run",
+            run_id,
+            chain=chain.id,
+            sessions=len(chain.sessions),
+            attack=loaded.attack.id if loaded.attack else None,
+            marker=loaded.attack.marker if loaded.attack else None,
+            max_steps=max_steps,
+            git=git_state(),
+            pid=os.getpid(),
+            **{
+                "gen_ai.request.model": first.name,
+                "gen_ai.provider.name": "openrouter" if first.provider else None,
+                "sereno.upstream_provider": first.provider,
+                "gen_ai.request.temperature": first.temperature,
+            },
+        ) as run_end,
+    ):
+        for number, session in enumerate(chain.sessions, start=1):
+            model = first if number == 1 else make_model(session.id)
+            if session.now < world.now:
+                raise ValueError(f"session {session.id} starts at {session.now}, before the world clock {world.now}")
+            world.now = session.now
+            for change in session.changes:
+                apply_change(world, change)
+            toolset = Toolset(world, world.tools())
+            system_prompt = loaded.system_prompt(world)
+            with log.span(
+                "session",
+                session.id,
+                session=number,
+                session_id=session.id,
+                date=world.today.isoformat(),
+                owner=world.owner.model_dump(),
+                changes=[c.model_dump(exclude_none=True) for c in session.changes],
+                **{"gen_ai.system_instructions": system_prompt, "gen_ai.tool.definitions": toolset.schemas()},
+            ) as session_end:
+                log.emit("state", reason="initial" if number == 1 else "session_start", snapshot=world.snapshot())
+                pre = world.copy()
+                messages = [{"role": "system", "content": system_prompt}, *_history(session.history, toolset, log)]
+                outcome = run_session(model, toolset, messages, session.turns, log, max_steps=max_steps)
+                result.sessions.append(outcome)
+                score(session.id, session.checks, pre)
+                session_end.update(reason=outcome.reason, final_text=outcome.final_text)
+
+        if chain.final_checks:
+            score("final", chain.final_checks, start)
+        if loaded.attack and loaded.attack.checks:
+            score("attack", loaded.attack.checks, start)
+        run_end.update(
+            model_calls=result.model_calls,
+            tool_calls=result.tool_calls,
+            duration_s=round(time.monotonic() - started, 3),
+            **{"sereno.cost_usd": round(result.cost_usd, 8)},
+        )
+    return result

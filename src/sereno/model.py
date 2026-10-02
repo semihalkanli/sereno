@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
@@ -29,9 +29,9 @@ class Completion:
     finish_reason: str | None
     usage: dict[str, Any]
     latency_s: float
-    request: dict[str, Any] = field(default_factory=dict)
-    response: dict[str, Any] = field(default_factory=dict)
-    attempts: list[dict[str, Any]] = field(default_factory=list)
+    request: dict[str, Any]
+    response: dict[str, Any]
+    attempts: list[dict[str, Any]]
 
 
 class ModelCallError(RuntimeError):
@@ -103,7 +103,7 @@ class OpenRouterModel:
                         message=choice["message"],
                         finish_reason=choice.get("finish_reason"),
                         usage=data.get("usage") or {},
-                        latency_s=round(time.monotonic() - t0, 2),
+                        latency_s=duration,
                         request=body,
                         response=data,
                         attempts=attempts,

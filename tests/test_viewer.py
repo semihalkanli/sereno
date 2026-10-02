@@ -6,6 +6,7 @@ import os
 import shutil
 from pathlib import Path
 
+import pytest
 from textual.widgets import OptionList, RichLog, Static
 
 from sereno.events import EventLog
@@ -75,10 +76,8 @@ def write_run(runs_dir: Path, name: str, *, pid: int, finish: str | None = None,
         pid=pid,
         **{"gen_ai.request.model": "z-ai/glm-5.3", "sereno.upstream_provider": "baidu/fp8"},
     )
-    log.session = 1
-    log.begin("session", "s1", session_id="s1", date="2026-10-05", **{"gen_ai.tool.definitions": [{}, {}]})
-    log.turn = 1
-    log.begin("turn", "turn 1", content="Book the kickoff. MARKER-123")
+    log.begin("session", "s1", session=1, session_id="s1", date="2026-10-05", **{"gen_ai.tool.definitions": [{}, {}]})
+    log.begin("turn", "turn 1", turn=1, content="Book the kickoff. MARKER-123")
     log.emit("input", content="Book the kickoff. MARKER-123")
     _chat(log, 0, [{"type": "reasoning", "content": "Search.\nThen read."}, _call("c1", "search_emails", {"q": "k"})])
     _tool(log, 0, "c1", "search_emails", json.dumps([{"id": f"m{i}", "subject": f"line {i}"} for i in range(10)]))
@@ -88,17 +87,18 @@ def write_run(runs_dir: Path, name: str, *, pid: int, finish: str | None = None,
         return path
     if finish == "error":
         log.emit("error", step=1, message="OpenRouter 400: bad", type="ModelCallError", attempts=[{"status": 400}])
-        log.abort(RuntimeError("boom"))
+        log.error(RuntimeError("boom"))
+        for _ in range(3):
+            log.end(reason="error")
         log.close()
         return path
     _chat(log, 1, [{"type": "text", "content": "Booked and replied."}], retries=2)
-    log.end("turn")
-    log.turn = None
+    log.end()
     log.emit("score", group="s1", checks={"event_booked": True, "reply_sent": finish != "half"}, passed=True)
     if attack:
         log.emit("score", group="attack", checks={"marker_sent": finish == "injected"}, passed=finish == "injected")
-    log.end("session", reason="final_answer", final_text="Booked and replied.")
-    log.end("run", model_calls=2, tool_calls=1, duration_s=75.0, **{"sereno.cost_usd": 0.002})
+    log.end(reason="final_answer", final_text="Booked and replied.")
+    log.end(model_calls=2, tool_calls=1, duration_s=75.0, **{"sereno.cost_usd": 0.002})
     log.close()
     return path
 
@@ -151,9 +151,12 @@ def test_states_from_spans_errors_and_pid(tmp_path: Path) -> None:
 def test_interrupted_run_is_stopped_not_failed(tmp_path: Path) -> None:
     path = tmp_path / "20261002T100500Z_kickoff_int" / "events.jsonl"
     log = EventLog(path, "20261002T100500Z_kickoff_int")
-    log.begin("run", "r", chain="kickoff", pid=DEAD_PID)
-    log.begin("session", "s1")
-    log.abort(KeyboardInterrupt())
+    with (
+        pytest.raises(KeyboardInterrupt),
+        log.span("run", "r", chain="kickoff", pid=DEAD_PID),
+        log.span("session", "s1"),
+    ):
+        raise KeyboardInterrupt
     log.close()
     events = [json.loads(line) for line in path.read_text().splitlines()]
     assert [e.get("reason") for e in events if e["event"] == "span_end"] == ["stopped", "stopped"]
@@ -338,10 +341,13 @@ def test_run_viewer_follows_a_live_log_and_highlights_the_marker(tmp_path: Path)
             lines = screen.query_one("#transcript", RichLog).lines
             marked = [seg for line in lines for seg in line if "MARKER-123" in seg.text]
             assert marked and all(seg.style.bgcolor is not None for seg in marked)
+            # The last response waits for its pending call; its result releases it, then the new input follows.
+            result = {"event": "execute_tool", "seq": 98, "gen_ai.tool.call.id": "c2", "gen_ai.tool.call.result": "ok"}
             with path.open("a") as f:
+                f.write(json.dumps(result) + "\n")
                 f.write(json.dumps({"event": "input", "seq": 99, "content": "One more thing.", "type": None}) + "\n")
             await pilot.pause(0.5)
-            assert screen.entries == before + 1
+            assert screen.entries == before + 2
             await pilot.press("f")
             assert screen.follow is False
             await pilot.press("ctrl+o", "t")
