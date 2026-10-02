@@ -30,8 +30,6 @@ from sereno.tools import Tool, ToolError
 if TYPE_CHECKING:
     from sereno.world import World
 
-FOLDERS = ("inbox", "sent", "trash")
-
 
 class Email(BaseModel):
     id: str
