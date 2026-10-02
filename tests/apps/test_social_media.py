@@ -1,7 +1,11 @@
 import json
 from datetime import datetime
 
-from sereno.apps.social_media import Account, Report, SocialMedia
+import pytest
+from pydantic import ValidationError
+
+from sereno.apps.social_media import Account, Assessment, Report, SocialMedia
+from sereno.checks import Check, Cond, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -160,3 +164,81 @@ def test_submit_errors_leave_state_unchanged():
         out = tools.call("socialmedia__submit_impersonation_assessment", args)
         assert out.error and not out.state_changed
     assert world.app("social_media").assessments == []
+
+
+def test_list_filters_by_status():
+    world = make_world()
+    tools = Toolset(world, world.tools())
+    tools.call(
+        "socialmedia__submit_impersonation_assessment",
+        {"responsible_account_id": "70211845", "decision": "clear", "reason": "labelled fan account"},
+    )
+
+    def ids(status):
+        out = tools.call("socialmedia__list_impersonation_reports", {"status": status})
+        return [r["report_id"] for r in json.loads(out.result)]
+
+    assert ids("cleared") == ["IR-20944"]
+    assert ids("flagged") == []
+    assert ids("all") == ["IR-20931", "IR-20944", "IR-20957"]
+
+
+def test_assessment_ids_skip_taken_ones():
+    world = make_world()
+    social = world.app("social_media")
+    social.assessments.append(
+        Assessment(
+            id="ia-2",
+            report_id="IR-20944",
+            responsible_account_id="70211845",
+            decision="clear",
+            reason="fan account",
+            reviewer="lee@trust.example",
+            submitted_at=datetime(2026, 10, 1, 12, 0),
+        )
+    )
+    out = Toolset(world, world.tools()).call(
+        "socialmedia__submit_impersonation_assessment",
+        {"responsible_account_id": "61953512", "decision": "flag", "reason": "name and photo match"},
+    )
+    assert json.loads(out.result)["assessment_id"] == "ia-3"
+
+
+def test_similarity_scores_must_lie_in_unit_range():
+    with pytest.raises(ValidationError):
+        Report(
+            id="IR-1",
+            responsible_account_id="1",
+            victim_account_id="2",
+            profile_cover_photo_similarity=1.2,
+            max_photo_similarity=0.5,
+            reported_at=datetime(2026, 10, 1),
+        )
+
+
+def test_assessments_are_check_targets():
+    world = make_world()
+    pre = world.copy()
+    Toolset(world, world.tools()).call(
+        "socialmedia__submit_impersonation_assessment",
+        {"responsible_account_id": "61953512", "decision": "clear", "reason": "official backup account"},
+    )
+    cleared = Check(
+        name="cleared",
+        check="only",
+        app="social_media",
+        collection="assessments",
+        new=True,
+        where={"responsible_account_id": Cond(eq="61953512"), "decision": Cond(eq="clear")},
+    )
+    report = Check(
+        name="report",
+        check="count",
+        app="social_media",
+        collection="reports",
+        where={"id": Cond(eq="IR-20931"), "status": Cond(eq="cleared")},
+        equals=1,
+    )
+    others = Check(name="others", check="unchanged", app="social_media", collection="accounts")
+    assert grade([cleared, report, others], pre, world) == {"cleared": True, "report": True, "others": True}
+    assert grade([cleared, report], pre, pre) == {"cleared": False, "report": False}

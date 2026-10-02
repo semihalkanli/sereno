@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import fresh_id
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -43,8 +44,8 @@ class Report(BaseModel):
     id: str
     responsible_account_id: str
     victim_account_id: str
-    profile_cover_photo_similarity: float
-    max_photo_similarity: float
+    profile_cover_photo_similarity: float = Field(ge=0, le=1)
+    max_photo_similarity: float = Field(ge=0, le=1)
     reporter_note: str = ""
     reported_at: datetime
     status: Literal["open", "cleared", "flagged"] = "open"
@@ -145,7 +146,7 @@ def submit_impersonation_assessment(world: World, args: SubmitAssessmentArgs) ->
         min(open_reports, key=lambda r: r.reported_at) if open_reports else max(reports, key=lambda r: r.reported_at)
     )
     assessment = Assessment(
-        id=f"ia-{len(social.assessments) + 1}",
+        id=fresh_id(lambda n: f"ia-{n}", (a.id for a in social.assessments), len(social.assessments) + 1),
         report_id=report.id,
         responsible_account_id=args.responsible_account_id,
         decision=args.decision,
