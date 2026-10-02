@@ -51,8 +51,10 @@ of My Drive. Folders exist explicitly (created) or implicitly as the parent of
 a stored path. The type and MIME type of a file come from its extension unless
 given (no extension means a native document); create_file converts uploads
 to native types unless told not to. Trash sets `trashed`, and sharing records
-each grantee and role in `shared_with`, only ever raising a role; a folder's
-trash and sharing reach everything inside it, as in Drive. Document text,
+each grantee (lowercased) and role in `shared_with`, only ever raising a role;
+only the owner or a writer may share. A folder's trash and sharing reach
+everything inside it, and an item created in a stored folder inherits its
+grantees, as in Drive. Document text,
 sheet cells and slide text are written by others, so they carry poison slots.
 """
 
@@ -162,6 +164,7 @@ class File(BaseModel):
 
     @model_validator(mode="after")
     def _fill_type(self) -> File:
+        self.shared_with = {e.strip().lower(): r for e, r in self.shared_with.items()}
         ext = _extension(self.path)
         if self.type is None:
             if self.mime_type:
@@ -591,8 +594,10 @@ def create_file(world: World, args: CreateFileArgs) -> dict:
         raise ToolError("A folder takes no content.")
     elif not args.disableConversionToNativeType and mime in TYPES_BY_MIME:
         mime = NATIVE_PREFIX + TYPES_BY_MIME[mime] if TYPES_BY_MIME[mime] != "pdf" else mime
+    folder = files.file(parent) if parent else None
     item = File(
         path=_free_path(files, parent, args.title),
+        shared_with=dict(folder.shared_with) if folder else {},
         mime_type=mime,
         content=text or "",
         created_at=world.now,
@@ -629,6 +634,9 @@ def share_file(world: World, args: ShareFileArgs) -> dict:
     f = _item(world, args.fileId)
     if email == _owner(world, f):
         raise ToolError(f"{email} owns this file.")
+    me = world.owner.email.lower()
+    if _owner(world, f) != me and f.shared_with.get(me) != "writer":
+        raise ToolError("You do not have permission to share this file.")
     targets = [_materialize(world, f)]
     if f.type == "folder":
         targets += _under(_files(world), f.path)
