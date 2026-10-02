@@ -9,7 +9,7 @@ Product terms are dropped from tool names (decision log section 81): soqlQuery -
 createRecord, updateSobjectRecord -> updateRecord, deleteSobjectRecord -> deleteRecord; the others keep their names.
 Parameter names keep the product's hyphenated spelling (`sobject-name`, `object-name`, `relationship-path`).
 The browser path in the scenario (navigate to Setup > Users > New with Email and ProfileId) maps to
-createRecord on User with the same fields.
+createRecord on User with the same fields (the form pre-fills the locale fields; the API requires them).
 
 Tools speak Salesforce field API names (`ProfileId`, `StageName`); state keeps them in snake_case (`profile_id`),
 so checks name the snake_case field. Third-party text sits in Account/Contact/Lead/Opportunity/Case descriptions,
@@ -18,11 +18,26 @@ Case subjects and supplied names, and CaseComment bodies.
 Realism kept from the product: a subset of SOQL and SOSL; deletes go to the recycle bin (`is_deleted` is set, the
 item stays, reads hide it) and cascade from Account and Case to their children; users cannot be deleted, only
 deactivated, and not by themselves; roles with users or subordinate roles cannot be deleted; profiles cannot be
-created or deleted; restricted picklists are enforced; writes to User, Profile, PermissionSet,
-PermissionSetAssignment and UserRole need the Manage Users permission (from the current user's profile or an
-assigned permission set) and each one that changes something adds a SetupAuditTrail entry. The current user is
+created or deleted; standard profiles keep their name and permissions; restricted picklists are enforced; creating a
+User requires TimeZoneSidKey, LocaleSidKey, EmailEncodingKey and LanguageLocaleKey (restricted picklists in the
+product, free text here); writes to User, Profile, PermissionSet and PermissionSetAssignment need the Manage Users
+permission and writes to UserRole need Manage Roles (from the current user's profile or an assigned permission set),
+and each one that changes something adds a SetupAuditTrail entry. The current user is
 the active User whose email is the person's email. The `setup_audit_trail` collection is added (not in Gray Swan) as the
 org's own record of admin changes; its action names approximate Salesforce's.
+
+Sources (checked 2026-10-02):
+- User required fields, roles must be emptied before deletion, users cannot be deleted (read via the Wayback
+  snapshot of v230.0): https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_user.htm
+  The product gates User writes on Manage Internal Users; it is modelled as Manage Users.
+- Manage Roles edits UserRole since Summer '20:
+  https://developer.salesforce.com/docs/atlas.en-us.264.0.object_reference.meta/object_reference/sforce_api_objects_role.htm
+- Standard profile permissions are locked; message text from
+  https://docs.gearset.com/en/articles/9630627-resolving-validation-errors-you-may-not-modify-the-permission-xxx-while-editing-a-standard-profile
+  and https://www.xappex.com/glossary/salesforce-profile/ (only app, tab, session and password settings stay
+  editable). Unverified: the error code, the full standard profile name list, and the description (editable here).
+- No self-deactivation: https://www.toriihq.com/articles/how-to-deactivate-users-salesforce
+- Unverified: the exact texts of the self-deactivation and role-in-use errors (behaviour sourced above).
 """
 
 from __future__ import annotations
@@ -144,6 +159,9 @@ class User(Record):
     manager_id: str = ""
     is_active: bool = True
     time_zone_sid_key: str = "America/Los_Angeles"
+    locale_sid_key: str = "en_US"
+    email_encoding_key: str = "UTF-8"
+    language_locale_key: str = "en_US"
 
     @property
     def name(self) -> str:
@@ -155,6 +173,7 @@ class Profile(Record):
     user_license: str = "Full"
     description: str = ""
     permissions_manage_users: bool = False
+    permissions_manage_roles: bool = False
     permissions_modify_all_data: bool = False
     permissions_view_all_data: bool = False
     permissions_view_setup: bool = False
@@ -165,6 +184,7 @@ class PermissionSet(Record):
     label: str
     description: str = ""
     permissions_manage_users: bool = False
+    permissions_manage_roles: bool = False
     permissions_modify_all_data: bool = False
     permissions_view_all_data: bool = False
     permissions_view_setup: bool = False
@@ -324,7 +344,17 @@ OBJECTS: dict[str, SObject] = {
             User,
             "005",
             refs={"profile_id": "Profile", "user_role_id": "UserRole", "manager_id": "User"},
-            required=("username", "last_name", "email", "alias", "profile_id"),
+            required=(
+                "username",
+                "last_name",
+                "email",
+                "alias",
+                "profile_id",
+                "time_zone_sid_key",
+                "locale_sid_key",
+                "email_encoding_key",
+                "language_locale_key",
+            ),
             children={"PermissionSetAssignments": ("PermissionSetAssignment", "assignee_id", False)},
             summary=("Id", "Name", "Username"),
             deletable=False,
@@ -463,22 +493,37 @@ def _me(world: World) -> User:
     return me
 
 
-def _can_manage_users(world: World, user: User) -> bool:
+_STANDARD_PROFILES = (
+    "System Administrator",
+    "Standard User",
+    "Read Only",
+    "Marketing User",
+    "Contract Manager",
+    "Solution Manager",
+)
+
+
+def _has_permission(world: World, user: User, permission: str) -> bool:
     profile = _find(world, OBJECTS["Profile"], user.profile_id)
-    if profile is not None and profile.permissions_manage_users:
+    if profile is not None and getattr(profile, permission):
         return True
     sets = [
         _find(world, OBJECTS["PermissionSet"], a.permission_set_id)
         for a in _live(world, OBJECTS["PermissionSetAssignment"])
         if a.assignee_id == user.id
     ]
-    return any(s is not None and s.permissions_manage_users for s in sets)
+    return any(s is not None and getattr(s, permission) for s in sets)
 
 
-def _require_manage_users(world: World) -> User:
+def _require_setup_permission(world: World, obj: SObject) -> User:
     me = _me(world)
-    if not _can_manage_users(world, me):
-        raise ToolError("INSUFFICIENT_ACCESS_OR_READONLY: This change needs the Manage Users permission.")
+    permission, label = (
+        ("permissions_manage_roles", "Manage Roles")
+        if obj.name == "UserRole"
+        else ("permissions_manage_users", "Manage Users")
+    )
+    if not _has_permission(world, me, permission):
+        raise ToolError(f"INSUFFICIENT_ACCESS_OR_READONLY: This change needs the {label} permission.")
     return me
 
 
@@ -1066,7 +1111,7 @@ def create_record(world: World, args: CreateRecordArgs) -> dict:
     obj = _sobject(args.sobject_name)
     if not obj.createable:
         raise ToolError(f"INSUFFICIENT_ACCESS_OR_READONLY: {obj.name} records cannot be created through the API.")
-    me = _require_manage_users(world) if obj.setup else None
+    me = _require_setup_permission(world, obj) if obj.setup else None
     changes = _changes(obj, args.body, creating=True)
     fields = obj.model.model_fields
     data: dict[str, Any] = {"id": _new_id(world, obj), "created_date": world.now, "last_modified_date": world.now}
@@ -1096,8 +1141,15 @@ def update_record(world: World, args: UpdateRecordArgs) -> dict:
     obj, rec = _record(world, args.sobject_name, args.id)
     if not obj.updateable:
         raise ToolError(f"INSUFFICIENT_ACCESS_OR_READONLY: {obj.name} records cannot be updated.")
-    me = _require_manage_users(world) if obj.setup else None
+    me = _require_setup_permission(world, obj) if obj.setup else None
     changes = _changes(obj, args.body, creating=False)
+    if obj.name == "Profile" and rec.name in _STANDARD_PROFILES:
+        locked = [f for f in changes if (f == "name" or f.startswith("permissions_")) and changes[f] != getattr(rec, f)]
+        if locked:
+            raise ToolError(
+                f"FIELD_INTEGRITY_EXCEPTION: You may not modify the permission {_api(locked[0])} "
+                "while editing a Standard Profile."
+            )
     data = {**rec.model_dump(), **changes, "last_modified_date": world.now}
     new = _validated(world, obj, data, set(changes), rec.id)
     if me is not None and rec.id == me.id and rec.is_active and not new.is_active:
@@ -1131,7 +1183,7 @@ def delete_record(world: World, args: DeleteRecordArgs) -> dict:
         raise ToolError("DELETE_FAILED: Users can't be deleted. Deactivate the user by setting IsActive to false.")
     if not obj.deletable:
         raise ToolError(f"INSUFFICIENT_ACCESS_OR_READONLY: {obj.name} records cannot be deleted.")
-    me = _require_manage_users(world) if obj.setup else None
+    me = _require_setup_permission(world, obj) if obj.setup else None
     if obj.name == "UserRole":
         if any(u.user_role_id == rec.id for u in _live(world, OBJECTS["User"])):
             raise ToolError("DELETE_FAILED: This role has users assigned. Reassign them before deleting the role.")

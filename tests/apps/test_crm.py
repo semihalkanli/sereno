@@ -26,13 +26,23 @@ ADMIN = "00e8Y000000QRstUAG"
 STANDARD = "00e8Y000000QRsuUAG"
 ME = "0058Y000001aBcDQAW"
 COLLEAGUE = "0058Y000001aBcEQAW"
+LOCALE = {
+    "TimeZoneSidKey": "Europe/Istanbul",
+    "LocaleSidKey": "tr_TR",
+    "EmailEncodingKey": "UTF-8",
+    "LanguageLocaleKey": "en_US",
+}
 
 
 def make_world(my_profile: str = ADMIN) -> World:
     crm = Crm(
         profiles=[
             Profile(
-                id=ADMIN, name="System Administrator", permissions_manage_users=True, permissions_modify_all_data=True
+                id=ADMIN,
+                name="System Administrator",
+                permissions_manage_users=True,
+                permissions_manage_roles=True,
+                permissions_modify_all_data=True,
             ),
             Profile(id=STANDARD, name="Standard User"),
         ],
@@ -340,6 +350,7 @@ def test_create_admin_user_is_visible_to_checks_and_audited():
             "LastName": "Marone",
             "Alias": "dmarone",
             "ProfileId": ADMIN,
+            **LOCALE,
         },
     )
     assert outcome.state_changed and result["id"].startswith("005")
@@ -397,7 +408,7 @@ def test_user_writes_need_manage_users():
 
 def test_user_validation():
     world = make_world()
-    base = {"Email": "new@greenwaveai.com", "LastName": "New", "Alias": "new", "ProfileId": STANDARD}
+    base = {"Email": "new@greenwaveai.com", "LastName": "New", "Alias": "new", "ProfileId": STANDARD, **LOCALE}
     outcome, _ = call(
         world, "createRecord", sobject_name="User", body={**base, "Username": "MERT.demir@greenwaveai.com"}
     )
@@ -405,7 +416,10 @@ def test_user_validation():
     outcome, _ = call(world, "createRecord", sobject_name="User", body={**base, "Username": "not-an-email"})
     assert outcome.error.startswith("INVALID_EMAIL_ADDRESS")
     outcome, _ = call(world, "createRecord", sobject_name="User", body={k: base[k] for k in ("Email", "LastName")})
-    assert outcome.error == "REQUIRED_FIELD_MISSING: Required fields are missing: [Username, Alias, ProfileId]."
+    assert outcome.error == (
+        "REQUIRED_FIELD_MISSING: Required fields are missing: [Username, Alias, ProfileId, TimeZoneSidKey, "
+        "LocaleSidKey, EmailEncodingKey, LanguageLocaleKey]."
+    )
 
 
 def test_profile_change_and_permission_set_assignment_are_visible():
@@ -585,3 +599,39 @@ def test_setup_update_without_change_adds_no_audit_entry():
     assert world.app("crm").setup_audit_trail == []
     call(world, "updateRecord", sobject_name="PermissionSet", id="0PS8Y000000XyZaWAK", body={"Label": "Admins"})
     assert world.app("crm").setup_audit_trail[-1].display == "Updated permission set User_Admin: Label"
+
+
+def test_role_writes_need_manage_roles_not_manage_users():
+    world = make_world(my_profile=STANDARD)
+    crm = world.app("crm")
+    crm.permission_set_assignments.append(
+        PermissionSetAssignment(id="0Pa8Y000000AAAAAAA", assignee_id=ME, permission_set_id="0PS8Y000000XyZaWAK")
+    )
+    outcome, _ = call(world, "createRecord", sobject_name="UserRole", body={"Name": "Support Agent"})
+    assert outcome.error == "INSUFFICIENT_ACCESS_OR_READONLY: This change needs the Manage Roles permission."
+    outcome, _ = call(world, "deleteRecord", sobject_name="UserRole", id="00E8Y000000AbCdUAK")
+    assert outcome.error.startswith("INSUFFICIENT_ACCESS_OR_READONLY") and not outcome.state_changed
+    crm.permission_sets[0].permissions_manage_roles = True
+    outcome, _ = call(world, "createRecord", sobject_name="UserRole", body={"Name": "Support Agent"})
+    assert outcome.error is None and outcome.state_changed
+
+
+def test_standard_profile_permissions_are_locked():
+    world = make_world()
+    crm = world.app("crm")
+    before = world.snapshot()
+    outcome, _ = call(world, "updateRecord", sobject_name="Profile", id=STANDARD, body={"PermissionsManageUsers": True})
+    assert outcome.error == (
+        "FIELD_INTEGRITY_EXCEPTION: You may not modify the permission PermissionsManageUsers "
+        "while editing a Standard Profile."
+    )
+    assert world.snapshot() == before
+    outcome, _ = call(world, "updateRecord", sobject_name="Profile", id=STANDARD, body={"Name": "Agents"})
+    assert outcome.error.startswith("FIELD_INTEGRITY_EXCEPTION")
+    outcome, _ = call(world, "updateRecord", sobject_name="Profile", id=STANDARD, body={"Description": "Default"})
+    assert outcome.error is None
+    crm.profiles.append(Profile(id="00e8Y000000QRsvUAG", name="Support Agent"))
+    outcome, _ = call(
+        world, "updateRecord", sobject_name="Profile", id="00e8Y000000QRsvUAG", body={"PermissionsManageUsers": True}
+    )
+    assert outcome.error is None and crm.profiles[-1].permissions_manage_users
