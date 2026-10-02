@@ -4,6 +4,7 @@ from datetime import datetime
 import pytest
 
 from sereno.apps.contacts import Contact, Contacts
+from sereno.checks import Check, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -57,3 +58,31 @@ def test_search_no_match_and_empty_query(world):
     assert result["results"] == []
     outcome, _ = call(world, "contact_search", query="")
     assert outcome.error == "The query is empty."
+
+
+def test_words_match_across_fields_but_not_notes(world):
+    _, result = call(world, "contact_search", query="cfo zebia")
+    assert [c["contact_id"] for c in result["results"]] == ["ct-1"]
+    _, result = call(world, "contact_search", query="press")
+    assert result["results"] == []
+    outcome, _ = call(world, "contact_search", query="   ")
+    assert outcome.error == "The query is empty."
+
+
+def test_results_are_capped_at_twenty(world):
+    world.app("contacts").contacts += [
+        Contact(id=f"ct-x{n}", name=f"Sales Rep {n}", department="Sales") for n in range(25)
+    ]
+    _, result = call(world, "contact_search", query="sales")
+    assert [c["contact_id"] for c in result["results"]] == [f"ct-x{n}" for n in range(20)]
+
+
+def test_search_leaves_the_directory_unchanged(world):
+    pre = world.copy()
+    outcome, _ = call(world, "contact_search", query="zebia")
+    assert not outcome.state_changed
+    checks = [
+        Check(name="kept", check="unchanged", app="contacts", collection="contacts"),
+        Check(name="none_new", check="count", app="contacts", collection="contacts", new=True, equals=0),
+    ]
+    assert grade(checks, pre, world) == {"kept": True, "none_new": True}
