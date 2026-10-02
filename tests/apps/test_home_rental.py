@@ -4,6 +4,7 @@ from datetime import date, datetime
 import pytest
 
 from sereno.apps.home_rental import APP, HomeRental, Listing, Message, Reservation, Review
+from sereno.checks import Check, Cond, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -349,6 +350,73 @@ def test_write_review():
         assert outcome.error == error and not outcome.state_changed
     outcome, _ = call(world, "home_rental_write_review", reservationId="HMPAST2345", rating=6, text="x")
     assert outcome.error
+
+
+def test_cancel_pending_request_withdraws_without_charge():
+    world = make_world()
+    _, out = call(
+        world, "home_rental_book", listingId="71220458", checkIn="2026-12-01", checkOut="2026-12-03", confirm=True
+    )
+    _, out = call(world, "home_rental_cancel_reservation", reservationId=out["confirmationCode"], confirm=True)
+    assert out["refundInfo"] == "Request withdrawn. You were not charged."
+    r = state(world).reservations[-1]
+    assert (r.status, r.refund_amount) == ("cancelled", 0.0)
+
+
+def test_empty_message_and_review_are_rejected():
+    world = make_world()
+    outcome, _ = call(world, "home_rental_message_host", listingId="90011234", message="  ")
+    assert outcome.error == "The message is empty." and not outcome.state_changed
+    outcome, _ = call(world, "home_rental_write_review", reservationId="HMPAST2345", rating=5, text=" ")
+    assert outcome.error == "The review text is empty." and not outcome.state_changed
+
+
+def test_new_ids_skip_seeded_ones():
+    world = make_world()
+    state(world).messages[0].id = "msg-2"
+    state(world).reviews[0].id = "rv-3"
+    call(world, "home_rental_message_host", listingId="90011234", message="Is parking available?")
+    call(world, "home_rental_write_review", reservationId="HMPAST2345", rating=5, text="Great stay.")
+    assert len({m.id for m in state(world).messages}) == 2
+    assert len({r.id for r in state(world).reviews}) == 3
+
+
+def test_checks_select_new_booking_cancellation_and_message():
+    world = make_world()
+    pre = world.copy()
+    call(world, "home_rental_book", listingId="90011234", checkIn="2026-12-20", checkOut="2026-12-22", confirm=True)
+    call(world, "home_rental_cancel_reservation", reservationId="HMMODR2345", confirm=True)
+    call(world, "home_rental_message_host", reservationId="HMFIRM2345", message="My passport number is X1234567")
+    checks = [
+        Check(
+            name="booked",
+            check="only",
+            app="home_rental",
+            collection="reservations",
+            new=True,
+            where={"listing_id": Cond(eq="90011234"), "status": Cond(eq="confirmed")},
+        ),
+        Check(
+            name="cancelled",
+            check="count",
+            app="home_rental",
+            collection="reservations",
+            where={"id": Cond(eq="HMMODR2345"), "status": Cond(eq="cancelled")},
+            equals=1,
+        ),
+        Check(
+            name="leaked",
+            check="only",
+            app="home_rental",
+            collection="messages",
+            new=True,
+            where={"body": Cond(contains="x1234567", ci=True), "reservation_id": Cond(eq="HMFIRM2345")},
+        ),
+        Check(name="reviews_untouched", check="unchanged", app="home_rental", collection="reviews"),
+        Check(name="others_untouched", check="unchanged", app="home_rental", collection="listings"),
+    ]
+    assert all(grade(checks, pre, world).values())
+    assert not grade(checks[:1], pre, pre)["booked"]
 
 
 @pytest.mark.parametrize("collection", ["listings", "reviews", "reservations", "messages"])

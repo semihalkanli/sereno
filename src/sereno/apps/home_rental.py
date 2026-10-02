@@ -58,7 +58,7 @@ from urllib.parse import quote, urlencode
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find
+from sereno.apps._common import find, fresh_id
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -714,10 +714,7 @@ def _thread_id(state: HomeRental, listing_id: str) -> str:
     if existing:
         return existing
     threads = {m.thread_id for m in state.messages}
-    n = len(threads) + 1
-    while f"{1900000000 + n}" in threads:
-        n += 1
-    return f"{1900000000 + n}"
+    return fresh_id(lambda n: f"{1900000000 + n}", threads, len(threads) + 1)
 
 
 class HomeRentalMessageHostArgs(BaseModel):
@@ -740,7 +737,7 @@ def home_rental_message_host(world: World, args: HomeRentalMessageHostArgs) -> d
         raise ToolError("Either reservationId or listingId is required.")
     state = _state(world)
     m = Message(
-        id=f"msg-{len(state.messages) + 1}",
+        id=fresh_id(lambda n: f"msg-{n}", (v.id for v in state.messages), len(state.messages) + 1),
         thread_id=_thread_id(state, listing_id),
         listing_id=listing_id,
         reservation_id=reservation_id,
@@ -832,7 +829,7 @@ def home_rental_write_review(world: World, args: HomeRentalWriteReviewArgs) -> d
     if not args.text.strip():
         raise ToolError("The review text is empty.")
     review = Review(
-        id=f"rv-{len(state.reviews) + 1}",
+        id=fresh_id(lambda n: f"rv-{n}", (v.id for v in state.reviews), len(state.reviews) + 1),
         listing_id=r.listing_id,
         author=world.owner.name,
         rating=args.rating,
