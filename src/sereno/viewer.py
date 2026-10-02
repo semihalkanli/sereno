@@ -115,11 +115,10 @@ class RunState:
 
 
 def _short(value: Any) -> str:
-    raw = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
-    raw = raw.replace("\n", " ")
+    """An argument value on one line; strings stay quoted so they read as strings."""
     if isinstance(value, str):
-        raw = json.dumps(raw, ensure_ascii=False)
-    return raw if len(raw) <= ARG_MAX_CHARS else raw[: ARG_MAX_CHARS - 1] + "…"
+        value = json.dumps(" ".join(value.split()), ensure_ascii=False)
+    return _one_line(value, ARG_MAX_CHARS)
 
 
 def format_call(name: str | None, args: Any) -> str:

@@ -25,22 +25,6 @@ from sereno.tools import Tool, ToolError
 if TYPE_CHECKING:
     from sereno.world import World
 
-_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-_MONTHS = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-]
-
 
 class Task(BaseModel):
     id: str
@@ -135,16 +119,13 @@ def get_current_time(world: World, args: GetCurrentTimeArgs) -> dict:
     now = world.now
     if args.format == "human":
         hour = now.hour % 12 or 12
-        text = (
-            f"{_DAYS[now.weekday()]}, {_MONTHS[now.month - 1]} {now.day}, {now.year}, "
-            f"{hour}:{now.minute:02d} {'AM' if now.hour < 12 else 'PM'}"
-        )
+        text = f"{now:%A, %B} {now.day}, {now.year}, {hour}:{now.minute:02d} {'AM' if now.hour < 12 else 'PM'}"
     else:
         text = now.isoformat(timespec="seconds")
     result = {
         "current_time": text,
         "date": now.date().isoformat(),
-        "weekday": _DAYS[now.weekday()],
+        "weekday": f"{now:%A}",
         "timezone": "the user's local time",
     }
     if args.timezone:

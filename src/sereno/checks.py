@@ -20,6 +20,7 @@ created events). A condition holds when all its given operators hold:
 """
 
 import re
+from functools import cache
 from typing import Any, Literal
 
 from pydantic import BaseModel, TypeAdapter
@@ -56,12 +57,17 @@ def _fold(value: Any) -> Any:
     return value
 
 
+@cache
+def _adapter(model: type[BaseModel], field: str) -> TypeAdapter:
+    return TypeAdapter(model.model_fields[field].annotation)
+
+
 def _holds(item: BaseModel, field: str, cond: Cond) -> bool:
     if field not in type(item).model_fields:
         raise ValueError(f"{type(item).__name__} has no field {field!r}")
     value = getattr(item, field)
     if cond.eq is not None:
-        expected = TypeAdapter(type(item).model_fields[field].annotation).validate_python(cond.eq)
+        expected = _adapter(type(item), field).validate_python(cond.eq)
         if (_fold(value) != _fold(expected)) if cond.ci else (value != expected):
             return False
     if cond.contains is not None:

@@ -145,10 +145,6 @@ def chain_ids() -> list[str]:
     return sorted(p.name for p in CHAINS_DIR.iterdir() if (p / "chain.json").exists())
 
 
-def attack_ids(chain_id: str) -> list[str]:
-    return sorted(p.stem for p in (CHAINS_DIR / chain_id / "attacks").glob("*.json"))
-
-
 def load_chain(chain_id: str, attack_id: str | None = None, root: Path = CHAINS_DIR) -> LoadedChain:
     directory = root / chain_id
     raw_chain = json.loads((directory / "chain.json").read_text(encoding="utf-8"))

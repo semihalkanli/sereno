@@ -9,7 +9,7 @@ provider is pinned with fallbacks off, as in the feasibility runs.
 import os
 import time
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
@@ -24,7 +24,6 @@ class Completion:
     finish_reason: str | None
     usage: dict[str, Any]
     latency_s: float
-    raw: dict[str, Any] = field(repr=False, default_factory=dict)
 
 
 class ChatModel(Protocol):
@@ -80,7 +79,6 @@ class OpenRouterModel:
                         finish_reason=choice.get("finish_reason"),
                         usage=data.get("usage") or {},
                         latency_s=round(time.monotonic() - t0, 2),
-                        raw=data,
                     )
                 # OpenRouter reports some upstream provider failures as 200 with an error body.
                 retryable = response.status_code in RETRY_STATUS or response.status_code == 200
