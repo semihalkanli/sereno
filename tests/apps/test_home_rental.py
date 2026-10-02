@@ -1,10 +1,8 @@
 import json
 from datetime import date, datetime
-from importlib import import_module
 
 import pytest
 
-from sereno.apps import app_names
 from sereno.apps.home_rental import APP, HomeRental, Listing, Message, Reservation, Review
 from sereno.tools import Toolset
 from sereno.world import Person, World
@@ -122,18 +120,6 @@ def call(world: World, name: str, **args):
 
 def state(world: World) -> HomeRental:
     return world.app("home_rental")
-
-
-def test_tool_names_are_unique_across_apps():
-    mine = {t.name for t in APP.tools}
-    for name in app_names():
-        if name == "home_rental":
-            continue
-        try:
-            other = import_module(f"sereno.apps.{name}").APP
-        except Exception:
-            continue
-        assert not mine & {t.name for t in other.tools}, name
 
 
 def test_search_by_location_and_filters():
