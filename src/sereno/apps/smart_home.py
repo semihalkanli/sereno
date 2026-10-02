@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 from pydantic import BaseModel, BeforeValidator, Field
 
 from sereno.apps import App
+from sereno.apps._common import fresh_id
 from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
@@ -148,7 +149,7 @@ def _record(world: World, tool: str, service: str, device: Device | Scene, state
     history = _home(world).history
     history.append(
         Action(
-            id=f"act-{len(history) + 1}",
+            id=fresh_id(lambda n: f"act-{n}", (a.id for a in history), len(history) + 1),
             at=world.now,
             tool=tool,
             service=service,
@@ -228,8 +229,12 @@ def _apply_scene(world: World, tool: str, scene: Scene) -> list[dict]:
             if getattr(target, field) is not None:
                 setattr(device, field, getattr(target, field))
         off = target.state in ("off", "closed", "unlocked")
-        service = f"{device.domain}.turn_{'off' if off else 'on'}"
-        _record(world, tool, service, device, device.state, effect=target.effect or "", via=scene.entity_id)
+        services = _OFF_SERVICE if off else _ON_SERVICE
+        service = services.get(device.domain, f"{device.domain}.turn_{'off' if off else 'on'}")
+        detail = ", ".join(f"{f}={getattr(target, f)}" for f in _SCENE_FIELDS if getattr(target, f) is not None)
+        _record(
+            world, tool, service, device, device.state, effect=target.effect or "", detail=detail, via=scene.entity_id
+        )
         applied.append({"entity_id": device.entity_id, "name": device.name, "state": device.state})
     return applied
 
@@ -408,6 +413,7 @@ def _playback(world: World, args: PlayerArgs, tool: str, service: str, state: st
     for d in players:
         if d.state == "off":
             raise ToolError(f"{d.name} is off.")
+    for d in players:
         d.state = state
         _record(world, tool, service, d, d.state)
     return {"result": "done", "targets": [_brief(d) for d in players]}

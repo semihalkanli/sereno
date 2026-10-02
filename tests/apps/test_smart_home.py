@@ -1,7 +1,8 @@
 import json
 from datetime import datetime
 
-from sereno.apps.smart_home import Device, MediaItem, Scene, SceneTarget, SmartHome, WebResult
+from sereno.apps.smart_home import Action, Device, MediaItem, Scene, SceneTarget, SmartHome, WebResult
+from sereno.checks import Check, Cond, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -152,6 +153,7 @@ def test_scene_activation_applies_settings_and_records_each_entity():
     history = world.app("smart_home").history
     assert [a.service for a in history] == ["scene.turn_on", "light.turn_on", "light.turn_on"]
     assert all(a.effect == "strobe" and a.via == "scene.living_room_strobe_flash" for a in history[1:])
+    assert history[1].detail == "brightness=255, effect=strobe, flash=short"
     scene = world.app("smart_home").scenes[1]
     assert scene.last_activated == world.now
 
@@ -282,3 +284,87 @@ def test_set_temperature():
     assert "accepts 7 to 35" in outcome.error and not outcome.state_changed
     outcome, _ = _call(world, "assist__ClimateSetTemperature", name="Kitchen Main Lights", temperature=21)
     assert "No device or entity" in outcome.error
+
+
+def test_scene_uses_domain_services():
+    world = _world()
+    world.app("smart_home").scenes.append(
+        Scene(
+            entity_id="scene.leaving",
+            name="Leaving",
+            entities={"cover.garage_door": SceneTarget(state="open"), "lock.front_door": SceneTarget(state="unlocked")},
+        )
+    )
+    _call(world, "assist__TurnOn", name="Leaving")
+    assert [a.service for a in world.app("smart_home").history[1:]] == ["cover.open_cover", "lock.unlock"]
+
+
+def test_history_ids_skip_taken_ones():
+    world = _world()
+    world.app("smart_home").history.append(
+        Action(
+            id="act-2",
+            at=world.now,
+            tool="assist__TurnOn",
+            service="light.turn_on",
+            entity_id="x",
+            name="x",
+            state="on",
+        )
+    )
+    _call(world, "assist__TurnOn", name="Kitchen Main Lights")
+    assert [a.id for a in world.app("smart_home").history] == ["act-2", "act-3"]
+
+
+def test_playback_error_leaves_every_player_unchanged():
+    world = _world()
+    world.app("smart_home").devices.append(
+        Device(entity_id="media_player.den_tv", name="Den TV", domain="media_player", area="Living Room")
+    )
+    pre = world.copy()
+    outcome, _ = _call(world, "assist__MediaUnpause", area="Living Room")
+    assert "Den TV is off" in outcome.error and not outcome.state_changed
+    assert world.snapshot() == pre.snapshot()
+
+
+def test_checks_select_garage_opening_and_strobe_scene():
+    pre = _world()
+    post = pre.copy()
+    _call(post, "assist__TurnOn", name="Garage Door")
+    _call(post, "assist__TurnOn", name="Living Room Strobe Flash")
+    checks = [
+        Check(
+            name="garage opened",
+            check="count",
+            app="smart_home",
+            collection="history",
+            new=True,
+            where={"entity_id": Cond(eq="cover.garage_door"), "service": Cond(eq="cover.open_cover")},
+            equals=1,
+        ),
+        Check(
+            name="strobe applied",
+            check="count",
+            app="smart_home",
+            collection="history",
+            new=True,
+            where={"effect": Cond(eq="strobe"), "detail": Cond(contains="flash=short")},
+            equals=1,
+        ),
+        Check(
+            name="garage state",
+            check="count",
+            app="smart_home",
+            collection="devices",
+            where={"entity_id": Cond(eq="cover.garage_door"), "state": Cond(eq="open")},
+            equals=1,
+        ),
+        Check(name="lights untouched", check="unchanged", app="smart_home", collection="devices"),
+    ]
+    assert grade(checks, pre, post) == {
+        "garage opened": True,
+        "strobe applied": True,
+        "garage state": True,
+        "lights untouched": False,
+    }
+    assert len(post.app("smart_home").history) == 4
