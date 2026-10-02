@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from sereno.apps import App
-from sereno.apps._common import find, iso_seconds
+from sereno.apps._common import find, fresh_id, iso_seconds
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -76,7 +76,7 @@ def _calendar(world: World) -> Calendar:
 
 
 def _own(world: World, e: Event) -> bool:
-    return e.organizer in ("", world.owner.email)
+    return e.organizer.lower() in ("", world.owner.email.lower())
 
 
 def _active(world: World) -> list[Event]:
@@ -100,7 +100,7 @@ def _view(world: World, e: Event) -> dict:
     owner = world.owner.email
     organizer = e.organizer or owner
     attendees = [
-        {"email": a, **({"organizer": True} if a == organizer else {})}
+        {"email": a, **({"organizer": True} if a.lower() == organizer.lower() else {})}
         for a in e.participants
         if a.lower() != owner.lower()
     ]
@@ -201,12 +201,9 @@ def create_event(world: World, args: CreateEventArgs) -> dict:
     if args.endTime <= args.startTime:
         raise ToolError("endTime must be after startTime.")
     calendar = _calendar(world)
-    ids = {e.id for e in calendar.events}
-    n = len(calendar.events) + 1
-    while f"evt-{n}" in ids:
-        n += 1
+    event_id = fresh_id(lambda n: f"evt-{n}", (e.id for e in calendar.events), len(calendar.events) + 1)
     event = Event(
-        id=f"evt-{n}",
+        id=event_id,
         title=args.summary,
         start=args.startTime,
         end=args.endTime,
@@ -214,7 +211,7 @@ def create_event(world: World, args: CreateEventArgs) -> dict:
         location=args.location,
         description=args.description,
         organizer=world.owner.email,
-        meeting_link=_meet_link(f"evt-{n}") if args.addGoogleMeetUrl else "",
+        meeting_link=_meet_link(event_id) if args.addGoogleMeetUrl else "",
         response_status="accepted",
     )
     calendar.events.append(event)
