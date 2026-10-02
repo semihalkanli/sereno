@@ -24,7 +24,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
 from sereno.apps import App
 from sereno.apps._common import find, fresh_id
@@ -39,6 +39,7 @@ Crn = Annotated[str, StringConstraints(pattern=r"^[0-9]{5}$")]
 CourseCode = Annotated[str, StringConstraints(pattern=r"^[A-Z]{2,4}[0-9]{3,4}$")]
 ScopeItem = Annotated[str, StringConstraints(pattern=r"^(current|previous|(fall|spring|summer)_\d{4})$")]
 ShellId = Annotated[str, StringConstraints(pattern=r"^[A-Z]{2,4}[0-9]{3,4}_[0-9]{3}_[0-9]{4}$")]
+LocalTime = Annotated[datetime, AfterValidator(lambda d: d.replace(tzinfo=None))]
 
 RecordType = Literal[
     "transcript_unofficial", "degree_audit", "holds_alerts", "registration_history", "academic_standing"
@@ -399,6 +400,10 @@ def _hm(text: str) -> time:
     return time.fromisoformat(text)
 
 
+def _hold_error(kind: str, h: Hold) -> ToolError:
+    return ToolError(f"{kind} hold: {h.reason}" + (f" ({h.office})." if h.office else "."))
+
+
 GRADE_POINTS = {
     "A": 4.0,
     "A-": 3.7,
@@ -574,6 +579,11 @@ def _overlaps(a: Section, b: Section) -> bool:
     return bool(shared) and _hm(a.start_time) < _hm(b.end_time) and _hm(b.start_time) < _hm(a.end_time)
 
 
+def _missing_prerequisites(uni: University, s: Section) -> list[str]:
+    done = {_norm_code(c.code) for c in uni.completed_courses if c.grade in PASSING}
+    return [p for p in s.prerequisites if _norm_code(p) not in done]
+
+
 def _add_problem(uni: University, s: Section, args: CourseRegistrationSystemArgs, ignore: str = "") -> str | None:
     existing = _enrollment(uni, s.crn, s.term)
     if existing and existing.status != "dropped":
@@ -583,11 +593,9 @@ def _add_problem(uni: University, s: Section, args: CourseRegistrationSystemArgs
     ]
     if any(_norm_code(e.code) == _norm_code(s.code) for e in registered):
         return f"already registered in another section of {s.code}"
-    if not args.override_prerequisite:
-        done = {_norm_code(c.code) for c in uni.completed_courses if c.grade in PASSING}
-        missing = [p for p in s.prerequisites if _norm_code(p) not in done]
-        if missing:
-            return f"prerequisite not met for {s.code}: {', '.join(missing)}"
+    missing = _missing_prerequisites(uni, s)
+    if missing and not args.override_prerequisite:
+        return f"prerequisite not met for {s.code}: {', '.join(missing)}"
     sections = {x.crn: x for x in uni.sections if x.term == s.term}
     for e in registered:
         other = sections.get(e.crn)
@@ -614,7 +622,7 @@ def _enroll(world: World, uni: University, s: Section, args: CourseRegistrationS
     fields = dict(
         status=status,
         grading_option=args.grading_option or "letter_grade",
-        prerequisite_override=args.override_prerequisite and bool(s.prerequisites),
+        prerequisite_override=args.override_prerequisite and bool(_missing_prerequisites(uni, s)),
         updated_at=world.now,
     )
     existing = _enrollment(uni, s.crn, s.term)
@@ -660,7 +668,7 @@ def course_registration_system(world: World, args: CourseRegistrationSystemArgs)
     term = args.registration_term
     blocking = [h for h in uni.holds if "registration" in h.blocks]
     if blocking and args.registration_action != "drop":
-        raise ToolError(f"Registration hold: {blocking[0].reason} ({blocking[0].office}).")
+        raise _hold_error("Registration", blocking[0])
     crns = list(dict.fromkeys(args.course_reference_numbers))
     if not crns:
         raise ToolError("At least one CRN is required.")
@@ -1022,7 +1030,9 @@ class CampusResourceReservationArgs(BaseModel):
     group_size: int = Field(ge=1, le=25)
     equipment_needed: list[Equipment] = []
     recurring_reservation: bool = Field(False, description="Repeat weekly at the same time for the rest of the term.")
-    start_time: datetime | None = Field(None, description="Start, YYYY-MM-DDTHH:MM. Omit to book the next free slot.")
+    start_time: LocalTime | None = Field(
+        None, description="Local start, YYYY-MM-DDTHH:MM. Omit to book the next free slot."
+    )
 
 
 def campus_resource_reservation(world: World, args: CampusResourceReservationArgs) -> dict:
@@ -1110,7 +1120,7 @@ def academic_transcript_services(world: World, args: AcademicTranscriptServicesA
     uni = _uni(world)
     blocking = [h for h in uni.holds if "transcripts" in h.blocks]
     if blocking:
-        raise ToolError(f"Transcript hold: {blocking[0].reason} ({blocking[0].office}).")
+        raise _hold_error("Transcript", blocking[0])
     if args.recipient_organization != "self" and not args.ferpa_release_signed:
         raise ToolError("Releasing records to a third party requires a signed FERPA release.")
     fee = FEES[args.transcript_type] + RUSH[args.processing_priority]

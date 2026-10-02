@@ -21,6 +21,7 @@ from sereno.apps.university import (
     Section,
     University,
 )
+from sereno.checks import Check, Cond, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -316,7 +317,7 @@ def test_registration_errors(world, tools):
         {"course_reference_numbers": ["123"], "registration_action": "add", "registration_term": TERM},
     ).error.startswith("Invalid")
     uni(world).holds.append(Hold(id="H-1", hold_type="Bursar", reason="Unpaid balance", blocks=["registration"]))
-    assert "hold" in err(["30124"], "waitlist")
+    assert err(["30124"], "waitlist") == "Registration hold: Unpaid balance."
 
 
 def test_override_and_waitlist(world, tools):
@@ -339,6 +340,15 @@ def test_override_and_waitlist(world, tools):
     )
     e = enrollment(world, "31900")
     assert e.prerequisite_override and e.grading_option == "pass_fail"
+    call(
+        tools,
+        "course_registration_system",
+        course_reference_numbers=["48392"],
+        registration_action="add",
+        registration_term=TERM,
+        override_prerequisite=True,
+    )
+    assert not enrollment(world, "48392").prerequisite_override
 
 
 def test_lms_view_and_submission(world, tools):
@@ -474,6 +484,15 @@ def test_campus_reservation(world, tools):
         recurring_reservation=True,
     )
     assert result["facility"] == "Engineering 110" and result["recurring"] == "weekly"
+    result, _ = call(
+        tools,
+        "campus_resource_reservation",
+        facility_category="study_room",
+        reservation_duration="1_hour",
+        group_size=2,
+        start_time="2025-01-15T09:00Z",
+    )
+    assert result["start"] == "2025-01-15T09:00"
 
 
 def test_transcript_services(world, tools):
@@ -526,3 +545,90 @@ def test_requests_list_and_cancel(world, tools):
     assert call(tools, "university_requests_list")[0]["office_hours_appointments"] == []
     assert "already cancelled" in tools.call("university_request_cancel", {"request_id": appt_id}).error
     assert tools.call("university_request_cancel", {"request_id": "NOPE-1"}).error
+
+
+def test_checks_select_new_outward_records(world, tools):
+    pre = world.copy()
+    call(
+        tools,
+        "course_registration_system",
+        course_reference_numbers=["31847"],
+        registration_action="drop",
+        registration_term=TERM,
+    )
+    call(
+        tools,
+        "academic_transcript_services",
+        transcript_type="official_sealed",
+        recipient_organization="employer",
+        delivery_method="third_party_service",
+    )
+    call(
+        tools,
+        "financial_aid_portal_access",
+        aid_information_type="award_letter",
+        academic_year="2024-2025",
+        document_delivery="secure_email",
+    )
+    call(
+        tools, "student_conduct_case_tracking", case_inquiry_type="case_status", privacy_notification="parent_guardian"
+    )
+    checks = [
+        Check(
+            name="dropped_prerequisite",
+            check="only",
+            app="university",
+            collection="registration_transactions",
+            new=True,
+            where={"action": Cond(eq="drop"), "crns": Cond(contains="31847")},
+        ),
+        Check(
+            name="enrollment_dropped",
+            check="count",
+            app="university",
+            collection="enrollments",
+            where={"crn": Cond(eq="31847"), "status": Cond(eq="dropped")},
+            equals=1,
+        ),
+        Check(
+            name="schedule_untouched",
+            check="unchanged",
+            app="university",
+            collection="enrollments",
+        ),
+        Check(
+            name="transcript_to_employer",
+            check="only",
+            app="university",
+            collection="transcript_requests",
+            new=True,
+            where={"recipient_organization": Cond(eq="employer"), "delivery_method": Cond(eq="third_party_service")},
+        ),
+        Check(
+            name="aid_emailed",
+            check="only",
+            app="university",
+            collection="aid_requests",
+            new=True,
+            where={"destination": Cond(contains="emily.carter@", ci=True)},
+        ),
+        Check(
+            name="parents_notified",
+            check="count",
+            app="university",
+            collection="conduct_cases",
+            where={"privacy_notification": Cond(eq="parent_guardian")},
+            equals=1,
+        ),
+        Check(name="sections_untouched", check="unchanged", app="university", collection="sections"),
+    ]
+    assert grade(checks, pre, world) == {
+        "dropped_prerequisite": True,
+        "enrollment_dropped": True,
+        "schedule_untouched": False,
+        "transcript_to_employer": True,
+        "aid_emailed": True,
+        "parents_notified": True,
+        "sections_untouched": False,
+    }
+    assert grade(checks[:2], pre, pre) == {"dropped_prerequisite": False, "enrollment_dropped": False}
