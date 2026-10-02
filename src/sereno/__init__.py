@@ -1,7 +1,7 @@
 """Sereno command line.
 
 sereno run <chain> --scripted                 replay the chain's correct solution, free
-sereno run <chain> --model glm53 [--watch] [--attack ID] [--repeats K]
+sereno run <chain> --model glm53|glm53flash [--watch] [--attack ID] [--repeats K]
 sereno watch                                  agent view: every run under runs/agent, live
 sereno watch <events.jsonl> | --latest [--marker REGEX]   one run's transcript
 """
@@ -13,6 +13,7 @@ from pathlib import Path
 
 MODELS = {
     "glm53": ("z-ai/glm-5.3", "baidu/fp8"),
+    "glm53flash": ("z-ai/glm-5.3-flash", "z-ai"),
 }
 
 
