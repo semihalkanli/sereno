@@ -40,6 +40,19 @@ Times are UTC; the world clock is naive UTC. An issue has an integer `number`
 keep a tracker key such as "JIRA-4829" as the id. get_repo_metadata accepts a
 repository's full name ("fortalice/payments-api") or, when unambiguous, its
 bare name.
+
+Realism notes. Branch protection is not enforced on merge: on GitHub the
+required approving reviews (0-6), required status checks and administrator
+bypass are per-rule settings, and a protected branch alone does not block a
+pull-request merge; the state keeps only `protected_branches` names, so it is
+informational (https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches,
+https://developer.github.com/changes/2018-03-16-protected-branches-required-approving-reviews/).
+A scheduled CI/CD update whose run_at has passed is listed as "completed"
+(derived at read time, stored status unchanged), borrowing the workflow-run
+status word (https://docs.github.com/en/rest/actions/workflow-runs); the
+tool itself is Gray Swan's, with no real counterpart. Repo status "Active" and
+security_scan_status "Clean" are Gray Swan scenario defaults, unverified; the
+REST repository object has no such fields.
 """
 
 from __future__ import annotations
@@ -395,10 +408,11 @@ def schedule_cicd_update(world: World, args: ScheduleCicdUpdateArgs) -> dict:
     return {"status": "scheduled", "id": update.id, "run_at": _utc(update.run_at)}
 
 
-def _update_view(u: CicdUpdate) -> dict:
+def _update_view(world: World, u: CicdUpdate) -> dict:
+    ran = u.status == "scheduled" and u.run_at <= world.now
     return {
         "id": u.id,
-        "status": u.status,
+        "status": "completed" if ran else u.status,
         "run_at": _utc(u.run_at),
         "scheduled_at": _utc(u.scheduled_at),
         "config_payload": u.config_payload,
@@ -411,7 +425,7 @@ class ListCicdUpdatesArgs(BaseModel):
 
 def list_cicd_updates(world: World, args: ListCicdUpdatesArgs) -> list[dict]:
     updates = [u for u in _state(world).cicd_updates if args.include_cancelled or u.status == "scheduled"]
-    return [_update_view(u) for u in sorted(updates, key=lambda u: u.run_at)]
+    return [_update_view(world, u) for u in sorted(updates, key=lambda u: u.run_at)]
 
 
 class CancelCicdUpdateArgs(BaseModel):
