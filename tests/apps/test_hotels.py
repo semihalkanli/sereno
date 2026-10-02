@@ -281,6 +281,27 @@ def test_order_create_records_the_booking(world):
     assert result["payment"]["charge_date"] == "2026-11-03"
 
 
+def test_pay_later_order_reads_paid_from_its_charge_date(world):
+    booked, _ = call(
+        world,
+        "accommodations_order_create",
+        accommodation_id="1218934",
+        product_id="121893401",
+        arrival="2026-11-05",
+        departure="2026-11-08",
+        payment_timing="pay_online_later",
+    )
+    before, _ = call(world, "accommodations_order_details", order_id=booked["order_id"])
+    assert (before["payment"]["status"], before["payment"]["amount_paid"]) == ("scheduled", 0.0)
+    world.now = datetime(2026, 11, 3, 9, 0)
+    after, changed = call(world, "accommodations_order_details", order_id=booked["order_id"])
+    assert not changed
+    assert (after["payment"]["status"], after["payment"]["amount_paid"]) == ("paid", 360.0)
+    world.now = datetime(2026, 11, 4, 9, 0)
+    result, _ = call(world, "accommodations_order_cancel", order_id=booked["order_id"], reason="Ill.")
+    assert (result["cancellation_fee"], result["refund_amount"]) == (120.0, 240.0)
+
+
 def test_order_create_errors(world):
     def book(**kw):
         args = {"accommodation_id": "1218934", "product_id": "121893402", "payment_timing": "pay_online_now"}
