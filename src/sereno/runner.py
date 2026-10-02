@@ -120,6 +120,7 @@ def _run(loaded: LoadedChain, make_model, log: EventLog, run_id: str, max_steps:
                 "run",
                 run_id,
                 chain=chain.id,
+                sessions=len(chain.sessions),
                 attack=loaded.attack.id if loaded.attack else None,
                 marker=loaded.attack.marker if loaded.attack else None,
                 max_steps=max_steps,

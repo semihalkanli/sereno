@@ -24,13 +24,24 @@ agent loop.
 ```sh
 uv run sereno run kickoff --scripted          # replay the correct solution, no API calls
 uv run sereno run kickoff --model glm53 --watch   # paid run on OpenRouter, live viewer
-uv run sereno watch --latest                  # open the viewer on the newest event log
+uv run sereno watch                           # agent view: every run, live
+uv run sereno watch --latest                  # open the newest run's transcript
 ```
 
-Each run writes an append-only event log to `runs/agent/<run_id>/events.jsonl`;
-the schema is documented in `src/sereno/events.py`. In the viewer, `t` shows
-the model's reasoning, `ctrl+o` expands tool results, `f` pauses following and
-`q` quits. Wrap paid runs in the cost wrapper below to
+Each run writes two files to `runs/agent/<run_id>/`: `events.jsonl`, the
+append-only event log with everything that happened, including the exact
+request and response of every model call, and `diag.jsonl`, the diagnostic
+records (HTTP attempts, retries, errors) tagged with the event they belong to.
+The schema is documented in `src/sereno/events.py`.
+
+`sereno watch` is modelled on Claude Code's agent view. The list groups runs
+by state (working, failed, stopped, completed); `space` peeks at a run,
+`enter` or the right arrow attaches to its transcript, the left arrow goes
+back, and `tab` focuses the input that starts a new `sereno run` (paid runs go
+through the cost wrapper). In a transcript, `t` shows the model's reasoning,
+`ctrl+o` expands tool results, `[` and `]` move between events, `d` shows an
+event's raw JSON with its diagnostic records, `f` pauses following and `q`
+quits. Wrap paid runs started from the shell in the cost wrapper below to
 record them in the ledger.
 
 ## Development

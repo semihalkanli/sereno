@@ -2,7 +2,8 @@
 
 sereno run <chain> --scripted                 replay the chain's correct solution, free
 sereno run <chain> --model glm53 [--watch] [--attack ID] [--repeats K]
-sereno watch [<events.jsonl> | --latest] [--marker REGEX]
+sereno watch                                  agent view: every run under runs/agent, live
+sereno watch <events.jsonl> | --latest [--marker REGEX]   one run's transcript
 """
 
 import argparse
@@ -114,9 +115,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 
 def _cmd_watch(args: argparse.Namespace) -> int:
-    from sereno.viewer import run_viewer
+    from sereno.runner import RUNS_DIR
+    from sereno.viewer import run_agent_view, run_viewer
 
-    path = _latest_log() if args.latest or args.path is None else args.path
+    if args.path is None and not args.latest:
+        run_agent_view(RUNS_DIR, marker=args.marker)
+        return 0
+    path = _latest_log() if args.latest else args.path
     run_viewer(path, follow=not args.no_follow, marker=args.marker)
     return 0
 
@@ -140,7 +145,7 @@ def main() -> None:
     run.add_argument("--watch", action="store_true", help="open the live viewer while the run goes")
     run.add_argument("--repeats", type=int, default=1, help="run the chain k times and summarise")
 
-    watch = sub.add_parser("watch", help="open the live viewer on an event log")
+    watch = sub.add_parser("watch", help="open the agent view, or one run's live transcript")
     watch.add_argument("path", nargs="?", type=Path)
     watch.add_argument("--latest", action="store_true")
     watch.add_argument("--no-follow", action="store_true")
