@@ -5,21 +5,20 @@
 Tails the append-only JSONL log written by `sereno.events.EventLog` and shows one
 scrolling stream in the style of the Claude Code CLI: user prompts, model text,
 each tool call with its result beneath, and a status bar with cost, counts,
-status and grade. The world snapshot is a panel toggled with w.
+status and grade. World snapshots stay in the log; checks read them, the
+viewer does not show them.
 
-Keys: q quit, f follow on/off, w world panel, t thinking, ctrl+o or e expand results.
+Keys: q quit, f follow on/off, t thinking, ctrl+o or e expand results.
 """
 
 import json
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import RichLog, Static
 
 POLL_SECONDS = 0.3
@@ -67,8 +66,6 @@ class RunState:
         self.tool_calls = 0
         self.status = "waiting"
         self.grade: dict[str, Any] | None = None
-        self.world: dict[str, Any] | None = None
-        self.previous_world: dict[str, Any] | None = None
 
     def apply(self, event: dict[str, Any]) -> None:
         self.run_id = event.get("run_id", self.run_id)
@@ -86,9 +83,6 @@ class RunState:
             self.cost += (event.get("usage") or {}).get("cost") or 0.0
         elif kind == "tool_result":
             self.tool_calls += 1
-        elif kind == "world_state":
-            self.previous_world = self.world
-            self.world = event.get("state")
         elif kind == "session_end":
             self.status = event.get("reason") or "ended"
         elif kind == "grade":
@@ -278,75 +272,14 @@ def render_stream(events: list[dict[str, Any]], expand_results: bool, show_think
 _COMMON = {"ts", "seq", "run_id", "session", "turn", "step", "agent_id", "event", "provenance", "memory_op", "gate"}
 
 
-def _items_by_key(world: dict[str, Any] | None, app: str, collection: str, key: str) -> dict[Any, dict]:
-    if not world:
-        return {}
-    return {item.get(key): item for item in (world.get(app) or {}).get(collection) or []}
-
-
-def short_address(address: str, limit: int = 20) -> str:
-    """The local part of a long email address, the whole address when it is short."""
-    if len(address) <= limit or "@" not in address:
-        return address
-    return address.split("@", 1)[0]
-
-
-def short_span(start: Any, end: Any) -> str:
-    """Formats an ISO start and end as "Tue 13 Oct 10:30-11:15"; falls back to the raw values."""
-    try:
-        s, e = datetime.fromisoformat(str(start)), datetime.fromisoformat(str(end))
-    except ValueError:
-        return f"{start} - {end}"
-    if s.date() == e.date():
-        return f"{s:%a %d %b %H:%M}-{e:%H:%M}"
-    return f"{s:%a %d %b %H:%M} - {e:%a %d %b %H:%M}"
-
-
-def render_world(world: dict[str, Any] | None, previous: dict[str, Any] | None) -> Text:
-    text = Text()
-    if world is None:
-        text.append("no world snapshot yet", style="dim")
-        return text
-    owner = world.get("owner") or {}
-    text.append(f"today {world.get('today')}\n", style="bold")
-    text.append(f"{owner.get('name')} <{owner.get('email')}>\n", style="dim")
-
-    def section(title: str, app: str, collection: str, key: str, line, order=None) -> None:
-        text.append(f"\n{title}\n", style="bold underline")
-        now = _items_by_key(world, app, collection, key)
-        before = _items_by_key(previous, app, collection, key) if previous is not None else now
-        if not now:
-            text.append("  (empty)\n", style="dim")
-        items = sorted(now.items(), key=lambda kv: order(kv[1])) if order else now.items()
-        for item_key, item in items:
-            changed = before.get(item_key) != item
-            text.append((f"{DOT} " if changed else "  ") + line(item) + "\n", style="bold yellow" if changed else "")
-
-    def email_line(e: dict) -> str:
-        who = ", ".join(e.get("to") or []) if e.get("folder") == "sent" else str(e.get("sender"))
-        unread = "" if e.get("read", True) else " (unread)"
-        return f"{e.get('folder')}  {short_address(who)}  {e.get('subject')}{unread}"
-
-    def event_line(e: dict) -> str:
-        return f"{short_span(e.get('start'), e.get('end'))}  {e.get('title')}"
-
-    section("mail", "mail", "emails", "id", email_line)
-    section("calendar", "calendar", "events", "id", event_line, order=lambda e: str(e.get("start")))
-    section("files", "files", "files", "path", lambda f: str(f.get("path")))
-    return text
-
-
 class RunViewer(App):
     CSS = """
     #transcript { width: 1fr; padding: 0 1; }
-    #world-pane { width: 60; display: none; border-left: solid $primary-muted; padding: 0 1; }
-    #world-pane.shown { display: block; }
     #status { dock: bottom; height: 2; padding: 0 1; background: $boost; }
     """
     BINDINGS: ClassVar = [
         Binding("q", "quit", "quit"),
         Binding("f", "toggle_follow", "follow"),
-        Binding("w", "toggle_world", "world"),
         Binding("t", "toggle_thinking", "thinking"),
         Binding("ctrl+o", "toggle_results", "results"),
         Binding("e", "toggle_results", "results", show=False),
@@ -365,10 +298,7 @@ class RunViewer(App):
         self.show_thinking = False
 
     def compose(self) -> ComposeResult:
-        with Horizontal():
-            yield RichLog(id="transcript", wrap=True, markup=False, auto_scroll=True)
-            with VerticalScroll(id="world-pane"):
-                yield Static(id="world")
+        yield RichLog(id="transcript", wrap=True, markup=False, auto_scroll=True)
         yield Static(id="status")
 
     def on_mount(self) -> None:
@@ -380,11 +310,9 @@ class RunViewer(App):
         new = self.tail.read_new()
         for event in new:
             self.state.apply(event)
-        self.events += new
+        self.events += [e for e in new if e["event"] != "world_state"]
         if new:
             self.redraw()
-            if any(e["event"] == "world_state" for e in new):
-                self._redraw_world()
         self._redraw_status()
 
     def redraw(self) -> None:
@@ -398,16 +326,10 @@ class RunViewer(App):
             log.write(Text(""))
         self.entries = len(entries)
 
-    def _redraw_world(self) -> None:
-        world = render_world(self.state.world, self.state.previous_world)
-        if self.marker is not None:
-            world.highlight_regex(self.marker, style=MARKER_STYLE)
-        self.query_one("#world", Static).update(world)
-
     def _redraw_status(self) -> None:
         text = self.state.status_line()
         text.append("\n")
-        hints = "q quit  f follow  w world  t thinking  ctrl+o results"
+        hints = "q quit  f follow  t thinking  ctrl+o results"
         text.append(hints + ("  [paused]" if not self.follow else ""), style="dim")
         self.query_one("#status", Static).update(text)
 
@@ -420,9 +342,6 @@ class RunViewer(App):
         else:
             self._timer.pause()
         self._redraw_status()
-
-    def action_toggle_world(self) -> None:
-        self.query_one("#world-pane").toggle_class("shown")
 
     def action_toggle_thinking(self) -> None:
         self.show_thinking = not self.show_thinking

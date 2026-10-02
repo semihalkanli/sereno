@@ -14,9 +14,7 @@ from sereno.viewer import (
     format_call,
     render_result,
     render_stream,
-    render_world,
     result_lines,
-    short_span,
 )
 
 WORLD = {
@@ -148,18 +146,6 @@ def test_result_lines_compact_json() -> None:
     assert result_lines("plain\ntext") == ["plain", "text"]
 
 
-def test_short_span() -> None:
-    assert short_span("2026-10-13T10:30:00", "2026-10-13T11:15:00") == "Tue 13 Oct 10:30-11:15"
-
-
-def test_render_world_marks_changes() -> None:
-    sent = {**WORLD["mail"]["emails"][0], "id": "e2", "folder": "sent", "to": ["priya@haldenrowe.co.uk"]}
-    after = {**WORLD, "mail": {"emails": [*WORLD["mail"]["emails"], sent]}}
-    lines = render_world(after, WORLD).plain.splitlines()
-    assert any(line.startswith("● sent  priya  Kickoff call") for line in lines)
-    assert any(line.startswith("  inbox  priya  Kickoff call") for line in lines)
-
-
 def test_viewer_renders_and_follows(tmp_path: Path) -> None:
     path = tmp_path / "events.jsonl"
     log = write_fixture(path)
@@ -177,11 +163,6 @@ def test_viewer_renders_and_follows(tmp_path: Path) -> None:
             assert "grade FAIL 1/2" in status and status.startswith("z-ai/glm-5.3@baidu/fp8")
             app.state.provider = None
             assert app.state.status_line().plain.startswith("z-ai/glm-5.3  session")
-
-            pane = app.query_one("#world-pane")
-            assert not pane.has_class("shown")
-            await pilot.press("w")
-            assert pane.has_class("shown")
 
             log.emit("user_message", turn=2, text="One more thing.")
             await pilot.pause(0.5)

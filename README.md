@@ -28,9 +28,9 @@ uv run sereno watch --latest                  # open the viewer on the newest ev
 ```
 
 Each run writes an append-only event log to `runs/agent/<run_id>/events.jsonl`;
-the schema is documented in `src/sereno/events.py`. In the viewer, `w` shows
-the world, `t` the model's reasoning, `ctrl+o` expands tool results, `f`
-pauses following and `q` quits. Wrap paid runs in the cost wrapper below to
+the schema is documented in `src/sereno/events.py`. In the viewer, `t` shows
+the model's reasoning, `ctrl+o` expands tool results, `f` pauses following and
+`q` quits. Wrap paid runs in the cost wrapper below to
 record them in the ledger.
 
 ## Development
