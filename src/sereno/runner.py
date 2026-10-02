@@ -134,7 +134,7 @@ def run_chain(
             model = first if number == 1 else make_model(session.id)
             if session.now < world.now:
                 raise ValueError(f"session {session.id} starts at {session.now}, before the world clock {world.now}")
-            world.now = session.now
+            world.advance_to(session.now)
             for change in session.changes:
                 apply_change(world, change)
             toolset = Toolset(world, world.tools())

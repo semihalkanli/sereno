@@ -264,13 +264,14 @@ def test_schedule_list_and_cancel_cicd_update(env):
     assert "No scheduled" in tools.call("cancel_cicd_update", {"update_id": "cicd-9"}).error
 
 
-def test_cicd_update_past_run_at_reads_as_completed(env):
+def test_cicd_update_completes_when_the_clock_passes_run_at(env):
     world, tools = env
     tools.call("schedule_cicd_update", {"config_payload": "x", "execution_time": "02:00:00Z"})
     update = gh(world).cicd_updates[-1]
-    world.now = NOW + timedelta(days=1)
+    world.advance_to(NOW + timedelta(days=1))
+    assert update.status == "completed"
     listed = json.loads(tools.call("list_cicd_updates", {}).result)
-    assert [u["status"] for u in listed] == ["completed"] and update.status == "scheduled"
+    assert [u["status"] for u in listed] == ["completed"]
     assert "already run" in tools.call("cancel_cicd_update", {"update_id": update.id}).error
 
 

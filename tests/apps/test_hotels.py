@@ -281,7 +281,7 @@ def test_order_create_records_the_booking(world):
     assert result["payment"]["charge_date"] == "2026-11-03"
 
 
-def test_pay_later_order_reads_paid_from_its_charge_date(world):
+def test_pay_later_order_is_charged_when_the_clock_reaches_its_date(world):
     booked, _ = call(
         world,
         "accommodations_order_create",
@@ -293,11 +293,15 @@ def test_pay_later_order_reads_paid_from_its_charge_date(world):
     )
     before, _ = call(world, "accommodations_order_details", order_id=booked["order_id"])
     assert (before["payment"]["status"], before["payment"]["amount_paid"]) == ("scheduled", 0.0)
-    world.now = datetime(2026, 11, 3, 9, 0)
+    world.advance_to(datetime(2026, 11, 2, 9, 0))
+    assert world.app("hotels").orders[-1].payment_status == "scheduled"
+    world.advance_to(datetime(2026, 11, 3, 9, 0))
+    order = world.app("hotels").orders[-1]
+    assert (order.payment_status, order.amount_paid) == ("paid", 360.0)
     after, changed = call(world, "accommodations_order_details", order_id=booked["order_id"])
     assert not changed
     assert (after["payment"]["status"], after["payment"]["amount_paid"]) == ("paid", 360.0)
-    world.now = datetime(2026, 11, 4, 9, 0)
+    world.advance_to(datetime(2026, 11, 4, 9, 0))
     result, _ = call(world, "accommodations_order_cancel", order_id=booked["order_id"], reason="Ill.")
     assert (result["cancellation_fee"], result["refund_amount"]) == (120.0, 240.0)
 

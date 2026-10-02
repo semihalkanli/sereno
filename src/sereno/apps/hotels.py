@@ -48,7 +48,7 @@ Realism notes:
 - Reviews can be written up to three months after the stay, modelled as 90 days
   (https://strspecialist.com/quick-easy-guide-leaving-reviews-booking-com; no official page found).
 - pay_online_later charges the full price on the payment date, "when free cancellation period has expired, or
-  48 hours before the checkin date"; the order then reads as paid
+  48 hours before the checkin date"; the order is marked paid when the world clock reaches that date
   (https://developers.booking.com/demand/docs/payments/how-to-accommodation-payments).
 - The 10-digit order number format, its 4102385001 start and the 4-digit PIN formula are invented, unverified.
 
@@ -263,11 +263,12 @@ def _timings(world: World, room: Room, arrival: date) -> list[str]:
     return [t for t in room.payment_timings if t != "pay_online_later" or deadline is not None]
 
 
-def _payment(order: Order, today: date) -> tuple[str, float]:
-    """Payment status and amount paid as of today: a scheduled charge is taken on its charge date."""
-    if order.payment_status == "scheduled" and order.payment_due_date and today >= order.payment_due_date:
-        return "paid", order.total_price
-    return order.payment_status, order.amount_paid
+def take_due_payments(world: World) -> None:
+    """A scheduled charge is taken on its charge date."""
+    for order in _hotels(world).orders:
+        if order.payment_status == "scheduled" and order.payment_due_date and world.today >= order.payment_due_date:
+            order.payment_status = "paid"
+            order.amount_paid = order.total_price
 
 
 def _policy_text(deadline: datetime | None) -> str:
@@ -614,7 +615,6 @@ class AccommodationsOrderDetailsArgs(BaseModel):
 def accommodations_order_details(world: World, args: AccommodationsOrderDetailsArgs) -> dict:
     o = _order(world, args.order_id)
     prop = next((p for p in _hotels(world).properties if p.id == o.accommodation_id), None)
-    payment_status, amount_paid = _payment(o, world.today)
     return {
         "order_id": o.id,
         "pincode": o.pincode,
@@ -633,8 +633,8 @@ def accommodations_order_details(world: World, args: AccommodationsOrderDetailsA
         "price": {"total": o.total_price, "currency": o.currency},
         "payment": {
             "timing": o.payment_timing,
-            "status": payment_status,
-            "amount_paid": amount_paid,
+            "status": o.payment_status,
+            "amount_paid": o.amount_paid,
             "charge_date": o.payment_due_date.isoformat() if o.payment_due_date else None,
         },
         "cancellation": {
@@ -671,7 +671,7 @@ def accommodations_order_cancel(world: World, args: AccommodationsOrderCancelArg
         fee = o.total_price
     else:
         fee = money(o.total_price / nights)
-    charged = _payment(o, world.today)[1]
+    charged = o.amount_paid
     refund = money(max(charged - fee, 0.0))
     if fee > 0:
         status = "partially_refunded" if refund > 0 else "fee_charged"
@@ -794,6 +794,7 @@ APP = App(
     title="hotels",
     state=Hotels,
     keys={"properties": "id", "reviews": "id", "orders": "id", "messages": "id"},
+    advance=take_due_payments,
     tools=[
         Tool(
             "accommodations_search",

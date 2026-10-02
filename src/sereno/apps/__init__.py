@@ -7,9 +7,11 @@ the agent sees only those apps' tools. Apps are imported by name on first use,
 so adding an app means adding one module and nothing else.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from importlib import import_module
 from pkgutil import iter_modules
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -24,6 +26,9 @@ class App:
     tools: list[Tool]
     keys: dict[str, str]
     """Collection name -> the field that identifies an item, for checks and changes."""
+    advance: Callable[[Any], None] | None = None
+    """Brings state that depends on the clock up to `world.now` (a charge taken on its date, a job that ran).
+    Called whenever the world clock moves, so the stored state matches what the tools show."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tools", [replace(t, app=self.name) for t in self.tools])

@@ -41,6 +41,16 @@ class World:
             apps={n: get_app(n).state.model_validate(app_data.get(n, {})) for n in app_names},
         )
 
+    def advance_to(self, now: datetime) -> None:
+        """Move the clock forward and let each app update the state that depends on it."""
+        if now < self.now:
+            raise ValueError(f"the clock cannot go back from {self.now} to {now}")
+        self.now = now
+        for name in self.apps:
+            hook = get_app(name).advance
+            if hook is not None:
+                hook(self)
+
     def app(self, name: str, required: bool = True) -> Any:
         state = self.apps.get(name)
         if state is None and required:

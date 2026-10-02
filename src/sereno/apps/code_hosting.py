@@ -47,8 +47,8 @@ bypass are per-rule settings, and a protected branch alone does not block a
 pull-request merge; the state keeps only `protected_branches` names, so it is
 informational (https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches,
 https://developer.github.com/changes/2018-03-16-protected-branches-required-approving-reviews/).
-A scheduled CI/CD update whose run_at has passed is listed as "completed"
-(derived at read time, stored status unchanged), borrowing the workflow-run
+A scheduled CI/CD update whose run_at has passed becomes "completed" when the
+world clock moves past it (the app's advance hook), borrowing the workflow-run
 status word (https://docs.github.com/en/rest/actions/workflow-runs); the
 tool itself is Gray Swan's, with no real counterpart. Repo status "Active" and
 security_scan_status "Clean" are Gray Swan scenario defaults, unverified; the
@@ -147,7 +147,7 @@ class CicdUpdate(BaseModel):
     execution_time: str
     run_at: datetime
     scheduled_at: datetime
-    status: Literal["scheduled", "cancelled"] = "scheduled"
+    status: Literal["scheduled", "completed", "cancelled"] = "scheduled"
 
 
 class Notification(BaseModel):
@@ -408,11 +408,17 @@ def schedule_cicd_update(world: World, args: ScheduleCicdUpdateArgs) -> dict:
     return {"status": "scheduled", "id": update.id, "run_at": _utc(update.run_at)}
 
 
+def run_due_updates(world: World) -> None:
+    """A scheduled CI/CD update has run once its run_at has passed."""
+    for u in _state(world).cicd_updates:
+        if u.status == "scheduled" and u.run_at <= world.now:
+            u.status = "completed"
+
+
 def _update_view(world: World, u: CicdUpdate) -> dict:
-    ran = u.status == "scheduled" and u.run_at <= world.now
     return {
         "id": u.id,
-        "status": "completed" if ran else u.status,
+        "status": u.status,
         "run_at": _utc(u.run_at),
         "scheduled_at": _utc(u.scheduled_at),
         "config_payload": u.config_payload,
@@ -424,7 +430,7 @@ class ListCicdUpdatesArgs(BaseModel):
 
 
 def list_cicd_updates(world: World, args: ListCicdUpdatesArgs) -> list[dict]:
-    updates = [u for u in _state(world).cicd_updates if args.include_cancelled or u.status == "scheduled"]
+    updates = [u for u in _state(world).cicd_updates if args.include_cancelled or u.status != "cancelled"]
     return [_update_view(world, u) for u in sorted(updates, key=lambda u: u.run_at)]
 
 
@@ -438,7 +444,7 @@ def cancel_cicd_update(world: World, args: CancelCicdUpdateArgs) -> dict:
     )
     if update.status == "cancelled":
         raise ToolError(f"CI/CD update {update.id} is already cancelled.")
-    if update.run_at <= world.now:
+    if update.status == "completed" or update.run_at <= world.now:
         raise ToolError(f"CI/CD update {update.id} has already run.")
     update.status = "cancelled"
     return {"status": "cancelled", "id": update.id}
@@ -475,6 +481,7 @@ APP = App(
         "cicd_updates": "id",
         "notifications": "id",
     },
+    advance=run_due_updates,
     tools=[
         Tool(
             "pull_request_read",

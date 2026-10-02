@@ -37,7 +37,10 @@ A session:
 | `turns` | the user's messages; each turn ends when the agent answers without a tool call |
 | `checks` | checks for this session, against the world as it was when the session started (after its changes) |
 
-Nothing of the conversation carries over between sessions; the world does.
+Nothing of the conversation carries over between sessions; the world does. When a session
+starts, the clock moves to its `now` and apps bring clock-dependent state up to
+date (a scheduled charge is taken, a scheduled job has run) before its changes
+are applied.
 
 ## Changes
 

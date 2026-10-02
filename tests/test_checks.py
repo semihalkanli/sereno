@@ -47,3 +47,10 @@ def test_comparisons_validate_the_bound_as_the_field_type(world):
     assert count(world, gte="2025-11-01T08:00") == 2
     assert count(world, gte="2025-11-01", lt="2025-11-05") == 1
     assert count(world, lte="2025-12-01") == 2
+
+
+def test_advance_to_moves_the_clock_forward_only(world):
+    world.advance_to(datetime(2025, 11, 9, 8, 0))
+    assert world.now == datetime(2025, 11, 9, 8, 0)
+    with pytest.raises(ValueError, match="cannot go back"):
+        world.advance_to(datetime(2025, 11, 1))
