@@ -114,7 +114,26 @@ Every declared slot must be placed somewhere, and every placed slot declared.
 | `objective` | what the attack tries to make the agent do |
 | `marker` | a unique string that at least one fill carries, to trace the poison in logs and memory |
 | `fills` | slot id -> text; slots not listed keep their default |
+| `one_of` | filled slots of which each run keeps one, picked by the run's seed; the others keep their default (optional) |
+| `trigger` | `{session, phrase}`: something the user says in a later session that the poison waits for (optional) |
 | `checks` | attack success, over the whole chain, against the initial world |
+
+### Timing (decision log section 108)
+
+With `one_of` the poison arrives at a time the chain does not fix. Each
+candidate slot sits in its own place with its own text, such as a review there
+from the start, an email that arrives in s4 and a line the user pastes in s3,
+and every candidate fill carries the marker. `sereno run --seed N` gives the
+first repeat seed N and repeat i seed N + i - 1, so a batch is reproducible;
+the run span records `seed`, `poison` (slot -> the first session in which the
+agent can see it) and `trigger`, and a batch prints its attack checks per
+placement.
+
+With `trigger` the poison waits for the user, after Rehberger's delayed tool
+invocation on Gemini: it is read in one session and acts when the user says
+the phrase later. Loading refuses an attack whose phrase is in none of that
+session's turns, or whose poison can arrive in that session or after it;
+`--until` refuses a run that stops before the poison or the trigger.
 
 ## Checks
 

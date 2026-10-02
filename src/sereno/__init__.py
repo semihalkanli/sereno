@@ -1,7 +1,7 @@
 """Sereno command line.
 
 sereno run <chain> --scripted                 replay the chain's correct solution, free
-sereno run <chain> --model glm53|glm53flash [--watch] [--attack ID] [--repeats K]
+sereno run <chain> --model glm53|glm53flash [--watch] [--attack ID] [--repeats K] [--seed N]
                   [--temperature T] [--top-p P] [--reasoning-effort LEVEL]
 sereno watch                                  agent view: every run under runs/agent, live
 sereno watch <events.jsonl> | --latest [--marker REGEX]   one run's transcript
@@ -31,6 +31,11 @@ def _print_checks(result) -> None:
     for group, checks in result.checks.items():
         for check, ok in checks.items():
             print(f"  {'PASS' if ok else 'FAIL'}  {group}/{check}")
+
+
+def _placement(loaded) -> str:
+    """Where the attack's poison lands in this run, e.g. 'hotel_review@s2'."""
+    return ", ".join(f"{slot}@{loaded.chain.sessions[n - 1].id}" for slot, n in sorted(loaded.poison.items()))
 
 
 def _run_once(loaded, make_model, run_id: str, args: argparse.Namespace):
@@ -64,6 +69,8 @@ def _run_once(loaded, make_model, run_id: str, args: argparse.Namespace):
         f"run {run_id}: {result.reason}, {len(result.sessions)} sessions, {result.model_calls} model calls, "
         f"{result.tool_calls} tool calls, USD {result.cost_usd:.6f}"
     )
+    if loaded.poison:
+        print(f"  seed {loaded.seed}, poison at {_placement(loaded)}")
     _print_checks(result)
     print(f"log: {log_path}")
     return result
@@ -78,9 +85,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     if args.watch and args.repeats > 1:
         sys.exit("--watch runs one repeat; use 'sereno watch --latest' alongside repeats")
-    loaded = load_chain(args.chain, args.attack)
-    if args.until and args.until not in [s.id for s in loaded.chain.sessions]:
-        sys.exit(f"chain {args.chain} has no session {args.until!r}")
+    # Repeat i runs with seed + i - 1, so an attack with `one_of` can land in a different place each repeat.
+    loads = [load_chain(args.chain, args.attack, seed=args.seed + i) for i in range(args.repeats)]
+    loaded = loads[0]
+    if args.until:
+        try:
+            for each in loads:
+                each.check_until(args.until)
+        except ValueError as e:
+            sys.exit(str(e))
     if args.scripted:
         if loaded.solution is None:
             sys.exit(f"chain {args.chain} has no solution.json")
@@ -111,9 +124,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
         label = f"{label}_until-{args.until}"
     base_id = new_run_id(args.chain, label)
     runs = []
-    for i in range(1, args.repeats + 1):
+    for i, each in enumerate(loads, start=1):
         run_id = base_id if args.repeats == 1 else f"{base_id}_r{i}"
-        runs.append(_run_once(loaded, make_model, run_id, args))
+        runs.append(_run_once(each, make_model, run_id, args))
 
     if args.repeats > 1:
         k = len(runs)
@@ -125,6 +138,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
         for group, checks in runs[0].checks.items():
             for check in checks:
                 print(f"  {sum(r.checks[group][check] for r in runs)}/{k}  {group}/{check}")
+        if loaded.attack and loaded.attack.one_of:
+            by_place: dict[str, list] = {}
+            for each, r in zip(loads, runs, strict=True):
+                by_place.setdefault(_placement(each), []).append(r)
+            print("attack checks by placement:")
+            for place, group in sorted(by_place.items()):
+                for check in group[0].checks.get("attack", {}):
+                    print(f"  {sum(r.checks['attack'][check] for r in group)}/{len(group)}  {place}  attack/{check}")
     return 0 if all(r.task_passed() for r in runs) else 1
 
 
@@ -165,6 +186,7 @@ def main() -> None:
     run.add_argument("--watch", action="store_true", help="open the live viewer while the run goes")
     run.add_argument("--until", help="stop after this session id (final checks are skipped)")
     run.add_argument("--repeats", type=int, default=1, help="run the chain k times and summarise")
+    run.add_argument("--seed", type=int, default=0, help="seed of the first repeat; repeat i uses seed + i - 1")
 
     watch = sub.add_parser("watch", help="open the agent view, or one run's live transcript")
     watch.add_argument("path", nargs="?", type=Path)
