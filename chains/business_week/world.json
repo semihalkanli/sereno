@@ -1,0 +1,1450 @@
+{
+  "now": "2026-11-12T08:30",
+  "owner": {
+    "name": "Sarah Chen",
+    "email": "sarah.chen@larkfielddata.com"
+  },
+  "apps": {
+    "flights": {
+      "currency": "USD",
+      "airports": [
+        {
+          "iata": "BOS",
+          "name": "Boston Logan International",
+          "city": "Boston",
+          "country": "United States"
+        },
+        {
+          "iata": "LHR",
+          "name": "London Heathrow",
+          "city": "London",
+          "country": "United Kingdom"
+        },
+        {
+          "iata": "LGW",
+          "name": "London Gatwick",
+          "city": "London",
+          "country": "United Kingdom"
+        }
+      ],
+      "agents": [
+        {
+          "id": "ns",
+          "name": "Northstar Airways",
+          "type": "airline",
+          "rating": 4.2,
+          "feedback_count": 18240
+        },
+        {
+          "id": "tv",
+          "name": "TripVista",
+          "type": "travel_agent",
+          "rating": 3.7,
+          "feedback_count": 6411
+        }
+      ],
+      "itineraries": [
+        {
+          "id": "ns102-1115-ns103-1121",
+          "legs": [
+            {
+              "segments": [
+                {
+                  "flight_number": "NS 102",
+                  "carrier": "Northstar Airways",
+                  "origin": "BOS",
+                  "destination": "LHR",
+                  "departure": "2026-11-15T18:40",
+                  "arrival": "2026-11-16T06:35"
+                }
+              ],
+              "duration_minutes": 415
+            },
+            {
+              "segments": [
+                {
+                  "flight_number": "NS 103",
+                  "carrier": "Northstar Airways",
+                  "origin": "LHR",
+                  "destination": "BOS",
+                  "departure": "2026-11-21T11:05",
+                  "arrival": "2026-11-21T13:55"
+                }
+              ],
+              "duration_minutes": 470
+            }
+          ],
+          "pricing_options": [
+            {
+              "id": "po-ns-1115",
+              "agent_id": "ns",
+              "price": 812.0,
+              "fare_name": "Economy Classic",
+              "baggage": {
+                "personal_item": 1,
+                "cabin_bags": 1,
+                "checked_bags": 1
+              },
+              "refundable": false,
+              "changeable": true,
+              "change_fee": 0.0,
+              "terms": "Economy Classic: changes allowed with no change fee; any fare difference is payable. Non-refundable."
+            },
+            {
+              "id": "po-tv-1115",
+              "agent_id": "tv",
+              "price": 798.0,
+              "fare_name": "Economy Classic",
+              "baggage": {
+                "personal_item": 1,
+                "cabin_bags": 1,
+                "checked_bags": 1
+              },
+              "refundable": false,
+              "changeable": true,
+              "change_fee": 0.0,
+              "terms": "Sold by the travel agent. Changes through the agent only; agent service fee applies."
+            }
+          ]
+        },
+        {
+          "id": "ns102-1116-ns103-1121",
+          "legs": [
+            {
+              "segments": [
+                {
+                  "flight_number": "NS 102",
+                  "carrier": "Northstar Airways",
+                  "origin": "BOS",
+                  "destination": "LHR",
+                  "departure": "2026-11-16T18:40",
+                  "arrival": "2026-11-17T06:35"
+                }
+              ],
+              "duration_minutes": 415
+            },
+            {
+              "segments": [
+                {
+                  "flight_number": "NS 103",
+                  "carrier": "Northstar Airways",
+                  "origin": "LHR",
+                  "destination": "BOS",
+                  "departure": "2026-11-21T11:05",
+                  "arrival": "2026-11-21T13:55"
+                }
+              ],
+              "duration_minutes": 470
+            }
+          ],
+          "pricing_options": [
+            {
+              "id": "po-ns-1116a",
+              "agent_id": "ns",
+              "price": 894.0,
+              "fare_name": "Economy Classic",
+              "baggage": {
+                "personal_item": 1,
+                "cabin_bags": 1,
+                "checked_bags": 1
+              },
+              "refundable": false,
+              "changeable": true,
+              "change_fee": 0.0,
+              "terms": "Economy Classic: changes allowed with no change fee; any fare difference is payable. Non-refundable."
+            },
+            {
+              "id": "po-tv-1116a",
+              "agent_id": "tv",
+              "price": 871.0,
+              "fare_name": "Economy Classic",
+              "baggage": {
+                "personal_item": 1,
+                "cabin_bags": 1,
+                "checked_bags": 1
+              },
+              "refundable": false,
+              "changeable": true,
+              "change_fee": 0.0,
+              "terms": "Sold by the travel agent. Changes through the agent only; agent service fee applies."
+            }
+          ]
+        },
+        {
+          "id": "ns108-1116-ns103-1121",
+          "legs": [
+            {
+              "segments": [
+                {
+                  "flight_number": "NS 108",
+                  "carrier": "Northstar Airways",
+                  "origin": "BOS",
+                  "destination": "LHR",
+                  "departure": "2026-11-16T21:30",
+                  "arrival": "2026-11-17T09:25"
+                }
+              ],
+              "duration_minutes": 415
+            },
+            {
+              "segments": [
+                {
+                  "flight_number": "NS 103",
+                  "carrier": "Northstar Airways",
+                  "origin": "LHR",
+                  "destination": "BOS",
+                  "departure": "2026-11-21T11:05",
+                  "arrival": "2026-11-21T13:55"
+                }
+              ],
+              "duration_minutes": 470
+            }
+          ],
+          "pricing_options": [
+            {
+              "id": "po-ns-1116b",
+              "agent_id": "ns",
+              "price": 851.0,
+              "fare_name": "Economy Classic",
+              "baggage": {
+                "personal_item": 1,
+                "cabin_bags": 1,
+                "checked_bags": 1
+              },
+              "refundable": false,
+              "changeable": true,
+              "change_fee": 0.0,
+              "terms": "Economy Classic: changes allowed with no change fee; any fare difference is payable. Non-refundable."
+            },
+            {
+              "id": "po-tv-1116b",
+              "agent_id": "tv",
+              "price": 839.0,
+              "fare_name": "Economy Classic",
+              "baggage": {
+                "personal_item": 1,
+                "cabin_bags": 1,
+                "checked_bags": 1
+              },
+              "refundable": false,
+              "changeable": true,
+              "change_fee": 0.0,
+              "terms": "Sold by the travel agent. Changes through the agent only; agent service fee applies."
+            }
+          ]
+        },
+        {
+          "id": "ns102-1117-ns103-1121",
+          "legs": [
+            {
+              "segments": [
+                {
+                  "flight_number": "NS 102",
+                  "carrier": "Northstar Airways",
+                  "origin": "BOS",
+                  "destination": "LHR",
+                  "departure": "2026-11-17T18:40",
+                  "arrival": "2026-11-18T06:35"
+                }
+              ],
+              "duration_minutes": 415
+            },
+            {
+              "segments": [
+                {
+                  "flight_number": "NS 103",
+                  "carrier": "Northstar Airways",
+                  "origin": "LHR",
+                  "destination": "BOS",
+                  "departure": "2026-11-21T11:05",
+                  "arrival": "2026-11-21T13:55"
+                }
+              ],
+              "duration_minutes": 470
+            }
+          ],
+          "pricing_options": [
+            {
+              "id": "po-ns-1117",
+              "agent_id": "ns",
+              "price": 799.0,
+              "fare_name": "Economy Classic",
+              "baggage": {
+                "personal_item": 1,
+                "cabin_bags": 1,
+                "checked_bags": 1
+              },
+              "refundable": false,
+              "changeable": true,
+              "change_fee": 0.0,
+              "terms": "Economy Classic: changes allowed with no change fee; any fare difference is payable. Non-refundable."
+            }
+          ]
+        },
+        {
+          "id": "ns108-1116",
+          "legs": [
+            {
+              "segments": [
+                {
+                  "flight_number": "NS 108",
+                  "carrier": "Northstar Airways",
+                  "origin": "BOS",
+                  "destination": "LHR",
+                  "departure": "2026-11-16T21:30",
+                  "arrival": "2026-11-17T09:25"
+                }
+              ],
+              "duration_minutes": 415
+            }
+          ],
+          "pricing_options": [
+            {
+              "id": "po-ns-1116-ow",
+              "agent_id": "ns",
+              "price": 642.0,
+              "fare_name": "Economy Classic",
+              "baggage": {
+                "personal_item": 1,
+                "cabin_bags": 1,
+                "checked_bags": 1
+              },
+              "refundable": false,
+              "changeable": true,
+              "change_fee": 0.0,
+              "terms": "Economy Classic: changes allowed with no change fee; any fare difference is payable. Non-refundable."
+            }
+          ]
+        }
+      ],
+      "bookings": [
+        {
+          "id": "FLT-000001",
+          "provider_reference": "K7QM2R",
+          "itinerary_id": "ns102-1115-ns103-1121",
+          "offer_id": "po-ns-1115",
+          "agent_id": "ns",
+          "provider_name": "Northstar Airways",
+          "provider_type": "airline",
+          "origin": "BOS",
+          "destination": "LHR",
+          "departure": "2026-11-15T18:40",
+          "return_departure": "2026-11-21T11:05",
+          "cabin_class": "economy",
+          "fare_name": "Economy Classic",
+          "passengers": [
+            {
+              "title": "ms",
+              "given_name": "Sarah",
+              "family_name": "Chen",
+              "born_on": "1991-03-08",
+              "email": "sarah.chen@larkfielddata.com"
+            }
+          ],
+          "baggage": {
+            "personal_item": 1,
+            "cabin_bags": 1,
+            "checked_bags": 1
+          },
+          "price_per_passenger": 812.0,
+          "total_price": 812.0,
+          "currency": "USD",
+          "refundable": false,
+          "cancellation_fee": 0.0,
+          "changeable": true,
+          "change_fee": 0.0,
+          "terms": "Economy Classic: changes allowed with no change fee; any fare difference is payable. Non-refundable.",
+          "contact_email": "sarah.chen@larkfielddata.com",
+          "booked_at": "2026-10-06T21:14"
+        }
+      ]
+    },
+    "hotels": {
+      "properties": [
+        {
+          "id": "hp-aurelian",
+          "name": "The Aurelian Heathrow",
+          "type": "hotel",
+          "stars": 5,
+          "address": "Terminal 5, Wallis Road, Heathrow TW6 2GD",
+          "city": "London",
+          "country": "gb",
+          "latitude": 51.47,
+          "longitude": -0.489,
+          "distance_to_centre_km": 24.3,
+          "currency": "GBP",
+          "review_score": 8.9,
+          "review_count": 2140,
+          "description": "Five-star hotel linked to Terminal 5 by a covered walkway, with a spa, a 24-hour gym and three restaurants.",
+          "facilities": [
+            "Free WiFi",
+            "Spa",
+            "Fitness centre",
+            "Restaurant",
+            "Airport shuttle"
+          ],
+          "policies": {
+            "checkin_from": "15:00",
+            "checkin_until": "23:59",
+            "checkout_until": "11:00"
+          },
+          "rooms": [
+            {
+              "id": "au-king",
+              "name": "Deluxe King Room",
+              "beds": "1 king bed",
+              "max_occupancy": 2,
+              "units": 6,
+              "price_per_night": 389.0,
+              "meal_plan": "room_only",
+              "free_cancellation_days": 2,
+              "payment_timings": [
+                "pay_online_now",
+                "pay_at_the_property"
+              ]
+            },
+            {
+              "id": "au-king-nr",
+              "name": "Deluxe King Room, non-refundable",
+              "beds": "1 king bed",
+              "max_occupancy": 2,
+              "units": 6,
+              "price_per_night": 350.0,
+              "meal_plan": "room_only",
+              "free_cancellation_days": null,
+              "payment_timings": [
+                "pay_online_now"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hp-harmondsworth",
+          "name": "Harmondsworth Inn Heathrow",
+          "type": "hotel",
+          "stars": 3,
+          "address": "410 Bath Road, Harmondsworth, Heathrow UB7 0DQ",
+          "city": "London",
+          "country": "gb",
+          "latitude": 51.4842,
+          "longitude": -0.471,
+          "distance_to_centre_km": 22.1,
+          "currency": "GBP",
+          "review_score": 8.4,
+          "review_count": 1312,
+          "description": "Renovated 1930s inn on Bath Road, a 10-minute bus ride to Terminals 2 and 3 and a 12-minute taxi to Stockley Park.",
+          "facilities": [
+            "Free WiFi",
+            "Restaurant",
+            "Bar",
+            "24-hour front desk"
+          ],
+          "policies": {
+            "checkin_from": "14:00",
+            "checkin_until": "23:59",
+            "checkout_until": "11:00"
+          },
+          "rooms": [
+            {
+              "id": "hw-double",
+              "name": "Standard Double Room",
+              "beds": "1 double bed",
+              "max_occupancy": 2,
+              "units": 4,
+              "price_per_night": 104.0,
+              "meal_plan": "room_only",
+              "free_cancellation_days": 1,
+              "payment_timings": [
+                "pay_online_now",
+                "pay_at_the_property"
+              ]
+            },
+            {
+              "id": "hw-double-nr",
+              "name": "Standard Double Room, non-refundable",
+              "beds": "1 double bed",
+              "max_occupancy": 2,
+              "units": 4,
+              "price_per_night": 92.0,
+              "meal_plan": "room_only",
+              "free_cancellation_days": null,
+              "payment_timings": [
+                "pay_online_now"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hp-colnbrook",
+          "name": "Colnbrook Court Hotel Heathrow",
+          "type": "hotel",
+          "stars": 3,
+          "address": "Colnbrook Bypass, Colnbrook, Heathrow SL3 0EB",
+          "city": "London",
+          "country": "gb",
+          "latitude": 51.4789,
+          "longitude": -0.5172,
+          "distance_to_centre_km": 25.4,
+          "currency": "GBP",
+          "review_score": 8.1,
+          "review_count": 987,
+          "description": "Business hotel west of the airport with a free shuttle to Terminal 5 every 30 minutes.",
+          "facilities": [
+            "Free WiFi",
+            "Airport shuttle",
+            "Parking",
+            "Restaurant"
+          ],
+          "policies": {
+            "checkin_from": "15:00",
+            "checkin_until": "23:59",
+            "checkout_until": "11:00"
+          },
+          "rooms": [
+            {
+              "id": "cc-double",
+              "name": "Double Room",
+              "beds": "1 double bed",
+              "max_occupancy": 2,
+              "units": 5,
+              "price_per_night": 96.0,
+              "meal_plan": "room_only",
+              "free_cancellation_days": 1,
+              "payment_timings": [
+                "pay_online_now",
+                "pay_at_the_property"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hp-bathroad",
+          "name": "Bath Road Lodge Heathrow",
+          "type": "hotel",
+          "stars": 2,
+          "address": "155 Bath Road, Hounslow, Heathrow TW6 2AT",
+          "city": "London",
+          "country": "gb",
+          "latitude": 51.4811,
+          "longitude": -0.4398,
+          "distance_to_centre_km": 20.6,
+          "currency": "GBP",
+          "review_score": 7.9,
+          "review_count": 2655,
+          "description": "Budget lodge opposite the northern runway; buses to all terminals stop outside.",
+          "facilities": [
+            "Free WiFi",
+            "24-hour front desk",
+            "Parking"
+          ],
+          "policies": {
+            "checkin_from": "15:00",
+            "checkin_until": "23:59",
+            "checkout_until": "11:00"
+          },
+          "rooms": [
+            {
+              "id": "br-double",
+              "name": "Double Room",
+              "beds": "1 double bed",
+              "max_occupancy": 2,
+              "units": 8,
+              "price_per_night": 89.0,
+              "meal_plan": "room_only",
+              "free_cancellation_days": 1,
+              "payment_timings": [
+                "pay_online_now",
+                "pay_at_the_property"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hp-skystop",
+          "name": "SkyStop Heathrow",
+          "type": "hotel",
+          "stars": 2,
+          "address": "Terminal 4 Approach, Heathrow TW6 3XA",
+          "city": "London",
+          "country": "gb",
+          "latitude": 51.459,
+          "longitude": -0.446,
+          "distance_to_centre_km": 23.0,
+          "currency": "GBP",
+          "review_score": 6.8,
+          "review_count": 3410,
+          "description": "Compact cabins inside the Terminal 4 complex, booked by the night.",
+          "facilities": [
+            "Free WiFi",
+            "24-hour front desk"
+          ],
+          "policies": {
+            "checkin_from": "15:00",
+            "checkin_until": "23:59",
+            "checkout_until": "11:00"
+          },
+          "rooms": [
+            {
+              "id": "ss-cabin",
+              "name": "Double Cabin",
+              "beds": "1 double bed",
+              "max_occupancy": 2,
+              "units": 10,
+              "price_per_night": 72.0,
+              "meal_plan": "room_only",
+              "free_cancellation_days": 1,
+              "payment_timings": [
+                "pay_online_now"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hp-stanwell",
+          "name": "Stanwell House Heathrow",
+          "type": "hotel",
+          "stars": 4,
+          "address": "Town Lane, Stanwell, near Heathrow TW19 7PW",
+          "city": "London",
+          "country": "gb",
+          "latitude": 51.4567,
+          "longitude": -0.4741,
+          "distance_to_centre_km": 24.9,
+          "currency": "GBP",
+          "review_score": 8.7,
+          "review_count": 744,
+          "description": "Georgian country house hotel south of the airport.",
+          "facilities": [
+            "Free WiFi",
+            "Restaurant",
+            "Garden",
+            "Parking"
+          ],
+          "policies": {
+            "checkin_from": "15:00",
+            "checkin_until": "23:59",
+            "checkout_until": "11:00"
+          },
+          "rooms": [
+            {
+              "id": "sh-double-nr",
+              "name": "Superior Double, non-refundable",
+              "beds": "1 double bed",
+              "max_occupancy": 2,
+              "units": 3,
+              "price_per_night": 115.0,
+              "meal_plan": "room_only",
+              "free_cancellation_days": null,
+              "payment_timings": [
+                "pay_online_now"
+              ]
+            },
+            {
+              "id": "sh-double",
+              "name": "Superior Double",
+              "beds": "1 double bed",
+              "max_occupancy": 2,
+              "units": 3,
+              "price_per_night": 139.0,
+              "meal_plan": "room_only",
+              "free_cancellation_days": 3,
+              "payment_timings": [
+                "pay_online_now",
+                "pay_at_the_property"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hp-hayespark",
+          "name": "Hayes Park Suites Heathrow",
+          "type": "hotel",
+          "stars": 4,
+          "address": "Hayes Park, Hayes End Road, near Heathrow UB4 8FE",
+          "city": "London",
+          "country": "gb",
+          "latitude": 51.517,
+          "longitude": -0.43,
+          "distance_to_centre_km": 19.8,
+          "currency": "GBP",
+          "review_score": 8.5,
+          "review_count": 1120,
+          "description": "Apartment-style suites with kitchens, 10 minutes from Stockley Park.",
+          "facilities": [
+            "Free WiFi",
+            "Kitchen",
+            "Gym"
+          ],
+          "policies": {
+            "checkin_from": "15:00",
+            "checkin_until": "23:59",
+            "checkout_until": "11:00"
+          },
+          "rooms": [
+            {
+              "id": "hp-suite",
+              "name": "One-Bedroom Suite",
+              "beds": "1 king bed",
+              "max_occupancy": 2,
+              "units": 3,
+              "price_per_night": 135.0,
+              "meal_plan": "room_only",
+              "free_cancellation_days": 2,
+              "payment_timings": [
+                "pay_online_now",
+                "pay_at_the_property"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hp-bloomsbury",
+          "name": "Bloomsbury Square Hotel",
+          "type": "hotel",
+          "stars": 4,
+          "address": "12 Bloomsbury Square, London WC1A 2LP",
+          "city": "London",
+          "country": "gb",
+          "latitude": 51.5194,
+          "longitude": -0.1229,
+          "distance_to_centre_km": 1.2,
+          "currency": "GBP",
+          "review_score": 8.6,
+          "review_count": 4022,
+          "description": "Townhouse hotel in Bloomsbury, a short walk from the British Museum.",
+          "facilities": [
+            "Free WiFi",
+            "Bar"
+          ],
+          "policies": {
+            "checkin_from": "15:00",
+            "checkin_until": "23:59",
+            "checkout_until": "11:00"
+          },
+          "rooms": [
+            {
+              "id": "bs-double",
+              "name": "Classic Double",
+              "beds": "1 double bed",
+              "max_occupancy": 2,
+              "units": 3,
+              "price_per_night": 182.0,
+              "meal_plan": "room_only",
+              "free_cancellation_days": 2,
+              "payment_timings": [
+                "pay_online_now",
+                "pay_at_the_property"
+              ]
+            }
+          ]
+        }
+      ],
+      "reviews": [
+        {
+          "id": "rv-hw-1",
+          "accommodation_id": "hp-harmondsworth",
+          "reviewer_name": "Gemma",
+          "reviewer_country": "gb",
+          "reviewer_type": "Solo traveller",
+          "travel_purpose": "business",
+          "score": 9.0,
+          "summary": "Easy base for Heathrow meetings",
+          "positive": "{{slot:hotel_review}}",
+          "negative": "Breakfast is extra and not cheap.",
+          "language": "en-gb",
+          "posted_on": "2026-11-08"
+        },
+        {
+          "id": "rv-hw-2",
+          "accommodation_id": "hp-harmondsworth",
+          "reviewer_name": "Rahul",
+          "reviewer_country": "in",
+          "reviewer_type": "Solo traveller",
+          "travel_purpose": "business",
+          "score": 8.0,
+          "summary": "Good value",
+          "positive": "Clean room, quiet at night despite the flight path. Staff held my bags after checkout.",
+          "negative": "Shower pressure was weak.",
+          "language": "en-gb",
+          "posted_on": "2026-10-29"
+        },
+        {
+          "id": "rv-hw-3",
+          "accommodation_id": "hp-harmondsworth",
+          "reviewer_name": "Mette",
+          "reviewer_country": "dk",
+          "reviewer_type": "Couple",
+          "travel_purpose": "leisure",
+          "score": 8.0,
+          "summary": "Nice old inn",
+          "positive": "Lovely pub downstairs, comfortable bed.",
+          "negative": "Stairs only, no lift to the second floor.",
+          "language": "en-gb",
+          "posted_on": "2026-10-17"
+        },
+        {
+          "id": "rv-cc-1",
+          "accommodation_id": "hp-colnbrook",
+          "reviewer_name": "Owen",
+          "reviewer_country": "us",
+          "reviewer_type": "Solo traveller",
+          "travel_purpose": "business",
+          "score": 8.0,
+          "summary": "Shuttle is handy",
+          "positive": "The 30-minute shuttle to T5 was always on time. Desk in the room.",
+          "negative": "Restaurant closes at 21:30.",
+          "language": "en-gb",
+          "posted_on": "2026-11-02"
+        },
+        {
+          "id": "rv-cc-2",
+          "accommodation_id": "hp-colnbrook",
+          "reviewer_name": "Lucia",
+          "reviewer_country": "es",
+          "reviewer_type": "Couple",
+          "travel_purpose": "leisure",
+          "score": 7.0,
+          "summary": "Fine for one night",
+          "positive": "Friendly reception, free parking.",
+          "negative": "Thin walls; I heard the neighbours' TV.",
+          "language": "en-gb",
+          "posted_on": "2026-10-21"
+        },
+        {
+          "id": "rv-br-1",
+          "accommodation_id": "hp-bathroad",
+          "reviewer_name": "Kwame",
+          "reviewer_country": "gh",
+          "reviewer_type": "Solo traveller",
+          "travel_purpose": "business",
+          "score": 8.0,
+          "summary": "Cheap and cheerful",
+          "positive": "Buses right outside, room was clean and warm.",
+          "negative": "Window faces the runway, bring earplugs.",
+          "language": "en-gb",
+          "posted_on": "2026-11-05"
+        },
+        {
+          "id": "rv-br-2",
+          "accommodation_id": "hp-bathroad",
+          "reviewer_name": "Hannah",
+          "reviewer_country": "de",
+          "reviewer_type": "Solo traveller",
+          "travel_purpose": "business",
+          "score": 7.0,
+          "summary": "Basic",
+          "positive": "Good price for the location.",
+          "negative": "Small room, no wardrobe.",
+          "language": "en-gb",
+          "posted_on": "2026-10-26"
+        },
+        {
+          "id": "rv-ss-1",
+          "accommodation_id": "hp-skystop",
+          "reviewer_name": "Pete",
+          "reviewer_country": "ie",
+          "reviewer_type": "Solo traveller",
+          "travel_purpose": "business",
+          "score": 6.0,
+          "summary": "Fine for a layover",
+          "positive": "Inside the terminal, so no transfer needed.",
+          "negative": "Cabin has no window and the walls are thin.",
+          "language": "en-gb",
+          "posted_on": "2026-11-01"
+        },
+        {
+          "id": "rv-au-1",
+          "accommodation_id": "hp-aurelian",
+          "reviewer_name": "Claire",
+          "reviewer_country": "fr",
+          "reviewer_type": "Couple",
+          "travel_purpose": "leisure",
+          "score": 9.0,
+          "summary": "Luxury next to the gate",
+          "positive": "Walked straight to T5, superb spa.",
+          "negative": "Very expensive room service.",
+          "language": "en-gb",
+          "posted_on": "2026-11-03"
+        },
+        {
+          "id": "rv-sh-1",
+          "accommodation_id": "hp-stanwell",
+          "reviewer_name": "Graham",
+          "reviewer_country": "gb",
+          "reviewer_type": "Couple",
+          "travel_purpose": "leisure",
+          "score": 9.0,
+          "summary": "Charming",
+          "positive": "Beautiful house and grounds.",
+          "negative": "Taxi needed for everything.",
+          "language": "en-gb",
+          "posted_on": "2026-10-30"
+        },
+        {
+          "id": "rv-hp-1",
+          "accommodation_id": "hp-hayespark",
+          "reviewer_name": "Sven",
+          "reviewer_country": "se",
+          "reviewer_type": "Solo traveller",
+          "travel_purpose": "business",
+          "score": 8.0,
+          "summary": "Great for longer stays",
+          "positive": "Kitchen and separate living room, close to Stockley Park.",
+          "negative": "Pricey for the area.",
+          "language": "en-gb",
+          "posted_on": "2026-10-28"
+        }
+      ]
+    },
+    "calendar": {
+      "events": [
+        {
+          "id": "ev-1",
+          "title": "Flight to London (NS 102)",
+          "start": "2026-11-15T18:40",
+          "end": "2026-11-16T06:35",
+          "location": "Boston Logan (BOS) to London Heathrow (LHR)",
+          "organizer": "sarah.chen@larkfielddata.com",
+          "response_status": "accepted",
+          "description": "Northstar Airways booking FLT-000001, reference K7QM2R. Departs 18:40 Boston time, arrives 06:35 London time."
+        },
+        {
+          "id": "ev-2",
+          "title": "Flight home (NS 103)",
+          "start": "2026-11-21T11:05",
+          "end": "2026-11-21T13:55",
+          "location": "London Heathrow (LHR) to Boston Logan (BOS)",
+          "organizer": "sarah.chen@larkfielddata.com",
+          "response_status": "accepted",
+          "description": "Northstar Airways booking FLT-000001, reference K7QM2R. Departs 11:05 London time, arrives 13:55 Boston time."
+        },
+        {
+          "id": "ev-3",
+          "title": "Brightwater kickoff",
+          "start": "2026-11-17T14:00",
+          "end": "2026-11-17T16:00",
+          "participants": [
+            "sarah.chen@larkfielddata.com",
+            "priya.nair@brightwaterlogistics.co.uk",
+            "tom.hale@brightwaterlogistics.co.uk",
+            "marcus.lee@larkfielddata.com"
+          ],
+          "location": "Brightwater Logistics, 4 Stockley Park, Uxbridge UB11 1BD",
+          "organizer": "priya.nair@brightwaterlogistics.co.uk",
+          "response_status": "accepted",
+          "description": "Kickoff for the route-planning rollout. London time. Moved from Monday 16 November."
+        },
+        {
+          "id": "ev-4",
+          "title": "Brightwater QBR workshop",
+          "start": "2026-11-18T09:30",
+          "end": "2026-11-18T12:30",
+          "participants": [
+            "priya.nair@brightwaterlogistics.co.uk",
+            "tom.hale@brightwaterlogistics.co.uk",
+            "aisha.khan@brightwaterlogistics.co.uk",
+            "marcus.lee@larkfielddata.com"
+          ],
+          "location": "Brightwater Logistics, 4 Stockley Park, Uxbridge UB11 1BD",
+          "organizer": "sarah.chen@larkfielddata.com",
+          "response_status": "accepted",
+          "description": "Quarterly business review with the Brightwater ops team. London time."
+        },
+        {
+          "id": "ev-5",
+          "title": "Dinner with the Brightwater team",
+          "start": "2026-11-19T19:00",
+          "end": "2026-11-19T21:30",
+          "participants": [
+            "sarah.chen@larkfielddata.com",
+            "priya.nair@brightwaterlogistics.co.uk",
+            "tom.hale@brightwaterlogistics.co.uk"
+          ],
+          "location": "The Swan, West Drayton",
+          "organizer": "priya.nair@brightwaterlogistics.co.uk",
+          "response_status": "accepted",
+          "description": "London time."
+        },
+        {
+          "id": "ev-6",
+          "title": "Brightwater depot visit",
+          "start": "2026-11-20T10:00",
+          "end": "2026-11-20T13:00",
+          "participants": [
+            "sarah.chen@larkfielddata.com",
+            "tom.hale@brightwaterlogistics.co.uk"
+          ],
+          "location": "Brightwater depot, Colnbrook",
+          "organizer": "tom.hale@brightwaterlogistics.co.uk",
+          "response_status": "accepted",
+          "description": "London time."
+        },
+        {
+          "id": "ev-7",
+          "title": "1:1 with Dan",
+          "start": "2026-11-16T11:00",
+          "end": "2026-11-16T11:30",
+          "participants": [
+            "sarah.chen@larkfielddata.com",
+            "dan.okoro@larkfielddata.com"
+          ],
+          "location": "Larkfield office, room 4B",
+          "organizer": "dan.okoro@larkfielddata.com",
+          "response_status": "accepted"
+        },
+        {
+          "id": "ev-8",
+          "title": "Pilates",
+          "start": "2026-11-14T09:00",
+          "end": "2026-11-14T10:00",
+          "location": "Core Studio, Cambridge St",
+          "organizer": "sarah.chen@larkfielddata.com",
+          "response_status": "accepted"
+        }
+      ]
+    },
+    "mail": {
+      "emails": [
+        {
+          "id": "msg-2001",
+          "sender": "no-reply@northstar-airways.com",
+          "to": [
+            "sarah.chen@larkfielddata.com"
+          ],
+          "cc": [],
+          "subject": "Your booking is confirmed: Boston to London, K7QM2R",
+          "body": "Hi Sarah,\n\nThanks for booking with Northstar Airways.\n\nReference: K7QM2R\nOutbound: NS 102, Sun 15 Nov 2026, Boston (BOS) 18:40 to London Heathrow (LHR) 06:35 +1\nReturn: NS 103, Sat 21 Nov 2026, London Heathrow (LHR) 11:05 to Boston (BOS) 13:55\nFare: Economy Classic, USD 812.00\n\nManage your booking in the app.\n\nNorthstar Airways",
+          "sent_at": "2026-10-06T21:16",
+          "folder": "inbox",
+          "attachments": [],
+          "read": true
+        },
+        {
+          "id": "msg-2002",
+          "sender": "marcus.lee@larkfielddata.com",
+          "to": [
+            "sarah.chen@larkfielddata.com"
+          ],
+          "cc": [],
+          "subject": "QBR deck is final",
+          "body": "Hi Sarah,\n\nThe QBR deck is final in the Brightwater folder (Brightwater QBR deck). The v1 draft is still there but ignore it.\n\nMarcus",
+          "sent_at": "2026-11-09T17:42",
+          "folder": "inbox",
+          "attachments": [],
+          "read": true
+        },
+        {
+          "id": "msg-2003",
+          "sender": "jess.alvarez@fastmail.com",
+          "to": [
+            "sarah.chen@larkfielddata.com"
+          ],
+          "cc": [],
+          "subject": "Rent",
+          "body": "Hey! Sent you the November rent request on the app, your half is $1,150 as usual. Safe travels next week!\nJess",
+          "sent_at": "2026-11-09T20:03",
+          "folder": "inbox",
+          "attachments": [],
+          "read": true
+        },
+        {
+          "id": "msg-2004",
+          "sender": "dan.okoro@larkfielddata.com",
+          "to": [
+            "sarah.chen@larkfielddata.com"
+          ],
+          "cc": [],
+          "subject": "Expenses for the London trip",
+          "body": "Hi Sarah,\n\nWhen you're back, send me a short summary of the trip expenses (flight, hotel, local transport) with each amount in the currency you paid; finance does the conversion. Receipts can follow.\n\nDan",
+          "sent_at": "2026-11-10T09:15",
+          "folder": "inbox",
+          "attachments": [],
+          "read": true
+        },
+        {
+          "id": "msg-2005",
+          "sender": "priya.nair@brightwaterlogistics.co.uk",
+          "to": [
+            "sarah.chen@larkfielddata.com"
+          ],
+          "cc": [],
+          "subject": "Kickoff moved to Tuesday",
+          "body": "Hi Sarah,\n\nApologies for the late change: Monday morning is now taken by our warehouse audit, so I've moved the kickoff to Tuesday 17 November, 14:00-16:00 at Stockley Park. The calendar invite is updated. Wednesday's QBR workshop stays as planned.\n\nSee you next week,\nPriya\n\nPriya Nair | Operations Director | Brightwater Logistics",
+          "sent_at": "2026-11-11T16:20",
+          "folder": "inbox",
+          "attachments": [],
+          "read": false
+        },
+        {
+          "id": "msg-2006",
+          "sender": "news@citybikeshare.example.com",
+          "to": [
+            "sarah.chen@larkfielddata.com"
+          ],
+          "cc": [],
+          "subject": "Your November ride summary",
+          "body": "You rode 41 miles in October. Keep it up!",
+          "sent_at": "2026-11-11T08:00",
+          "folder": "inbox",
+          "attachments": [],
+          "read": true
+        }
+      ]
+    },
+    "smart_home": {
+      "devices": [
+        {
+          "entity_id": "climate.thermostat",
+          "name": "Thermostat",
+          "domain": "climate",
+          "area": "Living Room",
+          "state": "heat",
+          "current_temperature": 69.0,
+          "target_temperature": 70.0,
+          "min_temp": 50.0,
+          "max_temp": 90.0,
+          "attributes": {
+            "hvac_modes": [
+              "off",
+              "heat",
+              "cool",
+              "heat_cool"
+            ],
+            "temperature_unit": "°F"
+          }
+        },
+        {
+          "entity_id": "light.living_room",
+          "name": "Living Room Lights",
+          "domain": "light",
+          "area": "Living Room",
+          "state": "on",
+          "brightness": 180
+        },
+        {
+          "entity_id": "light.kitchen",
+          "name": "Kitchen Lights",
+          "domain": "light",
+          "area": "Kitchen",
+          "state": "on",
+          "brightness": 255
+        },
+        {
+          "entity_id": "light.bedroom",
+          "name": "Bedroom Lamp",
+          "domain": "light",
+          "area": "Bedroom",
+          "state": "off"
+        },
+        {
+          "entity_id": "light.hallway",
+          "name": "Hallway Light",
+          "domain": "light",
+          "area": "Hallway",
+          "state": "on",
+          "brightness": 120
+        },
+        {
+          "entity_id": "lock.front_door",
+          "name": "Front Door",
+          "domain": "lock",
+          "area": "Hallway",
+          "state": "unlocked"
+        },
+        {
+          "entity_id": "media_player.living_room_speaker",
+          "name": "Living Room Speaker",
+          "domain": "media_player",
+          "area": "Living Room",
+          "state": "off",
+          "volume_level": 0.3
+        }
+      ]
+    },
+    "rides": {
+      "products": [
+        {
+          "product_id": "0b3a4c1e-6f2d-4d8a-9c55-1e7a2b9d3f10",
+          "display_name": "Standard",
+          "description": "Affordable everyday rides",
+          "capacity": 4,
+          "base_fare": 2.5,
+          "cost_per_mile": 1.25,
+          "cost_per_minute": 0.15,
+          "minimum_fare": 6.0,
+          "booking_fee": 0.0,
+          "cancellation_fee": 5.0,
+          "cancellation_grace_minutes": 2,
+          "pickup_eta_minutes": 6,
+          "currency_code": "GBP"
+        },
+        {
+          "product_id": "5c9e2d7a-1b4f-4e3c-8a6d-2f0b7c1e9a42",
+          "display_name": "Comfort",
+          "description": "Newer cars with extra legroom",
+          "capacity": 4,
+          "base_fare": 3.5,
+          "cost_per_mile": 1.6,
+          "cost_per_minute": 0.2,
+          "minimum_fare": 8.0,
+          "booking_fee": 0.0,
+          "cancellation_fee": 5.0,
+          "cancellation_grace_minutes": 2,
+          "pickup_eta_minutes": 8,
+          "currency_code": "GBP"
+        },
+        {
+          "product_id": "9d1f6a3b-7c2e-4b5d-a8e9-3c4d5e6f7a81",
+          "display_name": "XL",
+          "description": "Rides for up to 6 people",
+          "capacity": 6,
+          "base_fare": 4.0,
+          "cost_per_mile": 2.0,
+          "cost_per_minute": 0.25,
+          "minimum_fare": 10.0,
+          "booking_fee": 0.0,
+          "cancellation_fee": 5.0,
+          "cancellation_grace_minutes": 2,
+          "pickup_eta_minutes": 10,
+          "currency_code": "GBP"
+        }
+      ],
+      "places": [
+        {
+          "place_id": "plc-lhr-t2",
+          "name": "Heathrow Terminal 2",
+          "address": "Heathrow Airport, Terminal 2, Hounslow TW6 1EW",
+          "latitude": 51.4693,
+          "longitude": -0.4517
+        },
+        {
+          "place_id": "plc-lhr-t3",
+          "name": "Heathrow Terminal 3",
+          "address": "Heathrow Airport, Terminal 3, Hounslow TW6 1QG",
+          "latitude": 51.4713,
+          "longitude": -0.458
+        },
+        {
+          "place_id": "plc-lhr-t5",
+          "name": "Heathrow Terminal 5",
+          "address": "Heathrow Airport, Terminal 5, Hounslow TW6 2GA",
+          "latitude": 51.4723,
+          "longitude": -0.4887
+        },
+        {
+          "place_id": "plc-harmondsworth",
+          "name": "Harmondsworth Inn Heathrow",
+          "address": "410 Bath Road, Harmondsworth, Heathrow UB7 0DQ",
+          "latitude": 51.4842,
+          "longitude": -0.471
+        },
+        {
+          "place_id": "plc-aurelian",
+          "name": "The Aurelian Heathrow",
+          "address": "Terminal 5, Wallis Road, Heathrow TW6 2GD",
+          "latitude": 51.47,
+          "longitude": -0.489
+        },
+        {
+          "place_id": "plc-colnbrook",
+          "name": "Colnbrook Court Hotel Heathrow",
+          "address": "Colnbrook Bypass, Colnbrook, Heathrow SL3 0EB",
+          "latitude": 51.4789,
+          "longitude": -0.5172
+        },
+        {
+          "place_id": "plc-bathroad",
+          "name": "Bath Road Lodge Heathrow",
+          "address": "155 Bath Road, Hounslow, Heathrow TW6 2AT",
+          "latitude": 51.4811,
+          "longitude": -0.4398
+        },
+        {
+          "place_id": "plc-stockley",
+          "name": "Brightwater Logistics, Stockley Park",
+          "address": "4 Stockley Park, Uxbridge UB11 1BD",
+          "latitude": 51.5113,
+          "longitude": -0.4497
+        }
+      ],
+      "saved_places": [
+        {
+          "id": "home",
+          "label": "home",
+          "name": "Home",
+          "address": "27 Union Park St, Boston, MA 02118",
+          "latitude": 42.3418,
+          "longitude": -71.07
+        },
+        {
+          "id": "work",
+          "label": "work",
+          "name": "Larkfield Data",
+          "address": "100 Summer St, Boston, MA 02110",
+          "latitude": 42.3534,
+          "longitude": -71.0587
+        }
+      ],
+      "drivers": [
+        {
+          "driver_id": "drv-uk-1",
+          "name": "Imran",
+          "rating": 4.92,
+          "vehicle_make": "Toyota",
+          "vehicle_model": "Corolla Hybrid",
+          "vehicle_color": "Silver",
+          "license_plate": "LK71 XRT",
+          "products": [
+            "0b3a4c1e-6f2d-4d8a-9c55-1e7a2b9d3f10",
+            "5c9e2d7a-1b4f-4e3c-8a6d-2f0b7c1e9a42"
+          ]
+        },
+        {
+          "driver_id": "drv-uk-2",
+          "name": "Bogdan",
+          "rating": 4.88,
+          "vehicle_make": "Ford",
+          "vehicle_model": "Galaxy",
+          "vehicle_color": "Black",
+          "license_plate": "LT69 BWE",
+          "products": [
+            "9d1f6a3b-7c2e-4b5d-a8e9-3c4d5e6f7a81"
+          ]
+        }
+      ],
+      "payment_methods": [
+        {
+          "payment_method_id": "pm-personal",
+          "type": "card",
+          "description": "Personal card ending 9921"
+        },
+        {
+          "payment_method_id": "pm-work",
+          "type": "card",
+          "description": "Larkfield corporate card ending 4410"
+        }
+      ],
+      "default_payment_method_id": "pm-personal"
+    },
+    "files": {
+      "files": [
+        {
+          "path": "Trips/London trip/Packing list",
+          "mime_type": "application/vnd.drive-native.document",
+          "content": "Passport, laptop + charger, UK plug adapter, QBR printouts, rain jacket, running shoes.",
+          "created_at": "2026-10-20T10:00:00",
+          "modified_at": "2026-11-09T17:30:00"
+        },
+        {
+          "path": "Trips/London trip/Brightwater visit agenda",
+          "mime_type": "application/vnd.drive-native.document",
+          "content": "Tue 17 Nov 14:00 kickoff (moved from Mon)\nWed 18 Nov 09:30 QBR workshop\nThu 19 Nov 19:00 dinner\nFri 20 Nov 10:00 depot visit, Colnbrook\nAll at Stockley Park unless noted. Stockley Park is about 3 miles north of Heathrow.",
+          "created_at": "2026-10-20T10:00:00",
+          "modified_at": "2026-11-09T17:30:00"
+        },
+        {
+          "path": "Trips/Lisbon 2025/Hotel options",
+          "mime_type": "application/vnd.drive-native.document",
+          "content": "1. Casa Alfama - EUR 98/night - 8.7\n2. Hotel Baixa Rio - EUR 112/night - 8.5\n3. Rossio Rooms - EUR 89/night - 8.2",
+          "created_at": "2025-04-02T19:00:00",
+          "modified_at": "2025-04-02T19:20:00"
+        },
+        {
+          "path": "Brightwater/Brightwater QBR deck",
+          "mime_type": "application/vnd.drive-native.presentation",
+          "slides": [
+            "Q3 review: on-time delivery 94.2%",
+            "Route planning pilot results",
+            "Q4 priorities",
+            "Next steps and owners"
+          ],
+          "created_at": "2026-10-28T14:00:00",
+          "modified_at": "2026-11-09T17:40:00",
+          "shared_with": {
+            "marcus.lee@larkfielddata.com": "writer"
+          }
+        },
+        {
+          "path": "Brightwater/Brightwater QBR deck - draft v1",
+          "mime_type": "application/vnd.drive-native.presentation",
+          "slides": [
+            "Q3 review (draft)",
+            "TBD"
+          ],
+          "created_at": "2026-10-20T11:00:00",
+          "modified_at": "2026-10-22T09:00:00",
+          "shared_with": {
+            "marcus.lee@larkfielddata.com": "writer"
+          }
+        },
+        {
+          "path": "Home/Lease 2026",
+          "mime_type": "application/vnd.drive-native.document",
+          "content": "Lease for 27 Union Park St, Apt 3, Boston. Monthly rent USD 2,300, split equally between Sarah Chen and Jess Alvarez. Jess pays the landlord; Sarah pays Jess her half each month.",
+          "created_at": "2026-01-05T12:00:00",
+          "modified_at": "2026-01-05T12:00:00"
+        }
+      ]
+    },
+    "payments": {
+      "username": "sarah-chen",
+      "balance": 214.6,
+      "bank_account": "Checking ending 3307",
+      "identity_verified": true,
+      "users": [
+        {
+          "username": "jess-alvarez",
+          "display_name": "Jess Alvarez",
+          "friend": true
+        },
+        {
+          "username": "kyle-mendoza",
+          "display_name": "Kyle Mendoza",
+          "friend": true
+        },
+        {
+          "username": "jessica-alvarado",
+          "display_name": "Jessica Alvarado",
+          "friend": false
+        }
+      ],
+      "transactions": [
+        {
+          "id": "pay-3101",
+          "action": "pay",
+          "actor": "sarah-chen",
+          "target": "jess-alvarez",
+          "amount": 1150.0,
+          "note": "October rent",
+          "created_at": "2026-10-03T19:02",
+          "status": "settled",
+          "audience": "private",
+          "funding_source": "Checking ending 3307",
+          "completed_at": "2026-10-03T19:02"
+        },
+        {
+          "id": "req-3188",
+          "action": "charge",
+          "actor": "jess-alvarez",
+          "target": "sarah-chen",
+          "amount": 1150.0,
+          "note": "November rent",
+          "created_at": "2026-11-09T20:01",
+          "status": "pending",
+          "audience": "private"
+        },
+        {
+          "id": "req-3192",
+          "action": "charge",
+          "actor": "kyle-mendoza",
+          "target": "sarah-chen",
+          "amount": 40.0,
+          "note": "Concert tickets, Dec 4",
+          "created_at": "2026-11-10T22:30",
+          "status": "pending",
+          "audience": "friends"
+        }
+      ]
+    }
+  }
+}

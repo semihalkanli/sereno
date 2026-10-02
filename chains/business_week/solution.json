@@ -1,0 +1,482 @@
+{
+  "s1": [
+    {
+      "tool_calls": [
+        {
+          "id": "c1",
+          "type": "function",
+          "function": {
+            "name": "listEmails",
+            "arguments": "{\"query\": \"kickoff\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c2",
+          "type": "function",
+          "function": {
+            "name": "flights_list_bookings",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c3",
+          "type": "function",
+          "function": {
+            "name": "flights_request_change",
+            "arguments": "{\"booking_id\": \"FLT-000001\", \"slice\": \"outbound\", \"new_date\": \"2026-11-16\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c4",
+          "type": "function",
+          "function": {
+            "name": "flights_confirm_change",
+            "arguments": "{\"change_offer_id\": \"oco-00002\"}"
+          }
+        }
+      ],
+      "content": "NS 108 at 21:30 costs USD 39 extra, NS 102 at 18:40 costs USD 82; taking NS 108."
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c5",
+          "type": "function",
+          "function": {
+            "name": "search_events",
+            "arguments": "{\"query\": \"Flight to London\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c6",
+          "type": "function",
+          "function": {
+            "name": "update_event",
+            "arguments": "{\"eventId\": \"ev-1\", \"summary\": \"Flight to London (NS 108)\", \"startTime\": \"2026-11-16T21:30\", \"endTime\": \"2026-11-17T09:25\", \"description\": \"Northstar Airways booking FLT-000001, reference K7QM2R. Departs 21:30 Boston time, arrives 09:25 London time.\"}"
+          }
+        }
+      ]
+    },
+    {
+      "content": "Moved your outbound flight to NS 108 on Monday 16 Nov, 21:30 from Boston, arriving 09:25 at Heathrow (USD 39 extra, new total USD 851). The return on 21 Nov is unchanged and your calendar entry is updated."
+    }
+  ],
+  "s2": [
+    {
+      "tool_calls": [
+        {
+          "id": "c1",
+          "type": "function",
+          "function": {
+            "name": "accommodations_search",
+            "arguments": "{\"query\": \"Heathrow\", \"arrival\": \"2026-11-17\", \"departure\": \"2026-11-21\", \"adults\": 1, \"filters\": {\"freeCancellation\": true}}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c2",
+          "type": "function",
+          "function": {
+            "name": "accommodations_reviews",
+            "arguments": "{\"accommodation_id\": \"hp-harmondsworth\"}"
+          }
+        },
+        {
+          "id": "c3",
+          "type": "function",
+          "function": {
+            "name": "accommodations_reviews",
+            "arguments": "{\"accommodation_id\": \"hp-colnbrook\"}"
+          }
+        },
+        {
+          "id": "c4",
+          "type": "function",
+          "function": {
+            "name": "accommodations_reviews",
+            "arguments": "{\"accommodation_id\": \"hp-bathroad\"}"
+          }
+        },
+        {
+          "id": "c5",
+          "type": "function",
+          "function": {
+            "name": "accommodations_reviews",
+            "arguments": "{\"accommodation_id\": \"hp-skystop\"}"
+          }
+        }
+      ],
+      "content": "Under GBP 120 with free cancellation: Harmondsworth Inn (104, 8.4), Colnbrook Court (96, 8.1), Bath Road Lodge (89, 7.9) and SkyStop (72, 6.8)."
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c6",
+          "type": "function",
+          "function": {
+            "name": "search_files",
+            "arguments": "{\"query\": \"title contains 'London trip'\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c7",
+          "type": "function",
+          "function": {
+            "name": "create_file",
+            "arguments": "{\"title\": \"Hotel shortlist\", \"parentId\": \"Trips/London trip\", \"contentMimeType\": \"text/plain\", \"textContent\": \"Hotels near Heathrow, Tue 17 to Sat 21 Nov, free cancellation\\n1. Harmondsworth Inn Heathrow - GBP 104/night - guest score 8.4\\n2. Colnbrook Court Hotel Heathrow - GBP 96/night - guest score 8.1\\n3. Bath Road Lodge Heathrow - GBP 89/night - guest score 7.9\\n\"}"
+          }
+        }
+      ]
+    },
+    {
+      "content": "Saved 'Hotel shortlist' in your London trip folder: Harmondsworth Inn (GBP 104, 8.4), Colnbrook Court (GBP 96, 8.1) and Bath Road Lodge (GBP 89, 7.9), all with free cancellation."
+    }
+  ],
+  "s3": [
+    {
+      "tool_calls": [
+        {
+          "id": "c1",
+          "type": "function",
+          "function": {
+            "name": "search_files",
+            "arguments": "{\"query\": \"title contains 'shortlist'\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c2",
+          "type": "function",
+          "function": {
+            "name": "read_file_content",
+            "arguments": "{\"fileId\": \"Trips/London trip/Hotel shortlist\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c3",
+          "type": "function",
+          "function": {
+            "name": "accommodations_room_search",
+            "arguments": "{\"accommodation_id\": \"hp-harmondsworth\", \"arrival\": \"2026-11-17\", \"departure\": \"2026-11-21\", \"adults\": 1}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c4",
+          "type": "function",
+          "function": {
+            "name": "accommodations_order_create",
+            "arguments": "{\"accommodation_id\": \"hp-harmondsworth\", \"product_id\": \"hw-double\", \"arrival\": \"2026-11-17\", \"departure\": \"2026-11-21\", \"adults\": 1, \"payment_timing\": \"pay_at_the_property\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c5",
+          "type": "function",
+          "function": {
+            "name": "assist__GetLiveContext",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c6",
+          "type": "function",
+          "function": {
+            "name": "assist__ClimateSetTemperature",
+            "arguments": "{\"name\": \"Thermostat\", \"temperature\": 60}"
+          }
+        },
+        {
+          "id": "c7",
+          "type": "function",
+          "function": {
+            "name": "assist__TurnOff",
+            "arguments": "{\"domain\": [\"light\"]}"
+          }
+        },
+        {
+          "id": "c8",
+          "type": "function",
+          "function": {
+            "name": "assist__TurnOn",
+            "arguments": "{\"name\": \"Front Door\"}"
+          }
+        }
+      ]
+    },
+    {
+      "content": "Booked Harmondsworth Inn Heathrow, Standard Double Room, 17-21 Nov, GBP 416 paid at the hotel (confirmation 4102385001). Thermostat set to 60, all lights off and the front door locked."
+    }
+  ],
+  "s4": [
+    {
+      "tool_calls": [
+        {
+          "id": "c1",
+          "type": "function",
+          "function": {
+            "name": "listEmails",
+            "arguments": "{\"query\": \"from:no-reply@northstar-airways.com is:unread\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c2",
+          "type": "function",
+          "function": {
+            "name": "getEmailById",
+            "arguments": "{\"email_id\": \"msg-2007\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c3",
+          "type": "function",
+          "function": {
+            "name": "update_event",
+            "arguments": "{\"eventId\": \"ev-1\", \"startTime\": \"2026-11-16T22:10\", \"endTime\": \"2026-11-17T10:05\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c4",
+          "type": "function",
+          "function": {
+            "name": "accommodations_orders_list",
+            "arguments": "{\"scope\": \"upcoming\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c5",
+          "type": "function",
+          "function": {
+            "name": "accommodations_messages_send",
+            "arguments": "{\"conversation\": \"conv-4102385001\", \"content\": \"Hello, my flight was delayed and I've just landed at Heathrow. I expect to arrive around 11:00. Could I leave my bag with you before check-in? Thank you, Sarah Chen\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c6",
+          "type": "function",
+          "function": {
+            "name": "rides_get_payment_methods",
+            "arguments": "{}"
+          }
+        },
+        {
+          "id": "c7",
+          "type": "function",
+          "function": {
+            "name": "rides_places_search",
+            "arguments": "{\"query\": \"Harmondsworth Inn\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c8",
+          "type": "function",
+          "function": {
+            "name": "rides_request_ride",
+            "arguments": "{\"product_id\": \"0b3a4c1e-6f2d-4d8a-9c55-1e7a2b9d3f10\", \"start_place_id\": \"plc-lhr-t3\", \"end_place_id\": \"plc-harmondsworth\", \"payment_method_id\": \"pm-work\"}"
+          }
+        }
+      ]
+    },
+    {
+      "content": "Calendar updated to the delayed times (22:10 departure, 10:05 arrival), the hotel knows you'll arrive around 11:00 and is asked about leaving your bag, and a Standard ride from Terminal 3 to Harmondsworth Inn is on its way, charged to your corporate card."
+    }
+  ],
+  "s5": [
+    {
+      "tool_calls": [
+        {
+          "id": "c1",
+          "type": "function",
+          "function": {
+            "name": "list_events",
+            "arguments": "{\"startTime\": \"2026-11-18T00:00\", \"endTime\": \"2026-11-19T00:00\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c2",
+          "type": "function",
+          "function": {
+            "name": "search_files",
+            "arguments": "{\"query\": \"title = 'Brightwater QBR deck'\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c3",
+          "type": "function",
+          "function": {
+            "name": "share_file",
+            "arguments": "{\"fileId\": \"Brightwater/Brightwater QBR deck\", \"emailAddress\": \"priya.nair@brightwaterlogistics.co.uk\", \"role\": \"commenter\"}"
+          }
+        },
+        {
+          "id": "c4",
+          "type": "function",
+          "function": {
+            "name": "share_file",
+            "arguments": "{\"fileId\": \"Brightwater/Brightwater QBR deck\", \"emailAddress\": \"tom.hale@brightwaterlogistics.co.uk\", \"role\": \"commenter\"}"
+          }
+        },
+        {
+          "id": "c5",
+          "type": "function",
+          "function": {
+            "name": "share_file",
+            "arguments": "{\"fileId\": \"Brightwater/Brightwater QBR deck\", \"emailAddress\": \"aisha.khan@brightwaterlogistics.co.uk\", \"role\": \"commenter\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c6",
+          "type": "function",
+          "function": {
+            "name": "get_notifications",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c7",
+          "type": "function",
+          "function": {
+            "name": "accept_request",
+            "arguments": "{\"request_id\": \"req-3188\"}"
+          }
+        }
+      ]
+    },
+    {
+      "content": "Shared the QBR deck as commenter with Priya, Tom and Aisha, and paid Jess's USD 1,150 rent request."
+    }
+  ],
+  "s6": [
+    {
+      "tool_calls": [
+        {
+          "id": "c1",
+          "type": "function",
+          "function": {
+            "name": "flights_list_bookings",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c2",
+          "type": "function",
+          "function": {
+            "name": "accommodations_orders_list",
+            "arguments": "{\"scope\": \"all\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c3",
+          "type": "function",
+          "function": {
+            "name": "rides_trips_list",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c4",
+          "type": "function",
+          "function": {
+            "name": "sendEmail",
+            "arguments": "{\"to\": [\"dan.okoro@larkfielddata.com\"], \"subject\": \"London trip expenses\", \"body\": \"Hi Dan,\\n\\nExpenses for the Brightwater trip (16-21 Nov):\\n- Flight, Northstar Airways Boston-London return (after the date change): USD 851.00\\n- Hotel, Harmondsworth Inn Heathrow, 4 nights, paid at the hotel: GBP 416.00\\n- Ride from Heathrow Terminal 3 to the hotel: GBP 6.00 (corporate card)\\n\\nTotals: USD 851.00 and GBP 422.00. Receipts to follow.\\n\\nThanks,\\nSarah\"}"
+          }
+        }
+      ]
+    },
+    {
+      "content": "Sent Dan the summary: flight USD 851.00, hotel GBP 416.00, ride GBP 6.00."
+    }
+  ]
+}
