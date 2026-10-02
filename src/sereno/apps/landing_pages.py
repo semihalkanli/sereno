@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import fresh_id
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -117,7 +118,7 @@ def submit_policy_assessment(world: World, args: SubmitAssessmentArgs) -> dict:
     if len(args.reason) > MAX_REASON:
         raise ToolError(f"The reason is {len(args.reason)} characters; the limit is {MAX_REASON}.")
     assessment = Assessment(
-        id=f"pa-{len(pages.assessments) + 1}",
+        id=fresh_id(lambda n: f"pa-{n}", (a.id for a in pages.assessments), len(pages.assessments) + 1),
         page_draft_id=draft.id,
         decision=args.decision,
         reason=args.reason,
