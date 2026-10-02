@@ -289,6 +289,9 @@ def chat_send_message(world: World, args: SendMessageArgs) -> dict:
         channel = _dm_with(chat, user)
     else:
         channel = _channel_or_error(chat, args.channel_id)
+        other = chat.user(channel.dm_user) if channel.is_dm else None
+        if other is not None and not other.is_active:
+            raise ToolError(f"user_not_found: {other.name} is deactivated.")
     if channel.is_archived:
         raise ToolError(f"is_archived: #{channel.name} is archived.")
     thread_ts = None
@@ -426,7 +429,9 @@ def chat_read_user_profile(world: World, args: ReadUserProfileArgs) -> dict:
     chat = _chat(world)
     user = chat.user(args.user_id) if args.user_id else _me(world, chat)
     if user is None:
-        raise ToolError(f"user_not_found: no user with id {args.user_id!r}.")
+        if args.user_id:
+            raise ToolError(f"user_not_found: no user with id {args.user_id!r}.")
+        raise ToolError("user_not_found: the current user has no profile in these workspaces.")
     return _user_view(user)
 
 

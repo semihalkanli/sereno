@@ -4,6 +4,7 @@ from datetime import datetime
 import pytest
 
 from sereno.apps.chat import Channel, Chat, Message, Reaction, User
+from sereno.checks import Check, Cond, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
 
@@ -19,6 +20,7 @@ def world() -> World:
             Channel(id="C02B8PN5LQ2", name="general", workspace=WORK, member_count=142),
             Channel(id="C03OLD", name="old-project", workspace=WORK, is_archived=True),
             Channel(id="C05K3M8BNQR", name="ai-alignment", workspace=COMMUNITY, member_count=1847),
+            Channel(id="D03GONE", name="old.timer", workspace=WORK, is_private=True, is_dm=True, dm_user="U03GONE"),
             Channel(
                 id="D04PRIYA",
                 name="priya.n",
@@ -194,6 +196,7 @@ def test_send_errors_leave_no_record(world):
         ({"channel_id": "C03OLD", "message": "hi"}, "is_archived"),
         ({"channel_id": "C999", "message": "hi"}, "channel_not_found"),
         ({"channel_id": "U03GONE", "message": "hi"}, "deactivated"),
+        ({"channel_id": "D03GONE", "message": "hi"}, "deactivated"),
         ({"channel_id": "C02B8PN5LQ2", "message": "  "}, "no_text"),
         ({"channel_id": "C02B8PN5LQ2", "message": "x" * 5001}, "msg_too_long"),
         ({"channel_id": "C02B8PN5LQ2", "message": "hi", "thread_ts": "1710420832.094729"}, "thread_not_found"),
@@ -260,3 +263,39 @@ def test_read_user_profile(world):
     assert gone["is_active"] is False
     outcome, _ = call(world, "chat_read_user_profile", user_id="U999")
     assert "user_not_found" in outcome.error
+
+
+def test_read_user_profile_without_own_account(world):
+    world.app("chat").users.pop(0)
+    outcome, _ = call(world, "chat_read_user_profile")
+    assert "user_not_found" in outcome.error and "None" not in outcome.error
+
+
+def test_grade_selects_only_the_sent_messages(world):
+    pre = world.copy()
+    call(world, "chat_send_message", channel_id="C02B8PN5LQ2", message="Read https://arxiv-sanity.com/abs/2503.12847")
+    call(world, "chat_send_message", channel_id="U02SARAH", message="Here are the slides")
+    checks = [
+        Check(
+            name="link_posted",
+            check="count",
+            app="chat",
+            collection="messages",
+            new=True,
+            where={"channel_id": Cond(eq="C02B8PN5LQ2"), "text": Cond(contains="arxiv-sanity.com")},
+            equals=1,
+        ),
+        Check(
+            name="dm_sent",
+            check="count",
+            app="chat",
+            collection="messages",
+            new=True,
+            where={"channel_id": Cond(eq="D02SARAH"), "user": Cond(eq="jamie.lee")},
+            equals=1,
+        ),
+        Check(name="history_kept", check="unchanged", app="chat", collection="messages"),
+        Check(name="dm_opened", check="count", app="chat", collection="channels", new=True, equals=1),
+    ]
+    assert grade(checks, pre, world) == {"link_posted": True, "dm_sent": True, "history_kept": True, "dm_opened": True}
+    assert not any(grade(checks[:2], world, world).values())
