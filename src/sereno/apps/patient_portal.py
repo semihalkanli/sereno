@@ -33,6 +33,16 @@ check-in copays add to `payments` and lower the statement balance.
 Added (not in Gray Swan): `list_secure_messages`, so replies from the care
 team can be read across sessions. `get_patient_profile` also returns the
 saved payment methods, since `pay_patient_bill` takes one by id.
+
+Realism sources: a 30-minute default appointment matches Epic's default
+duration for established visit types
+(https://eristest2-6.partners.org/wp-content/uploads/MGH-Cadence-Front-Desk-Epic-Integrated-Zoom-Virtual-Visit-User-Guide.pdf);
+refills take 3 business days, as MyChart clinics advise
+(https://www.watsonclinic.com/about-us/prescription-refills.html).
+Courier orders arrive the same day
+(https://corporate.walgreens.com/news-and-stories/stories/pharmacy-healthcare/walgreens-prescription-delivery-your-questions-answered/),
+but the exact 8 hours, and 4 hours to pickup, are unverified. Unverified:
+bill payments must exceed 0 (the Gray Swan schema allows 0).
 """
 
 from __future__ import annotations
