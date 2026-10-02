@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 from pydantic import AfterValidator, BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import find
 from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
@@ -318,10 +319,7 @@ def _portal(world: World) -> PatientPortal:
 
 
 def _find(items: list, field: str, value: str, what: str):
-    item = next((i for i in items if getattr(i, field) == value), None)
-    if item is None:
-        raise ToolError(f"No {what} with id {value!r}.")
-    return item
+    return find(items, f"No {what} with id {value!r}.", **{field: value})
 
 
 def _iso(value: datetime | date | None) -> str:

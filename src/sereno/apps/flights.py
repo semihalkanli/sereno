@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import fresh_id, money
+from sereno.apps._common import find, fresh_id, money
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -394,10 +394,7 @@ def indicative_search(world: World, args: IndicativeSearchArgs) -> dict:
 
 
 def _itinerary(state: Flights, itinerary_id: str) -> Itinerary:
-    it = next((i for i in state.itineraries if i.id == itinerary_id), None)
-    if it is None:
-        raise ToolError(f"No itinerary with id {itinerary_id!r}.")
-    return it
+    return find(state.itineraries, f"No itinerary with id {itinerary_id!r}.", id=itinerary_id)
 
 
 class GetItineraryArgs(BaseModel):
@@ -551,9 +548,7 @@ class CancelBookingArgs(BaseModel):
 
 
 def cancel_booking(world: World, args: CancelBookingArgs) -> dict:
-    booking = next((b for b in _flights(world).bookings if b.id == args.booking_id), None)
-    if booking is None:
-        raise ToolError(f"No booking with id {args.booking_id!r}.")
+    booking = find(_flights(world).bookings, f"No booking with id {args.booking_id!r}.", id=args.booking_id)
     if booking.status == "cancelled":
         raise ToolError(f"Booking {booking.id!r} is already cancelled.")
     if booking.departure <= world.now:
@@ -646,9 +641,7 @@ class DeletePriceAlertArgs(BaseModel):
 
 
 def delete_price_alert(world: World, args: DeletePriceAlertArgs) -> dict:
-    alert = next((a for a in _flights(world).price_alerts if a.id == args.alert_id), None)
-    if alert is None:
-        raise ToolError(f"No price alert with id {args.alert_id!r}.")
+    alert = find(_flights(world).price_alerts, f"No price alert with id {args.alert_id!r}.", id=args.alert_id)
     if alert.status == "deleted":
         raise ToolError(f"Price alert {alert.id!r} is already deleted.")
     alert.status = "deleted"

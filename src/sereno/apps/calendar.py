@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from sereno.apps import App
-from sereno.apps._common import iso_seconds
+from sereno.apps._common import find, iso_seconds
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -84,10 +84,7 @@ def _active(world: World) -> list[Event]:
 
 
 def _event(world: World, event_id: str) -> Event:
-    event = next((e for e in _active(world) if e.id == event_id), None)
-    if event is None:
-        raise ToolError(f"Not found: no event with id {event_id!r}.")
-    return event
+    return find(_active(world), f"Not found: no event with id {event_id!r}.", id=event_id)
 
 
 def _meet_link(event_id: str) -> str:

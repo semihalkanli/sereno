@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import find
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -100,9 +101,7 @@ class TaskCompleteArgs(BaseModel):
 
 
 def task_complete(world: World, args: TaskCompleteArgs) -> dict:
-    task = next((t for t in _tasks(world).tasks if t.id == args.task_id), None)
-    if task is None:
-        raise ToolError(f"No task with id {args.task_id!r}.")
+    task = find(_tasks(world).tasks, f"No task with id {args.task_id!r}.", id=args.task_id)
     if task.status == "done":
         raise ToolError(f"Task {task.id} is already done.")
     task.status = "done"

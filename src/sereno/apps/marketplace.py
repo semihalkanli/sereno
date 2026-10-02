@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import fresh_id
+from sereno.apps._common import find, fresh_id
 from sereno.apps.files import require_files
 from sereno.tools import NoArgs, Tool, ToolError
 
@@ -103,10 +103,7 @@ def _market(world: World) -> Marketplace:
 
 
 def _listing(state: Marketplace, item_id: str) -> Listing:
-    listing = next((li for li in state.listings if li.id == item_id), None)
-    if listing is None:
-        raise ToolError(f"No listing with item id {item_id!r}.")
-    return listing
+    return find(state.listings, f"No listing with item id {item_id!r}.", id=item_id)
 
 
 def _own_listing(state: Marketplace, item_id: str) -> Listing:
@@ -210,9 +207,7 @@ class CartLineArgs(BaseModel):
 
 def remove_from_cart(world: World, args: CartLineArgs) -> dict:
     state = _market(world)
-    line = next((c for c in state.cart if c.id == args.cart_line_id and c.status == "in cart"), None)
-    if line is None:
-        raise ToolError(f"No cart line {args.cart_line_id!r} in the cart.")
+    line = find(state.cart, f"No cart line {args.cart_line_id!r} in the cart.", id=args.cart_line_id, status="in cart")
     line.status = "removed"
     return _cart_view(state)
 

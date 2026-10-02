@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import find
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -317,24 +318,15 @@ def _minutes(value: datetime | None) -> str | None:
 
 
 def _room(pms: HotelPms, number: str) -> Room:
-    room = next((r for r in pms.rooms if r.number == number), None)
-    if room is None:
-        raise ToolError(f"No room {number!r} at this property.")
-    return room
+    return find(pms.rooms, f"No room {number!r} at this property.", number=number)
 
 
 def _reservation(pms: HotelPms, reservation_id: str) -> Reservation:
-    found = next((r for r in pms.reservations if r.id == reservation_id), None)
-    if found is None:
-        raise ToolError(f"No reservation {reservation_id!r}.")
-    return found
+    return find(pms.reservations, f"No reservation {reservation_id!r}.", id=reservation_id)
 
 
 def _guest(pms: HotelPms, guest_id: str) -> Guest:
-    found = next((g for g in pms.guests if g.id == guest_id), None)
-    if found is None:
-        raise ToolError(f"No guest profile {guest_id!r}.")
-    return found
+    return find(pms.guests, f"No guest profile {guest_id!r}.", id=guest_id)
 
 
 def _in_house(pms: HotelPms, room_number: str) -> Reservation | None:
@@ -1176,9 +1168,7 @@ def _work_order_view(w: WorkOrder) -> dict:
 def maintenance_facilities_management(world: World, args: MaintenanceArgs) -> Any:
     pms = _pms(world)
     if args.work_order_id:
-        order = next((w for w in pms.work_orders if w.id == args.work_order_id), None)
-        if order is None:
-            raise ToolError(f"No work order {args.work_order_id!r}.")
+        order = find(pms.work_orders, f"No work order {args.work_order_id!r}.", id=args.work_order_id)
         if args.new_status:
             order.status = args.new_status
             order.completed_at = world.now if args.new_status == "completed" else None

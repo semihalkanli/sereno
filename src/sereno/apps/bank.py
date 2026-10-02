@@ -52,6 +52,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import find
 from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
@@ -226,10 +227,7 @@ def _drop(data: dict) -> dict:
 
 
 def _account(world: World, account_uid: str) -> Account:
-    account = next((a for a in _bank(world).accounts if a.id == account_uid), None)
-    if account is None:
-        raise ToolError(f"No account with accountUid {account_uid!r}.")
-    return account
+    return find(_bank(world).accounts, f"No account with accountUid {account_uid!r}.", id=account_uid)
 
 
 def _goals(world: World, account: Account) -> list[SavingsGoal]:
@@ -281,10 +279,9 @@ def _check_reference(account: Account, reference: str) -> None:
 
 
 def _payee_by_account(world: World, payee_account_uid: str) -> Payee:
-    payee = next((p for p in _bank(world).payees if p.payee_account_uid == payee_account_uid), None)
-    if payee is None:
-        raise ToolError(f"No payee account with uid {payee_account_uid!r}.")
-    return payee
+    return find(
+        _bank(world).payees, f"No payee account with uid {payee_account_uid!r}.", payee_account_uid=payee_account_uid
+    )
 
 
 def _feed_out(i: FeedItem) -> dict:
@@ -541,9 +538,7 @@ class PayeeDeleteArgs(BaseModel):
 
 def payee_delete(world: World, args: PayeeDeleteArgs) -> dict:
     bank = _bank(world)
-    payee = next((p for p in bank.payees if p.id == args.payeeUid), None)
-    if payee is None:
-        raise ToolError(f"No payee with payeeUid {args.payeeUid!r}.")
+    payee = find(bank.payees, f"No payee with payeeUid {args.payeeUid!r}.", id=args.payeeUid)
     if any(o.payee_uid == payee.id and o.cancelled_at is None for o in bank.standing_orders):
         raise ToolError("This payee has an active standing order; cancel it before deleting the payee.")
     bank.payees.remove(payee)
@@ -736,9 +731,9 @@ class DirectDebitCancelArgs(BaseModel):
 
 
 def direct_debit_cancel(world: World, args: DirectDebitCancelArgs) -> dict:
-    mandate = next((m for m in _bank(world).direct_debits if m.id == args.mandateUid), None)
-    if mandate is None:
-        raise ToolError(f"No direct debit mandate with uid {args.mandateUid!r}.")
+    mandate = find(
+        _bank(world).direct_debits, f"No direct debit mandate with uid {args.mandateUid!r}.", id=args.mandateUid
+    )
     if mandate.status == "CANCELLED":
         raise ToolError(f"Direct debit {mandate.id!r} is already cancelled.")
     mandate.status = "CANCELLED"
@@ -779,9 +774,7 @@ class CardLockUpdateArgs(BaseModel):
 
 
 def card_lock_update(world: World, args: CardLockUpdateArgs) -> dict:
-    card = next((c for c in _bank(world).cards if c.id == args.cardUid), None)
-    if card is None:
-        raise ToolError(f"No card with cardUid {args.cardUid!r}.")
+    card = find(_bank(world).cards, f"No card with cardUid {args.cardUid!r}.", id=args.cardUid)
     if card.cancelled:
         raise ToolError(f"Card ending {card.end_of_card_number} is cancelled.")
     card.enabled = args.enabled
@@ -807,9 +800,11 @@ class SavingsGoalTransferArgs(AccountArgs):
 
 def _transfer(world: World, args: SavingsGoalTransferArgs, into_goal: bool) -> dict:
     account = _account(world, args.accountUid)
-    goal = next((g for g in _goals(world, account) if g.id == args.savingsGoalUid), None)
-    if goal is None:
-        raise ToolError(f"No savings goal {args.savingsGoalUid!r} on account {account.id!r}.")
+    goal = find(
+        _goals(world, account),
+        f"No savings goal {args.savingsGoalUid!r} on account {account.id!r}.",
+        id=args.savingsGoalUid,
+    )
     _check_amount(account, args.amount)
     minor = args.amount.minorUnits
     if into_goal and minor > account.cleared_balance_minor - _pending_out(world, account):

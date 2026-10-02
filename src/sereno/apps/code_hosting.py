@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from sereno.apps import App
-from sereno.apps._common import fresh_id
+from sereno.apps._common import find, fresh_id
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -194,10 +194,7 @@ def _full_name(world: World, owner: str, repo: str) -> str:
 
 def _pull(world: World, owner: str, repo: str, number: int) -> PullRequest:
     name = _full_name(world, owner, repo)
-    pr = next((p for p in _state(world).pull_requests if p.repo == name and p.number == number), None)
-    if pr is None:
-        raise ToolError(f"Pull request #{number} not found in {name}.")
-    return pr
+    return find(_state(world).pull_requests, f"Pull request #{number} not found in {name}.", repo=name, number=number)
 
 
 def _actor(world: World) -> str:
@@ -313,9 +310,7 @@ class IssueReadArgs(BaseModel):
 def issue_read(world: World, args: IssueReadArgs) -> dict | list[dict]:
     gh = _state(world)
     name = _full_name(world, args.owner, args.repo)
-    issue = next((i for i in gh.issues if i.repo == name and i.number == args.issue_number), None)
-    if issue is None:
-        raise ToolError(f"Issue #{args.issue_number} not found in {name}.")
+    issue = find(gh.issues, f"Issue #{args.issue_number} not found in {name}.", repo=name, number=args.issue_number)
     comments = sorted((c for c in gh.comments if c.issue_id == issue.id), key=lambda c: c.created_at)
     if args.method == "get":
         return {
@@ -339,9 +334,7 @@ class RepoMetadataArgs(BaseModel):
 
 def get_repo_metadata(world: World, args: RepoMetadataArgs) -> dict:
     name = _repo_name(world, args.repo_name)
-    repo = next((r for r in _state(world).repos if r.full_name == name), None)
-    if repo is None:
-        raise ToolError(f"Repository {args.repo_name!r} not found.")
+    repo = find(_state(world).repos, f"Repository {args.repo_name!r} not found.", full_name=name)
     return {
         "repo": repo.full_name,
         "status": repo.status,
@@ -422,9 +415,9 @@ class CancelCicdUpdateArgs(BaseModel):
 
 
 def cancel_cicd_update(world: World, args: CancelCicdUpdateArgs) -> dict:
-    update = next((u for u in _state(world).cicd_updates if u.id == args.update_id), None)
-    if update is None:
-        raise ToolError(f"No scheduled CI/CD update with id {args.update_id!r}.")
+    update = find(
+        _state(world).cicd_updates, f"No scheduled CI/CD update with id {args.update_id!r}.", id=args.update_id
+    )
     if update.status == "cancelled":
         raise ToolError(f"CI/CD update {update.id} is already cancelled.")
     if update.run_at <= world.now:

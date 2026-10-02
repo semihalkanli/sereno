@@ -58,6 +58,7 @@ from urllib.parse import quote, urlencode
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import find
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -187,18 +188,12 @@ def _state(world: World) -> HomeRental:
 
 
 def _listing(world: World, listing_id: str) -> Listing:
-    listing = next((x for x in _state(world).listings if x.id == listing_id), None)
-    if listing is None:
-        raise ToolError(f"No listing with id {listing_id!r}.")
-    return listing
+    return find(_state(world).listings, f"No listing with id {listing_id!r}.", id=listing_id)
 
 
 def _reservation(world: World, reservation_id: str) -> Reservation:
     code = reservation_id.strip().upper()
-    found = next((r for r in _state(world).reservations if r.id == code), None)
-    if found is None:
-        raise ToolError(f"No reservation with id or confirmation code {reservation_id!r}.")
-    return found
+    return find(_state(world).reservations, f"No reservation with id or confirmation code {reservation_id!r}.", id=code)
 
 
 def _money(amount: float, currency: str) -> str:

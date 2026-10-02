@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
+from sereno.apps._common import find
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -148,24 +149,15 @@ def _next_id(prefix: str, existing: list[str], start: int, width: int = 0) -> st
 
 
 def _product(shop: Shop, product_id: str) -> Product:
-    product = next((p for p in shop.products if p.id == product_id), None)
-    if product is None:
-        raise ToolError(f"No product with id {product_id!r}.")
-    return product
+    return find(shop.products, f"No product with id {product_id!r}.", id=product_id)
 
 
 def _order(shop: Shop, order_id: str) -> Order:
-    order = next((o for o in shop.orders if o.id == order_id), None)
-    if order is None:
-        raise ToolError(f"No order with id {order_id!r}.")
-    return order
+    return find(shop.orders, f"No order with id {order_id!r}.", id=order_id)
 
 
 def _chat(shop: Shop, chat_id: str) -> Chat:
-    chat = next((c for c in shop.chats if c.id == chat_id), None)
-    if chat is None:
-        raise ToolError(f"No chat with id {chat_id!r}.")
-    return chat
+    return find(shop.chats, f"No chat with id {chat_id!r}.", id=chat_id)
 
 
 def _summary(p: Product) -> dict:
@@ -293,9 +285,7 @@ class RemoveFromCartArgs(BaseModel):
 
 def remove_from_cart(world: World, args: RemoveFromCartArgs) -> dict:
     shop = _shop(world)
-    item = next((i for i in shop.cart_items if i.id == args.item_id), None)
-    if item is None:
-        raise ToolError(f"No cart item with id {args.item_id!r}.")
+    item = find(shop.cart_items, f"No cart item with id {args.item_id!r}.", id=args.item_id)
     shop.cart_items.remove(item)
     return {"status": "removed"}
 

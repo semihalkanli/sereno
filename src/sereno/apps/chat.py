@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import fresh_id, iso_seconds
+from sereno.apps._common import find, fresh_id, iso_seconds
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -293,9 +293,12 @@ def chat_send_message(world: World, args: SendMessageArgs) -> dict:
         raise ToolError(f"is_archived: #{channel.name} is archived.")
     thread_ts = None
     if args.thread_ts is not None:
-        parent = next((m for m in chat.messages if m.id == args.thread_ts and m.channel_id == channel.id), None)
-        if parent is None:
-            raise ToolError(f"thread_not_found: no message {args.thread_ts!r} in this channel.")
+        parent = find(
+            chat.messages,
+            f"thread_not_found: no message {args.thread_ts!r} in this channel.",
+            id=args.thread_ts,
+            channel_id=channel.id,
+        )
         thread_ts = parent.thread_ts or parent.id
     message = Message(
         id=_new_id(world, chat),

@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import plain_stamp
+from sereno.apps._common import find, plain_stamp
 from sereno.apps.files import require_files
 from sereno.tools import Tool, ToolError
 
@@ -56,10 +56,7 @@ def _mail(world: World) -> Mail:
 
 
 def _email(world: World, email_id: str) -> Email:
-    email = next((e for e in _mail(world).emails if e.id == email_id), None)
-    if email is None:
-        raise ToolError(f"No email with id {email_id!r}.")
-    return email
+    return find(_mail(world).emails, f"No email with id {email_id!r}.", id=email_id)
 
 
 def _snippet(body: str) -> str:

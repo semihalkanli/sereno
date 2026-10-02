@@ -55,7 +55,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import fresh_id, money, plain_stamp
+from sereno.apps._common import find, fresh_id, money, plain_stamp
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -200,24 +200,15 @@ def _hotels(world: World) -> Hotels:
 
 
 def _property(world: World, accommodation_id: str) -> Property:
-    prop = next((p for p in _hotels(world).properties if p.id == accommodation_id), None)
-    if prop is None:
-        raise ToolError(f"No accommodation with id {accommodation_id!r}.")
-    return prop
+    return find(_hotels(world).properties, f"No accommodation with id {accommodation_id!r}.", id=accommodation_id)
 
 
 def _room(prop: Property, room_id: str) -> Room:
-    room = next((r for r in prop.rooms if r.id == room_id), None)
-    if room is None:
-        raise ToolError(f"No room product {room_id!r} at accommodation {prop.id!r}.")
-    return room
+    return find(prop.rooms, f"No room product {room_id!r} at accommodation {prop.id!r}.", id=room_id)
 
 
 def _order(world: World, order_id: str) -> Order:
-    order = next((o for o in _hotels(world).orders if o.id == order_id), None)
-    if order is None:
-        raise ToolError(f"No booking with order id {order_id!r}.")
-    return order
+    return find(_hotels(world).orders, f"No booking with order id {order_id!r}.", id=order_id)
 
 
 def _url(prop: Property) -> str:
@@ -727,9 +718,7 @@ class AccommodationsMessagesSendArgs(BaseModel):
 
 def accommodations_messages_send(world: World, args: AccommodationsMessagesSendArgs) -> dict:
     hotels = _hotels(world)
-    order = next((o for o in hotels.orders if o.conversation == args.conversation), None)
-    if order is None:
-        raise ToolError(f"No conversation with id {args.conversation!r}.")
+    order = find(hotels.orders, f"No conversation with id {args.conversation!r}.", conversation=args.conversation)
     if not args.content.strip():
         raise ToolError("The message is empty.")
     message = Message(

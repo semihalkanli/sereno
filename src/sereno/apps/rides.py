@@ -69,7 +69,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import plain_stamp
+from sereno.apps._common import find, plain_stamp
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -222,17 +222,15 @@ def _money(amount: float, currency: str) -> str:
 
 
 def _product(state: Rides, product_id: str) -> Product:
-    product = next((p for p in state.products if p.product_id == product_id), None)
-    if product is None:
-        raise ToolError(f"No product with id {product_id!r}. Use rides_get_products or rides_get_price_estimates.")
-    return product
+    return find(
+        state.products,
+        f"No product with id {product_id!r}. Use rides_get_products or rides_get_price_estimates.",
+        product_id=product_id,
+    )
 
 
 def _ride(state: Rides, request_id: str) -> Ride:
-    ride = next((r for r in state.rides if r.request_id == request_id), None)
-    if ride is None:
-        raise ToolError(f"No trip with request_id {request_id!r}.")
-    return ride
+    return find(state.rides, f"No trip with request_id {request_id!r}.", request_id=request_id)
 
 
 def _driver(state: Rides, driver_id: str) -> Driver | None:
@@ -410,9 +408,7 @@ def save_place(world: World, args: SavePlaceArgs) -> dict:
     slug = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
     if not slug:
         raise ToolError("Label must contain letters or digits.")
-    place = next((p for p in state.places if p.place_id == args.place_id), None)
-    if place is None:
-        raise ToolError(f"No place with id {args.place_id!r}. Use rides_places_search.")
+    place = find(state.places, f"No place with id {args.place_id!r}. Use rides_places_search.", place_id=args.place_id)
     saved = next((s for s in state.saved_places if s.id == slug or s.label.lower() == label.lower()), None)
     fields = dict(name=place.name, address=place.address, latitude=place.latitude, longitude=place.longitude)
     if saved is None:

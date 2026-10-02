@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints
 
 from sereno.apps import App
-from sereno.apps._common import fresh_id
+from sereno.apps._common import find, fresh_id
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -726,9 +726,7 @@ class LearningManagementSubmissionArgs(BaseModel):
 
 
 def _shell_section(uni: University, shell_id: str) -> Section:
-    s = next((x for x in uni.sections if x.lms_shell_id == shell_id), None)
-    if s is None:
-        raise ToolError(f"No course shell {shell_id!r}.")
+    s = find(uni.sections, f"No course shell {shell_id!r}.", lms_shell_id=shell_id)
     e = _enrollment(uni, s.crn, s.term)
     if e is None or e.status != "registered":
         raise ToolError(f"You are not enrolled in {shell_id}.")
@@ -858,9 +856,7 @@ class FacultyOfficeHoursBookingArgs(BaseModel):
 
 def faculty_office_hours_booking(world: World, args: FacultyOfficeHoursBookingArgs) -> dict:
     uni = _uni(world)
-    fac = next((f for f in uni.faculty if f.id == args.faculty_university_id), None)
-    if fac is None:
-        raise ToolError(f"No faculty member with id {args.faculty_university_id!r}.")
+    fac = find(uni.faculty, f"No faculty member with id {args.faculty_university_id!r}.", id=args.faculty_university_id)
     if not fac.office_hours:
         raise ToolError(f"{fac.name} has no published office hours.")
     length = timedelta(minutes=MINUTES[args.appointment_duration])
@@ -1220,9 +1216,11 @@ class UniversityRequestCancelArgs(BaseModel):
 def university_request_cancel(world: World, args: UniversityRequestCancelArgs) -> dict:
     uni = _uni(world)
     items = [*uni.appointments, *uni.reservations, *uni.accommodations, *uni.transcript_requests]
-    item = next((i for i in items if i.id == args.request_id), None)
-    if item is None:
-        raise ToolError(f"No appointment, reservation, accommodation request or transcript order {args.request_id!r}.")
+    item = find(
+        items,
+        f"No appointment, reservation, accommodation request or transcript order {args.request_id!r}.",
+        id=args.request_id,
+    )
     if item.status == "cancelled":
         raise ToolError(f"{args.request_id} is already cancelled.")
     if isinstance(item, TranscriptRequest) and item.status == "sent":
