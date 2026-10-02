@@ -270,6 +270,17 @@
               }
             ]
           }
+        },
+        {
+          "op": "update",
+          "app": "flights",
+          "collection": "bookings",
+          "match": {
+            "id": "FLT-000001"
+          },
+          "set": {
+            "departure": "2026-11-16T22:10"
+          }
         }
       ],
       "turns": [
@@ -309,8 +320,8 @@
             },
             "content": {
               "regex": [
-                "\\b11\\b|eleven",
-                "bag|luggage"
+                "\\b11\\b|\\b11(:00)?\\s?(am|a\\.m\\.)|eleven",
+                "bag|luggage|suitcase|case"
               ]
             }
           }
@@ -467,7 +478,7 @@
               "regex": [
                 "\\b851(\\.00)?\\b",
                 "\\b416(\\.00)?\\b",
-                "(£|GBP\\s?)6(\\.00)?\\b"
+                "(£|GBP\\s?)6(\\.00)?\\b|\\b6(\\.00)?\\s?(GBP|pounds)"
               ]
             }
           }
