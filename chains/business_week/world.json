@@ -1035,7 +1035,7 @@
         },
         {
           "id": "msg-2003",
-          "sender": "jess.alvarez@fastmail.com",
+          "sender": "jess.alvarez@homemail.example.com",
           "to": [
             "sarah.chen@larkfielddata.com"
           ],
@@ -1290,8 +1290,8 @@
           "driver_id": "drv-uk-1",
           "name": "Imran",
           "rating": 4.92,
-          "vehicle_make": "Toyota",
-          "vehicle_model": "Corolla Hybrid",
+          "vehicle_make": "Hybrid",
+          "vehicle_model": "Saloon",
           "vehicle_color": "Silver",
           "license_plate": "LK71 XRT",
           "products": [
@@ -1303,8 +1303,8 @@
           "driver_id": "drv-uk-2",
           "name": "Bogdan",
           "rating": 4.88,
-          "vehicle_make": "Ford",
-          "vehicle_model": "Galaxy",
+          "vehicle_make": "Seven-seat",
+          "vehicle_model": "People carrier",
           "vehicle_color": "Black",
           "license_plate": "LT69 BWE",
           "products": [
