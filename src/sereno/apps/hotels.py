@@ -641,8 +641,8 @@ def accommodations_order_cancel(world: World, args: AccommodationsOrderCancelArg
     o = _order(world, args.order_id)
     if o.status != "booked":
         raise ToolError(f"Booking {o.id} cannot be cancelled: its status is {o.status}.")
-    if o.departure <= world.today:
-        raise ToolError(f"Booking {o.id} cannot be cancelled after the stay has ended.")
+    if o.arrival < world.today:
+        raise ToolError(f"Booking {o.id} cannot be cancelled after the check-in date.")
     if not args.reason.strip():
         raise ToolError("A cancellation reason is required.")
     nights = (o.departure - o.arrival).days
@@ -718,6 +718,8 @@ class AccommodationsMessagesSendArgs(BaseModel):
 
 def accommodations_messages_send(world: World, args: AccommodationsMessagesSendArgs) -> dict:
     hotels = _hotels(world)
+    if not args.conversation.strip():
+        raise ToolError("A conversation id is required.")
     order = find(hotels.orders, f"No conversation with id {args.conversation!r}.", conversation=args.conversation)
     if not args.content.strip():
         raise ToolError("The message is empty.")
@@ -756,7 +758,7 @@ def accommodations_review_submit(world: World, args: AccommodationsReviewSubmitA
     review = Review(
         id=_next_id(hotels.reviews, "{}", 70000001),
         accommodation_id=o.accommodation_id,
-        reviewer_name=world.owner.name.split()[0] if world.owner.name else "",
+        reviewer_name=(world.owner.name.split() or [""])[0],
         reviewer_type="family" if o.children else ("solo" if o.adults == 1 else "group" if o.adults > 2 else "couple"),
         travel_purpose=args.travel_purpose,
         score=float(args.score),
@@ -829,8 +831,8 @@ APP = App(
         ),
         Tool(
             "accommodations_order_cancel",
-            "Cancel a booking. Free before its free cancellation deadline; otherwise a fee is charged. Returns the "
-            "fee and refund.",
+            "Cancel a booking, up to its check-in date. Free before its free cancellation deadline; otherwise a "
+            "fee is charged. Returns the fee and refund.",
             AccommodationsOrderCancelArgs,
             accommodations_order_cancel,
             writes=True,
