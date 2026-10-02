@@ -495,7 +495,8 @@ def render_event(
     if kind == "span_begin" and span == "run":
         text.append(
             f"run {event.get('run_id')}  chain {event.get('chain')}  attack {event.get('attack')}  "
-            f"temperature {event.get('gen_ai.request.temperature')}  top_p {event.get('gen_ai.request.top_p')}  "
+            f"temperature {event.get('gen_ai.request.temperature') or 'default'}  "
+            f"top_p {event.get('gen_ai.request.top_p') or 'default'}  "
             f"effort {event.get('sereno.reasoning_effort') or 'default'}  max_steps {event.get('max_steps')}",
             style="dim",
         )

@@ -91,7 +91,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
     else:
         load_dotenv(REPO / ".env")
         name, provider = MODELS[args.model]
-        label = f"{args.model}_t{args.temperature:g}_p{args.top_p:g}"
+        sampling = [
+            f"t{args.temperature:g}" if args.temperature is not None else "",
+            f"p{args.top_p:g}" if args.top_p is not None else "",
+        ]
+        label = f"{args.model}_{'_'.join(x for x in sampling if x) or 'default'}"
         if args.reasoning_effort:
             label = f"{label}_{args.reasoning_effort}"
         model = OpenRouterModel(
@@ -150,8 +154,8 @@ def main() -> None:
     source = run.add_mutually_exclusive_group(required=True)
     source.add_argument("--scripted", action="store_true", help="replay the correct solution, no API calls")
     source.add_argument("--model", choices=sorted(MODELS), help="paid run on OpenRouter")
-    run.add_argument("--temperature", type=float, default=1.0, help="default 1.0, the provider's default for GLM 5.3")
-    run.add_argument("--top-p", type=float, default=0.95, help="default 0.95, the provider's default for GLM 5.3")
+    run.add_argument("--temperature", type=float, help="without it the provider's default applies")
+    run.add_argument("--top-p", type=float, help="without it the provider's default applies")
     run.add_argument(
         "--reasoning-effort",
         choices=["none", "minimal", "low", "medium", "high", "xhigh", "max"],
