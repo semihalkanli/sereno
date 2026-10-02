@@ -71,6 +71,8 @@ def _holds(item: BaseModel, field: str, cond: Cond) -> bool:
         if (_fold(value) != _fold(expected)) if cond.ci else (value != expected):
             return False
     if cond.contains is not None:
+        if value is None:
+            return False
         haystack, needle = (_fold(value), _fold(cond.contains)) if cond.ci else (value, cond.contains)
         if needle not in haystack:
             return False
