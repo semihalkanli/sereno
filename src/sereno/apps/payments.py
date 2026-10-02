@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError
+from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -114,10 +114,6 @@ def _story(state: Payments, t: Transaction) -> dict:
         "status": t.status,
         "audience": t.audience,
     }
-
-
-class NoArgs(BaseModel):
-    pass
 
 
 def get_balance(world: World, args: NoArgs) -> dict:

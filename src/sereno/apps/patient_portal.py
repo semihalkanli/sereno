@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 from pydantic import AfterValidator, BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError
+from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -400,10 +400,6 @@ def _appointment_view(portal: PatientPortal, a: Appointment) -> dict:
         "patient_instructions": a.patient_instructions,
         "status_reason": a.status_reason,
     }
-
-
-class NoArgs(BaseModel):
-    pass
 
 
 def get_patient_profile(world: World, args: NoArgs) -> dict:

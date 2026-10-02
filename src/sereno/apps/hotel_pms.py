@@ -303,27 +303,6 @@ class HotelPms(BaseModel):
     concierge_requests: list[ConciergeRequest] = []
 
 
-class _Args(BaseModel):
-    """Arguments whose JSON schema has nested objects inlined instead of `$ref`s."""
-
-    @classmethod
-    def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        schema = super().model_json_schema(*args, **kwargs)
-        defs = schema.pop("$defs", {})
-
-        def inline(node: Any) -> Any:
-            if isinstance(node, dict):
-                if "$ref" in node:
-                    rest = {k: v for k, v in node.items() if k != "$ref"}
-                    return inline({**defs[node["$ref"].rsplit("/", 1)[-1]], **rest})
-                return {k: inline(v) for k, v in node.items()}
-            if isinstance(node, list):
-                return [inline(v) for v in node]
-            return node
-
-        return inline(schema)
-
-
 def _pms(world: World) -> HotelPms:
     return world.app("hotel_pms")
 
@@ -427,7 +406,7 @@ def _single_property(pms: HotelPms, properties: list[str]) -> None:
         )
 
 
-class ReservationArgs(_Args):
+class ReservationArgs(BaseModel):
     booking_action: Literal[
         "new_reservation", "modify_existing", "cancel_booking", "group_block", "waitlist_request", "upgrade_room",
         "lookup",
@@ -566,7 +545,7 @@ def reservation_booking_engine(world: World, args: ReservationArgs) -> Any:
     return {"status": "modified", "reservation": _reservation_view(reservation)}
 
 
-class GuestProfileArgs(_Args):
+class GuestProfileArgs(BaseModel):
     profile_operation: Literal[
         "create_profile", "update_preferences", "merge_duplicates", "loyalty_enrollment", "vip_designation",
         "preference_tracking", "lookup",
@@ -674,7 +653,7 @@ def guest_profile_management(world: World, args: GuestProfileArgs) -> Any:
     return {"status": "updated", "profile": _profile_view(pms, guest)}
 
 
-class HousekeepingArgs(_Args):
+class HousekeepingArgs(BaseModel):
     housekeeping_task: Literal[
         "room_assignment", "cleaning_status", "maintenance_request", "lost_found", "inventory_replenishment",
         "inspection_quality",
@@ -800,7 +779,7 @@ class GuestVerification(BaseModel):
     credit_card_match: bool = True
 
 
-class FrontDeskArgs(_Args):
+class FrontDeskArgs(BaseModel):
     front_desk_function: Literal[
         "guest_checkin", "guest_checkout", "room_assignment", "key_card_programming", "folio_management",
         "concierge_services",
@@ -958,7 +937,7 @@ def front_desk_operations(world: World, args: FrontDeskArgs) -> Any:
     }
 
 
-class RevenueArgs(_Args):
+class RevenueArgs(BaseModel):
     pricing_strategy: Literal[
         "demand_based", "competitor_parity", "seasonal_adjustment", "event_premium", "length_of_stay",
         "channel_optimization",
@@ -1014,7 +993,7 @@ class ServiceCharges(BaseModel):
     )
 
 
-class FoodBeverageArgs(_Args):
+class FoodBeverageArgs(BaseModel):
     service_outlet: Outlet
     menu_categories: list[MenuCategory] = Field(description="Menu categories to show or order from.")
     order_management: OrderManagement | None = None
@@ -1105,7 +1084,7 @@ class SpaceRequirements(BaseModel):
     ballroom_capacity: int = Field(0, ge=0, le=1000)
 
 
-class EventArgs(_Args):
+class EventArgs(BaseModel):
     event_category: Literal[
         "corporate_meeting", "wedding_celebration", "conference_convention", "social_gathering", "training_seminar",
         "product_launch",
@@ -1158,7 +1137,7 @@ def event_conference_coordination(world: World, args: EventArgs) -> Any:
     return {"status": "booked", "event": _event_view(event)}
 
 
-class MaintenanceArgs(_Args):
+class MaintenanceArgs(BaseModel):
     maintenance_type: Literal[
         "preventive_scheduled", "emergency_repair", "guest_room_issue", "public_area", "equipment_breakdown",
         "safety_inspection",
@@ -1234,7 +1213,7 @@ def maintenance_facilities_management(world: World, args: MaintenanceArgs) -> An
     return {"work_orders": [_work_order_view(w) for w in orders[:20]]}
 
 
-class ConciergeArgs(_Args):
+class ConciergeArgs(BaseModel):
     service_request: Literal[
         "restaurant_reservations", "transportation_arrangements", "attraction_tickets", "shopping_recommendations",
         "business_services", "special_occasions",

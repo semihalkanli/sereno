@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 from pydantic import BaseModel, BeforeValidator, Field
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError
+from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -270,10 +270,6 @@ def get_live_context(world: World, args: LiveContextArgs) -> dict:
         if not devices:
             raise ToolError(f"No exposed entity {args.entity_id!r}.")
     return {"success": True, "entities": [_device_view(d) for d in devices]}
-
-
-class NoArgs(BaseModel):
-    pass
 
 
 def get_date_time(world: World, args: NoArgs) -> dict:

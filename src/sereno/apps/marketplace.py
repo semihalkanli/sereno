@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError
+from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -205,10 +205,6 @@ def _cart_view(state: Marketplace) -> dict:
             lines.append({"cart_line_id": line.id, **_summary(listing), "quantity": line.quantity})
     total = sum(_listing(state, line["item_id"]).price * line["quantity"] for line in lines)
     return {"items": lines, "subtotal": f"${total:,.2f}"}
-
-
-class NoArgs(BaseModel):
-    pass
 
 
 def get_cart(world: World, args: NoArgs) -> dict:

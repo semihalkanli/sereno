@@ -18,6 +18,10 @@ class ToolError(Exception):
     """An error the agent should see as the tool's answer, not a crash."""
 
 
+class NoArgs(BaseModel):
+    pass
+
+
 def _inline_refs(schema: dict) -> dict:
     """Replace local `$ref`s with their definitions, since not every provider resolves them."""
     defs = schema.pop("$defs", {})

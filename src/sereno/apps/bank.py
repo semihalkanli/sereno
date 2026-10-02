@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.tools import Tool, ToolError
+from sereno.tools import NoArgs, Tool, ToolError
 
 if TYPE_CHECKING:
     from sereno.world import World
@@ -334,10 +334,6 @@ def _record(world: World, account: Account, category_uid: str, amount_minor: int
     )
     bank.feed_items.append(item)
     return item
-
-
-class NoArgs(BaseModel):
-    pass
 
 
 def accounts_list(world: World, args: NoArgs) -> dict:
