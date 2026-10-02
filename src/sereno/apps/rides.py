@@ -34,9 +34,11 @@ Times are "YYYY-MM-DD HH:MM:SS" strings rather than the API's Unix seconds.
 History lists ended trips (the app also shows cancelled ones) with addresses,
 which the API's history omits.
 
-The world does not advance a ride by itself: a request is assigned the first
-available driver for its product at once ("accepted"), or ends as
-"no_drivers_available"; chains seed rides in other states. Invented for the
+A request is assigned the first available driver for its product at once
+("accepted"), or ends as "no_drivers_available"; chains seed rides in other
+states. When the world clock moves (the app's advance hook), an accepted ride
+begins at its pickup ETA and completes after its trip duration, and the driver
+becomes available again, so later sessions see a finished trip with a receipt. Invented for the
 world: distances (straight line times 1.25 road factor), durations (18 mph
 average), the estimate range (upfront fare -8%/+12%) and the request id (a
 UUID derived from a SHA-256 of the request); these three are unverified (no
@@ -565,6 +567,21 @@ def request_ride(world: World, args: RequestRideArgs) -> dict:
     }
 
 
+def finish_due_rides(world: World) -> None:
+    """An accepted ride begins at its pickup ETA and completes once its trip duration has passed."""
+    state = _rides(world)
+    for ride in state.rides:
+        if ride.status in ("accepted", "arriving") and ride.pickup_eta and world.now >= ride.pickup_eta:
+            ride.status, ride.start_time = "in_progress", ride.pickup_eta
+        if ride.status == "in_progress" and ride.start_time:
+            end = ride.start_time + timedelta(seconds=ride.duration)
+            if world.now >= end:
+                ride.status, ride.end_time = "completed", end
+                driver = _driver(state, ride.driver_id)
+                if driver is not None:
+                    driver.available = True
+
+
 class RideStatusArgs(BaseModel):
     request_id: str = Field("", description="The trip's request_id. Leave empty for the current active trip.")
 
@@ -823,6 +840,7 @@ APP = App(
         "rides": "request_id",
         "messages": "id",
     },
+    advance=finish_due_rides,
     tools=[
         Tool(
             "rides_get_products",

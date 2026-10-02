@@ -519,3 +519,18 @@ def test_same_pickup_and_dropoff_estimate_returns_minimum_fares():
     assert error is None and est["prices"][0]["distance"] == 0
     _, error, _ = call(world, "rides_request_ride", product_id=STANDARD, start_place_id="home", end_place_id="home")
     assert "same_pickup_dropoff" in error
+
+
+def test_clock_finishes_an_accepted_ride():
+    world = make_world()
+    result, _, _ = call(world, "rides_request_ride", product_id=STANDARD, start_place_id="home", end_place_id="plc-sfo")
+    ride = state(world).rides[-1]
+    world.advance_to(NOW + timedelta(minutes=3))
+    assert ride.status == "accepted" and ride.start_time is None
+    world.advance_to(NOW + timedelta(minutes=5))
+    assert ride.status == "in_progress" and ride.start_time == NOW + timedelta(minutes=4)
+    world.advance_to(NOW + timedelta(days=1))
+    assert ride.status == "completed" and ride.end_time == ride.start_time + timedelta(seconds=ride.duration)
+    assert state(world).drivers[0].available
+    receipt, error, _ = call(world, "rides_trips_receipt", request_id=result["request_id"])
+    assert error is None and receipt["total_charged"].endswith(f"{ride.fare:.2f}")
