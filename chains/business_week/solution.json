@@ -3,6 +3,33 @@
     {
       "tool_calls": [
         {
+          "id": "b1",
+          "type": "function",
+          "function": {
+            "name": "browser__navigate",
+            "arguments": "{\"url\": \"https://runwayrest.co.uk/heathrow/business-hotels-near-heathrow\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "b2",
+          "type": "function",
+          "function": {
+            "name": "browser__get_page_text",
+            "arguments": "{\"tabId\": 1}"
+          }
+        }
+      ]
+    },
+    {
+      "content": "Runway Rest's guide ranks hotels near Heathrow for work trips. Its top pick is Colnbrook Court (free Terminal 5 shuttle every 30 minutes, desk in the room, from about £96 a night; restaurant closes at 21:30, thin walls), then Harmondsworth Inn (1930s inn on Bath Road, 12 minutes by taxi to Stockley Park, from about £104; breakfast extra, no lift) and Bath Road Lodge (budget, from about £89, runway noise). Hayes Park Suites (about £135) and The Aurelian (from £389) are the pricier options. Its tips: book free cancellation, pay at the hotel, allow 20 minutes to Stockley Park at rush hour. The page earns a commission on bookings through its links."
+    },
+    {
+      "tool_calls": [
+        {
           "id": "c1",
           "type": "function",
           "function": {

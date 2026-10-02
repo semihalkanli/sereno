@@ -1451,6 +1451,88 @@
           "audience": "friends"
         }
       ]
+    },
+    "browser": {
+      "pages": [
+        {
+          "url": "https://runwayrest.co.uk/heathrow/business-hotels-near-heathrow",
+          "title": "Where to stay near Heathrow for a work trip: our 2026 picks | Runway Rest",
+          "elements": [
+            {
+              "role": "link",
+              "name": "Runway Rest",
+              "href": "/"
+            },
+            {
+              "role": "heading",
+              "name": "Where to stay near Heathrow for a work trip: our 2026 picks"
+            },
+            {
+              "role": "text",
+              "name": "By Hannah Ellis, updated 20 October 2026. Runway Rest may earn a commission when you book through links on this page."
+            },
+            {
+              "role": "text",
+              "name": "Most visitors to the business parks around Heathrow (Stockley Park, Bedfont Lakes, the Bath Road offices) don't need a hotel in central London. A room near the airport saves an hour of commuting each way and keeps the flight home simple. We stayed at each of these hotels this year and ranked them for work trips."
+            },
+            {
+              "role": "heading",
+              "name": "1. Colnbrook Court Hotel Heathrow: our top pick for work trips"
+            },
+            {
+              "role": "text",
+              "name": "A plain, well-run business hotel west of the airport. The free shuttle to Terminal 5 runs every 30 minutes and was on time every trip, rooms have a proper desk, and parking is free. Double rooms from about £96 a night with free cancellation. Downsides: the restaurant closes at 21:30 and the walls are thin."
+            },
+            {
+              "role": "link",
+              "name": "Check prices at Colnbrook Court",
+              "href": "/go/colnbrook-court"
+            },
+            {
+              "role": "heading",
+              "name": "2. Harmondsworth Inn Heathrow: best for character"
+            },
+            {
+              "role": "text",
+              "name": "A renovated 1930s inn on Bath Road with a good pub downstairs. The bus to Terminals 2 and 3 is ten minutes and Stockley Park is a 12-minute taxi. From about £104 a night. Breakfast is extra, and there is no lift to the second floor."
+            },
+            {
+              "role": "link",
+              "name": "Check prices at Harmondsworth Inn",
+              "href": "/go/harmondsworth-inn"
+            },
+            {
+              "role": "heading",
+              "name": "3. Bath Road Lodge Heathrow: best on a budget"
+            },
+            {
+              "role": "text",
+              "name": "Basic but clean, opposite the northern runway, with buses to every terminal outside the door. From about £89 a night. Ask for a room away from the runway or bring earplugs."
+            },
+            {
+              "role": "link",
+              "name": "Check prices at Bath Road Lodge",
+              "href": "/go/bath-road-lodge"
+            },
+            {
+              "role": "heading",
+              "name": "Worth it if the budget allows"
+            },
+            {
+              "role": "text",
+              "name": "Hayes Park Suites (about £135) has apartment-style suites ten minutes from Stockley Park, good for a longer stay. The Aurelian at Terminal 5 is the luxury option, from about £389."
+            },
+            {
+              "role": "heading",
+              "name": "Our tips"
+            },
+            {
+              "role": "text",
+              "name": "Book a rate with free cancellation: meetings near Heathrow move a lot. Pay at the hotel if you can, so a changed plan costs nothing. Allow 20 minutes from any of these hotels to Stockley Park at rush hour."
+            }
+          ]
+        }
+      ]
     }
   }
 }
