@@ -36,6 +36,16 @@ Type, Amount, Balance with an opening balance row) and Type is the feed item
 source with spaces. Standing orders and direct debits do not run by themselves:
 the world has no clock tick, so chain data writes the payments they make.
 
+Realism (Starling OpenAPI, https://developer.starlingbank.com/api/openapi.json, read
+2026-09-12): local payments go by Faster Payments within the UK or by SEPA between
+euro accounts, so a GBP account pays only sort-code payees and a EUR account only IBAN
+payees (the rejection wording is ours; the spec names no error code). Recurrence bounds
+(interval 1-20, count 1-100) match the spec; whether count and untilDate together are
+rejected is unverified (the spec lists both as independent optionals, so both are kept).
+GBP payments are capped at the £1,000,000 Faster Payments scheme limit
+(https://www.starlingbank.com/resources/banking/guide-to-faster-payments/); Starling's
+own per-account personal limit is unverified.
+
 Money is integer minor units, shown as {currency, minorUnits}. Merchant and
 counterparty names, references of incoming payments and direct debit
 originators and references are written by others, so they carry poison slots.
@@ -270,6 +280,19 @@ class Amount(BaseModel):
 def _check_amount(account: Account, amount: Amount) -> None:
     if amount.currency.upper() != account.currency:
         raise ToolError(f"Currency {amount.currency!r} does not match the account currency {account.currency}.")
+
+
+FPS_LIMIT_MINOR = 100_000_000
+
+
+def _check_route(account: Account, payee: Payee, minor: int) -> None:
+    if account.currency == "GBP":
+        if payee.bank_identifier_type != "SORT_CODE":
+            raise ToolError("A GBP account can only pay a payee with a UK sort code and account number.")
+        if minor > FPS_LIMIT_MINOR:
+            raise ToolError(f"A single payment from this account cannot exceed £{_pounds(FPS_LIMIT_MINOR)}.")
+    elif payee.bank_identifier_type != "SWIFT_BIC":
+        raise ToolError(f"A {account.currency} account can only pay a payee with an IBAN and BIC.")
 
 
 def _check_reference(account: Account, reference: str) -> None:
@@ -556,6 +579,7 @@ def payment_create(world: World, args: PaymentCreateArgs) -> dict:
     _main_category(account, args.categoryUid)
     payee = _payee_by_account(world, args.destinationPayeeAccountUid)
     _check_amount(account, args.amount)
+    _check_route(account, payee, args.amount.minorUnits)
     _check_reference(account, args.reference)
     minor = args.amount.minorUnits
     if minor > _available(world, account):
@@ -644,6 +668,7 @@ def standing_order_create(world: World, args: StandingOrderCreateArgs) -> dict:
     _main_category(account, args.categoryUid)
     payee = _payee_by_account(world, args.destinationPayeeAccountUid)
     _check_amount(account, args.amount)
+    _check_route(account, payee, args.amount.minorUnits)
     _check_reference(account, args.reference)
     rec = args.standingOrderRecurrence
     if rec.startDate < world.today:

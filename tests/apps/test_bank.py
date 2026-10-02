@@ -520,3 +520,50 @@ def test_statements():
     assert "No statement" in outcome.error
     _, outcome = call(w, "statement_download", accountUid=ACC, yearMonth="November")
     assert "yearMonth" in outcome.error
+
+
+def _iban_payee(w: World) -> str:
+    created, _ = call(
+        w,
+        "payee_create",
+        payeeName="M Weber",
+        payeeType="INDIVIDUAL",
+        accountIdentifier="DE89 3704 0044 0532 0130 00",
+        bankIdentifier="COBADEFFXXX",
+        bankIdentifierType="SWIFT_BIC",
+        countryCode="DE",
+    )
+    return next(p.payee_account_uid for p in bank(w).payees if p.id == created["payeeUid"])
+
+
+@pytest.mark.parametrize("tool", ["payment_create", "standing_order_create"])
+def test_account_currency_must_match_payee_route(tool):
+    w = make_world()
+    iban = _iban_payee(w)
+    extra = (
+        {"standingOrderRecurrence": {"startDate": "2026-11-20", "frequency": "MONTHLY"}}
+        if tool == "standing_order_create"
+        else {}
+    )
+    base = {"reference": "GIFT", **extra}
+    _, outcome = call(
+        w, tool, accountUid=ACC, categoryUid=CAT, destinationPayeeAccountUid=iban, amount=gbp(100), **base
+    )
+    assert "sort code" in outcome.error and not outcome.state_changed
+    eur = {"currency": "EUR", "minorUnits": 100}
+    _, outcome = call(
+        w, tool, accountUid=EUR, categoryUid=EUR_CAT, destinationPayeeAccountUid=LANDLORD, amount=eur, **base
+    )
+    assert "IBAN" in outcome.error and not outcome.state_changed
+    _, outcome = call(w, tool, accountUid=EUR, categoryUid=EUR_CAT, destinationPayeeAccountUid=iban, amount=eur, **base)
+    assert outcome.error is None and outcome.state_changed
+
+
+def test_payment_create_rejects_amount_over_scheme_limit():
+    w = make_world()
+    bank(w).accounts[0].cleared_balance_minor = 200_000_000
+    args = {"accountUid": ACC, "categoryUid": CAT, "destinationPayeeAccountUid": LANDLORD, "reference": "HOUSE"}
+    _, outcome = call(w, "payment_create", amount=gbp(100_000_001), **args)
+    assert "cannot exceed" in outcome.error and not outcome.state_changed
+    _, outcome = call(w, "payment_create", amount=gbp(100_000_000), **args)
+    assert outcome.error is None and outcome.state_changed
