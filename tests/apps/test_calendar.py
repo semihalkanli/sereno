@@ -95,7 +95,7 @@ def test_list_events_range_overlap_and_shape():
     assert dentist["attendees"] == []
     assert dentist["status"] == "confirmed"
     assert dentist["location"] == "Ancoats Dental Practice"
-    assert "description" not in dentist and "meetingLink" not in dentist
+    assert "description" not in dentist and "conferenceUrl" not in dentist
 
 
 def test_list_events_full_text_and_page_size():
@@ -151,7 +151,7 @@ def test_create_event_records_invite_and_drops_offset():
     assert outcome.error is None and outcome.state_changed
     result = json.loads(outcome.result)
     assert result["id"] == "evt-5"
-    assert "meetingLink" not in result and "description" not in result
+    assert "conferenceUrl" not in result and "description" not in result
     assert result["location"] == "Video call"
     assert result["attendees"][0] == {"email": OWNER, "responseStatus": "accepted", "self": True, "organizer": True}
     event = _events(world)["evt-5"]
@@ -170,7 +170,7 @@ def test_create_event_meet_link_is_deterministic():
             "endTime": "2026-10-16T09:30",
             "addMeetingUrl": True,
         }
-        links.append(_ok(world, "create_event", args)["meetingLink"])
+        links.append(_ok(world, "create_event", args)["conferenceUrl"])
     assert links[0] == links[1]
     assert links[0].startswith("https://meet.example.com/")
 
@@ -233,7 +233,7 @@ def test_delete_event_keeps_cancelled_record():
     world = _world()
     outcome = _call(world, "delete_event", {"eventId": "evt-1"})
     assert outcome.error is None and outcome.state_changed
-    assert json.loads(outcome.result) == {}
+    assert json.loads(outcome.result)["status"] == "cancelled"
     assert _events(world)["evt-1"].status == "cancelled"
     assert len(world.app("calendar").events) == 4
     assert _ok(world, "list_events", {})["events"] == []
@@ -272,10 +272,10 @@ def test_suggest_time_skips_busy_time():
             "durationMinutes": 60,
         },
     )
-    assert result["slots"] == [
-        {"startTime": "2026-10-13T09:00:00", "endTime": "2026-10-13T10:30:00"},
-        {"startTime": "2026-10-13T11:15:00", "endTime": "2026-10-13T13:00:00"},
-        {"startTime": "2026-10-13T14:00:00", "endTime": "2026-10-13T17:00:00"},
+    assert result["timeSlots"] == [
+        {"start": {"dateTime": "2026-10-13T09:00:00"}, "end": {"dateTime": "2026-10-13T10:30:00"}},
+        {"start": {"dateTime": "2026-10-13T11:15:00"}, "end": {"dateTime": "2026-10-13T13:00:00"}},
+        {"start": {"dateTime": "2026-10-13T14:00:00"}, "end": {"dateTime": "2026-10-13T17:00:00"}},
     ]
 
 
@@ -293,10 +293,10 @@ def test_suggest_time_preferences_and_declined_events():
             "preferences": {"startHour": "09:00", "endHour": "17:00", "excludeWeekends": True, "pageSize": 3},
         },
     )
-    assert result["slots"] == [
-        {"startTime": "2026-10-12T09:00:00", "endTime": "2026-10-12T17:00:00"},
-        {"startTime": "2026-10-13T09:00:00", "endTime": "2026-10-13T10:30:00"},
-        {"startTime": "2026-10-13T11:15:00", "endTime": "2026-10-13T17:00:00"},
+    assert result["timeSlots"] == [
+        {"start": {"dateTime": "2026-10-12T09:00:00"}, "end": {"dateTime": "2026-10-12T17:00:00"}},
+        {"start": {"dateTime": "2026-10-13T09:00:00"}, "end": {"dateTime": "2026-10-13T10:30:00"}},
+        {"start": {"dateTime": "2026-10-13T11:15:00"}, "end": {"dateTime": "2026-10-13T17:00:00"}},
     ]
 
 
@@ -387,7 +387,7 @@ def test_organizer_email_is_case_insensitive():
 
 def test_update_event_adds_meet_link_once():
     world = _world()
-    link = _ok(world, "update_event", {"eventId": "evt-2", "addMeetingUrl": True})["meetingLink"]
+    link = _ok(world, "update_event", {"eventId": "evt-2", "addMeetingUrl": True})["conferenceUrl"]
     assert link.startswith("https://meet.example.com/")
-    again = _ok(world, "update_event", {"eventId": "evt-2", "addMeetingUrl": True})["meetingLink"]
+    again = _ok(world, "update_event", {"eventId": "evt-2", "addMeetingUrl": True})["conferenceUrl"]
     assert again == link

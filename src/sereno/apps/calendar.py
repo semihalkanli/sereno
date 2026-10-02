@@ -6,15 +6,14 @@ from the connector), as a subset: list_events, search_events, get_event,
 create_event, update_event, delete_event, respond_to_event and suggest_time.
 Left out: list_calendars and the calendarId, timeZone, eventType, pageToken,
 notificationLevel, recurrence, reminder and attachment parameters, since the
-person has one calendar and times are naive. Events are returned in the
-shape of the Calendar API v3 Event resource it wraps (id, status, summary,
-start.dateTime, organizer, attendees with responseStatus, hangoutLink), and
-suggest_time's {"slots": [...]} is inferred. The connector now documents its
-output (https://developers.google.com/workspace/calendar/api/v3/reference/mcp):
-delete_event returns the Event and suggest_time returns timeSlots[] with
-start/end; not yet adopted here. Product names are replaced by functional ones:
-the connector's addGoogleMeetUrl is addMeetingUrl, the API's hangoutLink is
-meetingLink, and links use a neutral host.
+person has one calendar and times are naive. Outputs follow the connector's
+documented schemas (https://developers.google.com/workspace/calendar/api/v3/reference/mcp):
+an Event (id, status, summary, description, location, start/end.dateTime,
+organizer, attendees with responseStatus, conferenceUrl) from get, create,
+update, respond and delete, and suggest_time's {"timeSlots": [{start, end}]};
+deprecated and unmodelled fields are left out. The connector's addGoogleMeetUrl
+parameter carries a product name, so it is addMeetingUrl here, and meeting
+links use a neutral host.
 
 Gray Swan workspace scenarios (ignore-email, share-document, slack-phishing,
 mcp-email-corporate-leak) map onto the connector names:
@@ -33,7 +32,7 @@ guestsCanModify defaults to False and is not modelled. Sources:
 https://developers.google.com/workspace/calendar/api/v3/reference/events
 (guestsCanModify, status), https://support.google.com/calendar/answer/13839531
 (guest permission "Modify event"). Empty description, location and
-meetingLink are omitted, as optional Event fields are absent when unset (same
+conferenceUrl are omitted, as optional Event fields are absent when unset (same
 reference; not stated explicitly, so partly unverified). Times are naive
 local times; an offset in an incoming time is dropped. An event with an empty
 organizer is the person's own. respond_to_event records the person's RSVP in
@@ -134,7 +133,7 @@ def _view(world: World, e: Event) -> dict:
         "end": {"dateTime": iso_seconds(e.end)},
         "organizer": {"email": organizer, **({"self": True} if _own(world, e) else {})},
         "attendees": attendees,
-        **({"meetingLink": e.meeting_link} if e.meeting_link else {}),
+        **({"conferenceUrl": e.meeting_link} if e.meeting_link else {}),
     }
 
 
@@ -277,8 +276,9 @@ class DeleteEventArgs(BaseModel):
 
 
 def delete_event(world: World, args: DeleteEventArgs) -> dict:
-    _event(world, args.eventId).status = "cancelled"
-    return {}
+    event = _event(world, args.eventId)
+    event.status = "cancelled"
+    return _view(world, event)
 
 
 class RespondToEventArgs(BaseModel):
@@ -345,12 +345,14 @@ def suggest_time(world: World, args: SuggestTimeArgs) -> dict:
             for b_start, b_end in [*busy, (hi, hi)]:
                 gap_end = min(b_start, hi)
                 if gap_end - cursor >= need:
-                    slots.append({"startTime": iso_seconds(cursor), "endTime": iso_seconds(gap_end)})
+                    slots.append(
+                        {"start": {"dateTime": iso_seconds(cursor)}, "end": {"dateTime": iso_seconds(gap_end)}}
+                    )
                 cursor = max(cursor, b_end)
                 if cursor >= hi:
                     break
         day += timedelta(days=1)
-    return {"slots": slots[: prefs.pageSize]}
+    return {"timeSlots": slots[: prefs.pageSize]}
 
 
 APP = App(
