@@ -46,6 +46,8 @@ class ChatModel(Protocol):
     name: str
     provider: str | None
     temperature: float | None
+    top_p: float | None
+    reasoning_effort: str | None
 
     def complete(self, messages: list[dict], tools: list[dict]) -> Completion: ...
 
@@ -55,7 +57,9 @@ class OpenRouterModel:
         self,
         name: str,
         provider: str,
-        temperature: float | None = 0.0,
+        temperature: float | None = 1.0,
+        top_p: float | None = 0.95,
+        reasoning_effort: str | None = None,
         api_key: str | None = None,
         timeout_s: float = 180.0,
         max_attempts: int = 4,
@@ -63,6 +67,8 @@ class OpenRouterModel:
         self.name = name
         self.provider = provider
         self.temperature = temperature
+        self.top_p = top_p
+        self.reasoning_effort = reasoning_effort
         self.max_attempts = max_attempts
         key = api_key or os.environ["OPENROUTER_API_KEY"]
         self._client = httpx.Client(headers={"Authorization": f"Bearer {key}"}, timeout=timeout_s)
@@ -78,6 +84,10 @@ class OpenRouterModel:
             body["tool_choice"] = "auto"
         if self.temperature is not None:
             body["temperature"] = self.temperature
+        if self.top_p is not None:
+            body["top_p"] = self.top_p
+        if self.reasoning_effort is not None:
+            body["reasoning"] = {"effort": self.reasoning_effort}
 
         attempts: list[dict[str, Any]] = []
         for attempt in range(1, self.max_attempts + 1):
@@ -131,6 +141,8 @@ class ScriptedModel:
         self.name = name
         self.provider = None
         self.temperature = None
+        self.top_p = None
+        self.reasoning_effort = None
         self._messages = list(messages)
         self.requests: list[list[dict]] = []
 

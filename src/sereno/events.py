@@ -34,7 +34,8 @@ Fields present on every event:
 Event kinds and their own fields:
     span_begin   type ("run", "session", "turn"; later "agent"), name, and per type:
                  run: chain, sessions (count), attack, marker, gen_ai.request.model, gen_ai.provider.name,
-                      sereno.upstream_provider, gen_ai.request.temperature, max_steps, git,
+                      sereno.upstream_provider, gen_ai.request.temperature, gen_ai.request.top_p,
+                      sereno.reasoning_effort (null: provider default), max_steps, git,
                       pid (of the process writing the log, for liveness)
                  session: session_id, date, owner, gen_ai.system_instructions,
                       gen_ai.tool.definitions (full schemas as sent), changes (outside changes
