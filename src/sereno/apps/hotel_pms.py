@@ -408,7 +408,9 @@ class ReservationArgs(BaseModel):
         description="Rate plan to book, or to change to with modify_existing. Ignored by lookup, cancel and upgrade."
     )
     reservation_id: str = Field("", description="The reservation to modify, cancel, upgrade or look up.")
-    guest_name: str = Field("", description="Guest name for a new reservation, or a name to look up.")
+    guest_name: str = Field(
+        "", description="Guest name for a new reservation (default: the guest_id profile's name), or a name to look up."
+    )
     guest_id: str = Field("", description="Guest profile id to link a new reservation to.")
     room_number: str = Field("", description="Room to look up, or a room to assign with upgrade_room.")
     room_type: str = Field("", description="Room type to book, change to, or upgrade to; also for group_block.")
@@ -456,13 +458,14 @@ def reservation_booking_engine(world: World, args: ReservationArgs) -> Any:
                 rooms=args.rooms,
                 arrival=args.arrival,
                 departure=args.departure,
-                rate_plan="group_contract",
+                rate_plan=args.rate_plans,
                 created_at=world.now,
             )
             pms.blocks.append(block)
             return {"status": "block_created", **block.model_dump(mode="json", exclude={"created_at"})}
-        if not args.guest_name:
-            raise ToolError("guest_name is required.")
+        guest_name = args.guest_name or (_guest(pms, args.guest_id).name if args.guest_id else "")
+        if not guest_name:
+            raise ToolError("guest_name or guest_id is required.")
         if args.guest_id:
             _guest(pms, args.guest_id)
         waitlisted = action == "waitlist_request"
@@ -471,7 +474,7 @@ def reservation_booking_engine(world: World, args: ReservationArgs) -> Any:
         reservation = Reservation(
             id=_next_id([r.id for r in pms.reservations], "RSV-", 480001),
             guest_id=args.guest_id,
-            guest_name=args.guest_name,
+            guest_name=guest_name,
             room_type=args.room_type,
             arrival=args.arrival,
             departure=args.departure,
@@ -512,22 +515,33 @@ def reservation_booking_engine(world: World, args: ReservationArgs) -> Any:
                 _room(pms, reservation.room_number).status = "vacant_dirty"
                 room.status = "occupied_clean"
             reservation.room_number = room.number
+        else:
+            reservation.room_number = ""
         reservation.upgraded_from = reservation.room_type
         reservation.room_type = args.room_type
         return {"status": "upgraded", "reservation": _reservation_view(reservation)}
     arrival = args.arrival or reservation.arrival
     departure = args.departure or reservation.departure
-    if reservation.status == "checked_in" and arrival != reservation.arrival:
-        raise ToolError("The guest is in house; the arrival date cannot change.")
+    room_type = args.room_type or reservation.room_type
+    if reservation.status == "checked_in":
+        if arrival != reservation.arrival:
+            raise ToolError("The guest is in house; the arrival date cannot change.")
+        if room_type != reservation.room_type:
+            raise ToolError("The guest is in house; use upgrade_room to change the room type.")
+        if departure < world.today:
+            raise ToolError("departure cannot be before today for an in-house guest.")
+    elif args.arrival and args.arrival < world.today:
+        raise ToolError("arrival is in the past.")
     if departure <= arrival:
         raise ToolError("departure must be after arrival.")
-    room_type = args.room_type or reservation.room_type
     rate = _rate(pms, room_type, args.rate_plans)
     if (
         reservation.status != "waitlisted"
         and _available(pms, room_type, arrival, departure, exclude=reservation.id) < 1
     ):
         raise ToolError(f"No {room_type} rooms available for those nights.")
+    if room_type != reservation.room_type:
+        reservation.room_number = ""
     reservation.arrival, reservation.departure, reservation.room_type = arrival, departure, room_type
     reservation.rate_plan, reservation.nightly_rate = args.rate_plans, rate
     if args.adults:
@@ -605,7 +619,9 @@ def guest_profile_management(world: World, args: GuestProfileArgs) -> Any:
     if op == "update_preferences":
         if not (args.preference or args.email or args.phone):
             raise ToolError("Give a preference, email or phone to update.")
-        if args.preference:
+        if args.email and any(g.email.lower() == args.email.lower() for g in pms.guests if g.id != guest.id):
+            raise ToolError(f"A profile with email {args.email} already exists.")
+        if args.preference and args.preference not in guest.preferences:
             guest.preferences.append(args.preference)
         guest.email = args.email or guest.email
         guest.phone = args.phone or guest.phone
@@ -621,6 +637,9 @@ def guest_profile_management(world: World, args: GuestProfileArgs) -> Any:
                 n.guest_id = guest.id
         guest.preferences += [p for p in duplicate.preferences if p not in guest.preferences]
         guest.email, guest.phone = guest.email or duplicate.email, guest.phone or duplicate.phone
+        guest.loyalty_number = guest.loyalty_number or duplicate.loyalty_number
+        guest.loyalty_tier = guest.loyalty_tier or duplicate.loyalty_tier
+        guest.vip = guest.vip or duplicate.vip
         pms.guests.remove(duplicate)
     elif op == "loyalty_enrollment":
         if guest.loyalty_number:
@@ -719,6 +738,11 @@ def housekeeping_operations_system(world: World, args: HousekeepingArgs) -> Any:
     if task == "cleaning_status" and args.new_status:
         if room is None:
             raise ToolError("room_number is required to change a room status.")
+        in_house = _in_house(pms, room.number)
+        if in_house and args.new_status in ("vacant_clean", "vacant_dirty", "out_of_order"):
+            raise ToolError(f"Room {room.number} has an in-house guest; check them out at the front desk first.")
+        if not in_house and args.new_status.startswith("occupied"):
+            raise ToolError(f"Room {room.number} has no in-house guest; it cannot be marked occupied.")
         previous = room.status
         room.status, room.status_updated_at, room.status_updated_by = args.new_status, world.now, world.owner.name
         return {"status": "updated", "previous_status": previous, **_room_view(pms, room)}
@@ -904,6 +928,10 @@ def front_desk_operations(world: World, args: FrontDeskArgs) -> Any:
         if not args.new_room_number:
             raise ToolError("new_room_number is required.")
         new = _room(pms, args.new_room_number)
+        if new.number == r.room_number:
+            raise ToolError(f"Reservation {r.id} is already in room {new.number}.")
+        if new.status == "out_of_order":
+            raise ToolError(f"Room {new.number} is out of order.")
         holder = next(
             (x for x in pms.reservations if x.room_number == new.number and x.status == "checked_in" and x.id != r.id),
             None,
@@ -1001,6 +1029,8 @@ class FoodBeverageArgs(BaseModel):
 def food_beverage_pos(world: World, args: FoodBeverageArgs) -> Any:
     pms = _pms(world)
     order = args.order_management or OrderManagement()
+    if args.open_item_description and args.open_item_amount is None:
+        raise ToolError("open_item_amount is required with open_item_description.")
     if not args.items and args.open_item_amount is None:
         if order.room_charge_posting:
             raise ToolError("Nothing to post: add menu items or an open item.")
@@ -1169,7 +1199,7 @@ def maintenance_facilities_management(world: World, args: MaintenanceArgs) -> An
     pms = _pms(world)
     if args.work_order_id:
         order = find(pms.work_orders, f"No work order {args.work_order_id!r}.", id=args.work_order_id)
-        if args.new_status:
+        if args.new_status and args.new_status != order.status:
             order.status = args.new_status
             order.completed_at = world.now if args.new_status == "completed" else None
         if args.note:
