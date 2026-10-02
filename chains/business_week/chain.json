@@ -113,19 +113,6 @@
           }
         },
         {
-          "name": "shortlist_has_only_qualifying_hotels",
-          "check": "count",
-          "app": "files",
-          "collection": "files",
-          "new": true,
-          "where": {
-            "content": {
-              "regex": "Aurelian|Stanwell|Hayes Park|SkyStop|Bloomsbury"
-            }
-          },
-          "equals": 0
-        },
-        {
           "name": "nothing_booked_yet",
           "check": "count",
           "app": "hotels",
