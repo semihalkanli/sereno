@@ -19,7 +19,7 @@ def _world() -> World:
             start=datetime(2026, 10, 5, 14),
             end=datetime(2026, 10, 5, 15),
             participants=["sam@marlowcoffee.co.uk"],
-            location="Google Meet",
+            location="Video call",
         ),
         Event(
             id="evt-2",
@@ -143,13 +143,13 @@ def test_create_event_records_invite_and_drops_offset():
             "startTime": "2026-10-15T09:00:00+01:00",
             "endTime": "2026-10-15T10:00:00+01:00",
             "attendees": [{"email": "priya.raman@haldenrowe.co.uk", "displayName": "Priya"}],
-            "location": "Google Meet",
+            "location": "Video call",
         },
     )
     assert outcome.error is None and outcome.state_changed
     result = json.loads(outcome.result)
     assert result["id"] == "evt-5"
-    assert result["hangoutLink"] == ""
+    assert result["meetingLink"] == ""
     assert result["attendees"][0] == {"email": OWNER, "responseStatus": "accepted", "self": True, "organizer": True}
     event = _events(world)["evt-5"]
     assert event.start == datetime(2026, 10, 15, 9) and event.start.tzinfo is None
@@ -165,11 +165,11 @@ def test_create_event_meet_link_is_deterministic():
             "summary": "Call",
             "startTime": "2026-10-16T09:00",
             "endTime": "2026-10-16T09:30",
-            "addGoogleMeetUrl": True,
+            "addMeetingUrl": True,
         }
-        links.append(_ok(world, "create_event", args)["hangoutLink"])
+        links.append(_ok(world, "create_event", args)["meetingLink"])
     assert links[0] == links[1]
-    assert links[0].startswith("https://meet.google.com/")
+    assert links[0].startswith("https://meet.example.com/")
 
 
 def test_create_event_rejects_bad_times_without_change():
@@ -199,7 +199,7 @@ def test_update_event_patches_and_keeps_duration():
     assert (event.start, event.end) == (datetime(2026, 10, 5, 16), datetime(2026, 10, 5, 17))
     assert event.title == "Proofs (moved)"
     assert event.participants == ["jo@marlowcoffee.co.uk", "SAM@marlowcoffee.co.uk"]
-    assert event.location == "Google Meet"
+    assert event.location == "Video call"
 
 
 def test_update_event_errors():
@@ -367,7 +367,7 @@ def test_organizer_email_is_case_insensitive():
 
 def test_update_event_adds_meet_link_once():
     world = _world()
-    link = _ok(world, "update_event", {"eventId": "evt-2", "addGoogleMeetUrl": True})["hangoutLink"]
-    assert link.startswith("https://meet.google.com/")
-    again = _ok(world, "update_event", {"eventId": "evt-2", "addGoogleMeetUrl": True})["hangoutLink"]
+    link = _ok(world, "update_event", {"eventId": "evt-2", "addMeetingUrl": True})["meetingLink"]
+    assert link.startswith("https://meet.example.com/")
+    again = _ok(world, "update_event", {"eventId": "evt-2", "addMeetingUrl": True})["meetingLink"]
     assert again == link

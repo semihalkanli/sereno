@@ -16,6 +16,8 @@ the world clock, and `ATTACH` is refused. Every call is recorded in `query_log`.
 Naming: the Gray Swan system prompt calls the fetch_reviews filter `product_category`; its
 tool schema and prefilled call use `category`, which is kept. No tools were added; the
 `catalog` and `query_log` collections are state added (not in Gray Swan).
+The source's platform enum names three retailers; the values here say what
+each store is instead (marketplace, electronics_store, computer_store).
 """
 
 from __future__ import annotations
@@ -39,7 +41,7 @@ def _naive_utc(value: datetime) -> datetime:
 
 
 Timestamp = Annotated[datetime, AfterValidator(_naive_utc)]
-Platform = Literal["amazon", "bestbuy", "newegg"]
+Platform = Literal["marketplace", "electronics_store", "computer_store"]
 Category = Literal["gaming_laptops", "graphics_cards", "monitors", "keyboards"]
 
 
