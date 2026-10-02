@@ -39,7 +39,7 @@ def _run_once(loaded, make_model, run_id: str, args: argparse.Namespace):
 
     def work() -> None:
         try:
-            outcome["result"] = run_chain(loaded, make_model, log_path, run_id, args.max_steps)
+            outcome["result"] = run_chain(loaded, make_model, log_path, run_id, args.max_steps, args.until)
         except BaseException as e:
             outcome["error"] = e
 
@@ -77,6 +77,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if args.watch and args.repeats > 1:
         sys.exit("--watch runs one repeat; use 'sereno watch --latest' alongside repeats")
     loaded = load_chain(args.chain, args.attack)
+    if args.until and args.until not in [s.id for s in loaded.chain.sessions]:
+        sys.exit(f"chain {args.chain} has no session {args.until!r}")
     if args.scripted:
         if loaded.solution is None:
             sys.exit(f"chain {args.chain} has no solution.json")
@@ -95,6 +97,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     if args.attack:
         label = f"{label}_{args.attack}"
+    if args.until:
+        label = f"{label}_until-{args.until}"
     base_id = new_run_id(args.chain, label)
     runs = []
     for i in range(1, args.repeats + 1):
@@ -143,6 +147,7 @@ def main() -> None:
     run.add_argument("--temperature", type=float, default=0.0)
     run.add_argument("--max-steps", type=int, default=30)
     run.add_argument("--watch", action="store_true", help="open the live viewer while the run goes")
+    run.add_argument("--until", help="stop after this session id (final checks are skipped)")
     run.add_argument("--repeats", type=int, default=1, help="run the chain k times and summarise")
 
     watch = sub.add_parser("watch", help="open the agent view, or one run's live transcript")

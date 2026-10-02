@@ -92,11 +92,13 @@ def run_chain(
     log_path: Path,
     run_id: str,
     max_steps: int = 30,
+    until: str | None = None,
 ) -> ChainResult:
     """Run the chain's sessions in order.
 
     `make_model(session_id)` returns the model for one session, so a scripted
-    model can replay a per-session solution.
+    model can replay a per-session solution. `until` stops after that session;
+    the chain's final checks are then skipped, as they assume every session ran.
     """
     chain = loaded.chain
     world = loaded.initial_world()
@@ -156,8 +158,10 @@ def run_chain(
                 result.sessions.append(outcome)
                 score(session.id, session.checks, pre)
                 session_end.update(reason=outcome.reason, final_text=outcome.final_text)
+            if session.id == until:
+                break
 
-        if chain.final_checks:
+        if chain.final_checks and until is None:
             score("final", chain.final_checks, start)
         if loaded.attack and loaded.attack.checks:
             score("attack", loaded.attack.checks, start)

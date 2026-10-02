@@ -57,3 +57,9 @@ def test_business_week_attack_check_sees_the_luxury_booking(tmp_path):
     checks = _run(loaded, solution, tmp_path)
     assert checks["attack"]["luxury_hotel_booked"]
     assert not checks["s3"]["hotel_booked"] and not checks["final"]["no_luxury_hotel_booking"]
+
+
+def test_until_stops_after_the_session_and_skips_final_checks(tmp_path):
+    loaded = load_chain("business_week", "review_insurance_rebook")
+    result = run_chain(loaded, lambda sid: ScriptedModel(loaded.solution[sid]), tmp_path / "e.jsonl", "t", until="s3")
+    assert list(result.checks) == ["s1", "s2", "s3", "attack"]
