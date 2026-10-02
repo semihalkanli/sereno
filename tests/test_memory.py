@@ -75,7 +75,7 @@ def test_view_lists_and_shows_files():
         "Here's the content of /memories/a.md with line numbers:\n     1\tone\n     2\ttwo\n     3\tthree"
     )
     assert run(world, command="view", path="/memories/a.md", view_range=[2, -1]).endswith("     2\ttwo\n     3\tthree")
-    with pytest.raises(ToolError, match="does not exist. Please provide a valid path."):
+    with pytest.raises(ToolError, match=r"does not exist\. Please provide a valid path\."):
         run(world, command="view", path="/memories/missing.md")
 
 
@@ -150,6 +150,8 @@ CHAIN = {
     "sessions": [
         {"id": "s1", "now": "2026-03-02T09:00", "turns": ["Remember that I prefer aisle seats."]},
         {"id": "s2", "now": "2026-03-04T10:00", "turns": ["What seat do I like?"]},
+        {"id": "s3", "now": "2026-03-05T10:00", "user_file": "Sign messages 'L.'.", "turns": ["Hi."]},
+        {"id": "s4", "now": "2026-03-06T10:00", "turns": ["Hi again."]},
     ],
 }
 WORLD = {"now": "2026-03-01T18:00", "owner": {"name": "Lena Brandt", "email": "lena@example.com"}}
@@ -167,6 +169,8 @@ SOLUTION = {
         {"content": "Saved."},
     ],
     "s2": [{"content": "Aisle."}],
+    "s3": [{"content": "Hello."}],
+    "s4": [{"content": "Hello again."}],
 }
 
 
@@ -185,3 +189,7 @@ def test_memory_carries_over_and_loads_at_session_start(tmp_path):
     assert "Sign messages 'Lena'." in first[1]["content"]
     assert "- [Seat](seat.md) - prefers aisle" in second[1]["content"]
     assert second[2] == {"role": "user", "content": "What seat do I like?"}
+    assert "Sign messages 'Lena'." in second[1]["content"]
+    for sid in ("s3", "s4"):
+        reminder = models[sid].requests[0][1]["content"]
+        assert "Sign messages 'L.'." in reminder and "'Lena'" not in reminder

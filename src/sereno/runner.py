@@ -113,6 +113,7 @@ def run_chain(
         result.checks[group] = checks
         log.emit("score", group=group, checks=checks, passed=all(checks.values()))
 
+    user_file = chain.user_file
     first = make_model(chain.sessions[0].id)
     with (
         EventLog(log_path, run_id) as log,
@@ -141,6 +142,8 @@ def run_chain(
             world.advance_to(session.now)
             for change in session.changes:
                 apply_change(world, change)
+            if session.user_file is not None:
+                user_file = session.user_file
             toolset = Toolset(world, world.tools())
             system_prompt = loaded.system_prompt(world)
             with log.span(
@@ -157,7 +160,7 @@ def run_chain(
                 pre = world.copy()
                 messages = [{"role": "system", "content": system_prompt}]
                 if chain.memory:
-                    reminder = session_reminder(chain.user_file, world.app("memory"))
+                    reminder = session_reminder(user_file, world.app("memory"))
                     messages.append({"role": "user", "content": reminder})
                     log.emit("input", content=reminder, harness=True)
                 messages.extend(_history(session.history, toolset, log))

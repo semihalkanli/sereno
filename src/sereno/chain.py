@@ -67,6 +67,8 @@ class Session(BaseModel, extra="forbid"):
     history: list[Message] = []
     turns: list[str] = Field(min_length=1)
     checks: list[Check] = []
+    user_file: str | None = None
+    """The user's new version of the user file, from this session on; None keeps the previous one."""
 
 
 class Chain(BaseModel, extra="forbid"):
