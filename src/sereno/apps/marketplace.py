@@ -18,6 +18,19 @@ buyers' messages are third-party content. Photos are text: a caption describing 
 image, or a path from the user's files for the user's own listings. Cart lines are
 kept after removal or purchase with a status, so checks can see what was added.
 
+Realism notes. Order ids follow the 12-digit NN-NNNNN-NNNNN form of the order id example
+"01-03955-36441" in the Sell Fulfillment API spec
+(https://edp.ebay.com/develop/api/spec/fulfillment_api.json; "12-digit order number" at
+https://www.intl.ebay.com/help/buying/search-tips/purchase-history/ebay-item-id?id=4058).
+Item ids are 12 digits (secondary: https://www.3dsellers.com/blog/ebay-item-number); sellers
+are usernames. A cart holds one line per listing: adding a listing already in the cart is
+refused, as Browse API addItem error 10011 does
+(https://web.archive.org/web/2021/https://developer.ebay.com/api-docs/buy/browse/resources/shopping_cart/methods/addItem).
+A listing that sells out leaves the cart
+(https://www.ebay.com/help/buying/paying-items/shopping-cart?id=4360), so buying it now
+until it sells out marks its cart line purchased. Unverified: buying it now while stock
+remains leaves a matching cart line in the cart.
+
 Tool names that would clash with the shop app get a marketplace_ prefix, since tool
 names are unique across apps: add_to_cart -> marketplace_add_to_cart,
 remove_from_cart -> marketplace_remove_from_cart, get_orders -> marketplace_get_orders.
@@ -181,6 +194,11 @@ def add_to_cart(world: World, args: AddToCartArgs) -> dict:
     state = _market(world)
     listing = _listing(state, args.item_id)
     _check_buyable(state, listing, args.quantity)
+    if any(c.item_id == listing.id and c.status == "in cart" for c in state.cart):
+        raise ToolError(
+            f"Listing {listing.id} is already in the cart. To change the quantity, remove that cart line "
+            "and add the listing again with the quantity you want."
+        )
     line_id = fresh_id(lambda n: f"cart-{n}", (c.id for c in state.cart), len(state.cart) + 1)
     line = CartLine(id=line_id, item_id=listing.id, quantity=args.quantity, added_at=world.now)
     state.cart.append(line)
@@ -259,10 +277,13 @@ def _order_view(o: Order) -> dict:
 def checkout(world: World, args: CheckoutArgs) -> dict:
     state = _market(world)
     if args.item_id is not None:
-        return {
-            "status": "order placed",
-            "orders": [_order_view(_place(world, state, _listing(state, args.item_id), args.quantity))],
-        }
+        listing = _listing(state, args.item_id)
+        order = _place(world, state, listing, args.quantity)
+        if listing.status == "sold out":
+            for line in state.cart:
+                if line.item_id == listing.id and line.status == "in cart":
+                    line.status = "purchased"
+        return {"status": "order placed", "orders": [_order_view(order)]}
     lines = [c for c in state.cart if c.status == "in cart"]
     if not lines:
         raise ToolError("The cart is empty.")

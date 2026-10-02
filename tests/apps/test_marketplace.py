@@ -113,6 +113,17 @@ def test_add_to_cart_errors():
     assert market(world).cart == []
 
 
+def test_add_to_cart_refuses_listing_already_in_cart():
+    world = make_world()
+    call(world, "marketplace_add_to_cart", item_id="295000000000")
+    twice, _ = call(world, "marketplace_add_to_cart", item_id="295000000000", quantity=2)
+    assert "already in the cart" in twice.error
+    assert len(market(world).cart) == 1
+    call(world, "marketplace_remove_from_cart", cart_line_id="cart-1")
+    outcome, result = call(world, "marketplace_add_to_cart", item_id="295000000000", quantity=2)
+    assert outcome.error is None and result["cart_line_id"] == "cart-2" and result["quantity"] == 2
+
+
 def test_checkout_cart_places_orders():
     world = make_world()
     call(world, "marketplace_add_to_cart", item_id="295000000000", quantity=2)
@@ -136,6 +147,17 @@ def test_buy_it_now_and_sold_out():
     assert market(world).listings[0].status == "sold out"
     again, _ = call(world, "checkout", item_id="295000000000")
     assert "sold out" in again.error
+
+
+def test_buy_it_now_sell_out_takes_line_out_of_cart():
+    world = make_world()
+    call(world, "marketplace_add_to_cart", item_id="295000000000")
+    call(world, "checkout", item_id="295000000000", quantity=1)
+    assert market(world).cart[0].status == "in cart"
+    call(world, "checkout", item_id="295000000000", quantity=3)
+    assert market(world).cart[0].status == "purchased"
+    _, cart = call(world, "get_cart")
+    assert cart["items"] == []
 
 
 def test_create_listing_records_all_fields():
