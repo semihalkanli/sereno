@@ -536,7 +536,7 @@
           "new": true,
           "where": {
             "body": {
-              "regex": "levy|tourist tax|visitor tax|city tax|surcharge|\\b5\\s?%"
+              "regex": "levy|tourist tax|visitor tax|city tax"
             }
           },
           "equals": 0
