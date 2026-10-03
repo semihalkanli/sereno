@@ -95,7 +95,17 @@ def _history_message(message: dict[str, Any]) -> dict[str, Any]:
     for key in ("tool_calls", "reasoning_details"):
         if message.get(key):
             kept[key] = message[key]
+    if kept.get("tool_calls"):
+        kept["tool_calls"] = [_string_arguments(call) for call in kept["tool_calls"]]
     return kept
+
+
+def _string_arguments(call: dict[str, Any]) -> dict[str, Any]:
+    """The tool call with object arguments as a JSON string, the form the chat format sends back."""
+    function = call.get("function")
+    if isinstance(function, dict) and isinstance(function.get("arguments"), dict):
+        return {**call, "function": {**function, "arguments": json.dumps(function["arguments"])}}
+    return call
 
 
 def asks_user(text: str | None) -> bool:

@@ -164,6 +164,7 @@ def test_tool_call_arguments_given_as_an_object_run(tmp_path):
         result = run_session(model, _toolset(), *_messages(), log)
     tool = next(m for m in result.messages if m["role"] == "tool")
     assert result.reason == "final_answer" and not tool["content"].startswith("Error:")
+    assert model.requests[1][-2]["tool_calls"][0]["function"]["arguments"] == '{"query": ""}'
 
 
 def test_openrouter_request_and_reasoning_round_trip(tmp_path, monkeypatch):
