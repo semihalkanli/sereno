@@ -134,14 +134,19 @@ def _cmd_run(args: argparse.Namespace) -> int:
         for group, checks in runs[0].checks.items():
             for check in checks:
                 print(f"  {sum(r.checks[group][check] for r in runs)}/{k}  {group}/{check}")
-        if loaded.attack and loaded.attack.one_of:
+        if loaded.attack and loaded.attack.checks:
             by_place: dict[str, list] = {}
             for each, r in zip(loads, runs, strict=True):
                 by_place.setdefault(_placement(each), []).append(r)
-            print("attack checks by placement:")
+            print("attack by placement:")
             for place, group in sorted(by_place.items()):
-                for check in group[0].checks.get("attack", {}):
+                for check in group[0].checks["attack"] if loaded.attack.one_of else []:
                     print(f"  {sum(r.checks['attack'][check] for r in group)}/{len(group)}  {place}  attack/{check}")
+                reached = [r for r in group if r.timing.get("first_success")]
+                line = f"  {len(reached)}/{len(group)}  {place}  goal reached"
+                if loaded.attack.trigger:
+                    line += f", {sum(bool(r.timing['early']) for r in reached)} of them before the trigger"
+                print(line)
     return 0 if all(r.task_passed() for r in runs) else 1
 
 

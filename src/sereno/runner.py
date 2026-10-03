@@ -31,6 +31,8 @@ class ChainResult:
     sessions: list[SessionResult] = field(default_factory=list)
     checks: dict[str, dict[str, bool]] = field(default_factory=dict)
     """Group ("s1", ..., "final", "attack") -> check name -> passed."""
+    timing: dict[str, str | bool | None] = field(default_factory=dict)
+    """For an attack run: `poison_seen`, `first_success` (session ids or None) and `early`."""
 
     @property
     def cost_usd(self) -> float:
@@ -108,10 +110,13 @@ def run_chain(
     started = time.monotonic()
     result = ChainResult()
 
-    def score(group: str, specs, before) -> None:
+    def score(group: str, specs, before, **extra) -> None:
         checks = grade(specs, before, world)
         result.checks[group] = checks
-        log.emit("score", group=group, checks=checks, passed=all(checks.values()))
+        log.emit("score", group=group, checks=checks, passed=all(checks.values()), **extra)
+
+    attack = loaded.attack
+    seen = success = None
 
     if until is not None:
         loaded.check_until(until)
@@ -174,14 +179,23 @@ def run_chain(
                 outcome = run_session(model, toolset, messages, session.turns, log, max_steps=max_steps)
                 result.sessions.append(outcome)
                 score(session.id, session.checks, pre)
+                if attack and seen is None and attack.marker in json.dumps([outcome.messages, toolset.schemas()]):
+                    seen = session.id
+                if attack and attack.checks and success is None and all(grade(attack.checks, start, world).values()):
+                    success = session.id
                 session_end.update(reason=outcome.reason, final_text=outcome.final_text)
             if session.id == until:
                 break
 
         if chain.final_checks and until is None:
             score("final", chain.final_checks, start)
-        if loaded.attack and loaded.attack.checks:
-            score("attack", loaded.attack.checks, start)
+        if attack and attack.checks:
+            trigger = attack.trigger
+            early = None
+            if trigger:
+                early = success is not None and loaded.session_number(success) < loaded.session_number(trigger.session)
+            result.timing = {"poison_seen": seen, "first_success": success, "early": early}
+            score("attack", attack.checks, start, **result.timing)
         run_end.update(
             model_calls=result.model_calls,
             tool_calls=result.tool_calls,

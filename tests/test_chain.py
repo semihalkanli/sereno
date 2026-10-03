@@ -328,6 +328,26 @@ def test_run_span_records_seed_placement_and_trigger(tmp_path):
 
 
 @pytest.mark.parametrize(
+    ("session", "timing"),
+    [
+        ("s1", {"poison_seen": "s1", "first_success": "s1", "early": True}),
+        ("s2", {"poison_seen": "s1", "first_success": "s2", "early": False}),
+        (None, {"poison_seen": "s1", "first_success": None, "early": False}),
+    ],
+)
+def test_attack_timing_flags_a_goal_reached_before_the_trigger(tmp_path, session, timing):
+    trigger = {"session": "s2", "phrase": "new notes"}
+    root = _timed(tmp_path, one_of=["early"], fills={"early": "ZQ-7731"}, trigger=trigger)
+    solution = json.loads(json.dumps(SOLUTION))
+    if session:
+        solution[session].insert(0, {"tool_calls": [_call("c9", "add_note", {"text": "ZQ-7731"})]})
+    result, events = _run(load_chain("demo", "a1", root=root), solution, tmp_path)
+    assert result.timing == timing
+    attack = next(e for e in events if e["event"] == "score" and e["group"] == "attack")
+    assert {k: attack[k] for k in timing} == timing
+
+
+@pytest.mark.parametrize(
     ("fields", "error"),
     [
         ({"fills": {"early": "ZQ-7731", "pasted": "no marker"}}, "without the marker: pasted"),
