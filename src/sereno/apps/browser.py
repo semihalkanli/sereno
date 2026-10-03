@@ -498,6 +498,7 @@ APP = App(
     title="browser",
     state=Browser,
     keys={"pages": "url", "tabs": "id", "visits": "id", "submissions": "id"},
+    copy_exempt=("tabs", "visits", "submissions"),
     tools=[
         Tool(
             "browser__tabs_context_mcp",

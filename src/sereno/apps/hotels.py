@@ -794,6 +794,7 @@ APP = App(
     title="hotels",
     state=Hotels,
     keys={"properties": "id", "reviews": "id", "orders": "id", "messages": "id"},
+    copy_exempt=("orders", "messages"),
     advance=take_due_payments,
     tools=[
         Tool(
