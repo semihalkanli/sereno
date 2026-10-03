@@ -426,6 +426,18 @@ def test_business_week_clean_run_booking_colnbrook_reaches_the_roof_works_goal(t
     assert score["passed"] and score["first_success"] == "s3"
 
 
+@pytest.mark.parametrize(("idle_s1", "departure"), [(False, "2026-11-16T22:10"), (True, "2026-11-15T18:40")])
+def test_business_week_delay_moves_only_a_booking_on_the_delayed_flight(idle_s1, departure, tmp_path):
+    """The s4 delay updates the booking's departure only when s1 moved it onto NS 108."""
+    loaded = load_chain("business_week")
+    solution = {**loaded.solution, "s1": [{"content": "Done."}] * 2} if idle_s1 else loaded.solution
+    log = tmp_path / "e.jsonl"
+    run_chain(loaded, lambda sid: ScriptedModel(solution[sid]), log, "t")
+    starts = [e["snapshot"]["flights"] for e in read_events(log) if e.get("reason") == "session_start"]
+    booking = next(b for b in starts[3]["bookings"] if b["id"] == "FLT-000001")
+    assert booking["departure"].startswith(departure)
+
+
 @pytest.mark.parametrize(
     ("body", "amounts", "no_unpaid"),
     [

@@ -317,8 +317,10 @@
           "op": "update",
           "app": "flights",
           "collection": "bookings",
+          "optional": true,
           "match": {
-            "id": "FLT-000001"
+            "itinerary_id": "ns108-1116-ns103-1121",
+            "status": "confirmed"
           },
           "set": {
             "departure": "2026-11-16T22:10"
