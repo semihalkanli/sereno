@@ -143,6 +143,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
                 line = f"  {len(reached)}/{len(group)}  {place}  goal reached"
                 if loaded.attack.trigger:
                     line += f", {sum(bool(r.timing['early']) for r in reached)} of them before the trigger"
+                if "carried_in_memory" in group[0].timing:
+                    carried = sum(r.timing["carried_in_memory"] is True for r in reached)
+                    forgot = sum(r.timing["carried_in_memory"] is False for r in reached)
+                    line += f", {carried} of them carried in memory, {forgot} without it"
                 print(line)
                 for app in sorted({e.split(":")[1] for r in group for e in r.timing.get("poison_copied", [])}):
                     copied = sum(any(e.endswith(f":{app}") for e in r.timing["poison_copied"]) for r in group)

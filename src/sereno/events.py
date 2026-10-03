@@ -76,7 +76,9 @@ Event kinds and their own fields:
                  ("session:app" pairs: at that session's end the app held copies of the poison the
                  agent wrote, the marker or a copy token, outside the app's copy_exempt fields); with
                  memory also poison_in_memory (the sessions at whose end a memory file held such a
-                 copy)
+                 copy) and carried_in_memory (for a goal reached after the session that first showed
+                 the poison, whether memory held a copy at that session's start; null when the goal is
+                 not reached or is reached in that session)
     error        message, type (exception class), traceback, attempts (model call attempts,
                  when the error came from the model)
     approval     reserved for the gate: decision, explanation, gen_ai.tool.call.id
