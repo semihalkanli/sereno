@@ -40,7 +40,8 @@ Event kinds and their own fields:
                       first session that shows it), trigger (the attack's {session, phrase} or null)
                  session: session_id, date, owner, gen_ai.system_instructions,
                       gen_ai.tool.definitions (full schemas as sent), changes (outside changes
-                      applied when the session started)
+                      applied when the session started), specs (per turn: fully_specified,
+                      param_open or action_open; empty when unlabelled)
                  turn: content (the user's message)
     span_end     type, name, span (id of the matching span_begin), reason, and per type:
                  run: model_calls, tool_calls, sereno.cost_usd, duration_s

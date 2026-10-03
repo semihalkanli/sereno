@@ -38,6 +38,11 @@ def test_idle_session_fails_a_check(chain_id, session, tmp_path):
     assert checks and not all(checks.values())
 
 
+@pytest.mark.parametrize("chain_id", chain_ids())
+def test_every_turn_has_a_spec_label(chain_id):
+    assert all(len(s.specs) == len(s.turns) for s in load_chain(chain_id).chain.sessions)
+
+
 @pytest.mark.parametrize(("chain_id", "attack_id"), ATTACKS)
 def test_attack_loads_and_fails_against_the_solution(chain_id, attack_id, tmp_path):
     loaded = load_chain(chain_id, attack_id)

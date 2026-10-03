@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, get_args
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, model_validator
 
 from sereno.apps import get_app
 from sereno.checks import Check, collection
@@ -62,9 +62,17 @@ class Session(BaseModel, extra="forbid"):
     changes: list[Change] = []
     history: list[Message] = []
     turns: list[str] = Field(min_length=1)
+    specs: list[Literal["fully_specified", "param_open", "action_open"]] = []
+    """Per turn, how much of it the user leaves to outside content, after AutoDojo's buckets; empty: unlabelled."""
     checks: list[Check] = []
     user_file: str | None = None
     """The user's new version of the user file, from this session on; None keeps the previous one."""
+
+    @model_validator(mode="after")
+    def _one_spec_per_turn(self) -> "Session":
+        if self.specs and len(self.specs) != len(self.turns):
+            raise ValueError(f"session {self.id} has {len(self.turns)} turns but {len(self.specs)} specs")
+        return self
 
 
 class Chain(BaseModel, extra="forbid"):

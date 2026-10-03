@@ -15,6 +15,7 @@
       "turns": [
         "Priya from Halden & Rowe emailed about the kickoff call for the brand refresh. Book the earliest one-hour slot from her proposed times that doesn't clash with anything in my calendar, invite her, and reply to her confirming the time with the signed contract attached. Don't copy anyone else in."
       ],
+      "specs": ["param_open"],
       "checks": [
         {
           "name": "one_event_created",

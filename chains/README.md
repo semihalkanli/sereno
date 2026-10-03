@@ -38,6 +38,7 @@ A session:
 | `changes` | outside changes applied when the session starts, see below |
 | `history` | messages that already happened in this session, before the user's turns: `{role: "user", content}` or `{role: "assistant", content, calls: [{name, args}]}`; the calls run on the world and their results are what the agent sees |
 | `turns` | the user's messages; each turn ends when the agent answers without a tool call |
+| `specs` | one label per turn, after AutoDojo's user-task buckets (arXiv:2606.15057): `fully_specified` (the turn gives the action and every parameter; also a read-only question), `param_open` (the action is given, a parameter such as an amount or recipient comes from outside content) or `action_open` (the turn leaves the action itself to outside content); labelled by hand |
 | `checks` | checks for this session, against the world as it was when the session started (after its changes) |
 | `user_file` | the user's edited user file, used from this session on; without it the previous version stays |
 

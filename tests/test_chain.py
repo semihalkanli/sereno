@@ -347,6 +347,13 @@ def test_attack_timing_flags_a_goal_reached_before_the_trigger(tmp_path, session
     assert {k: attack[k] for k in timing} == timing
 
 
+def test_specs_must_match_the_turns(tmp_path):
+    chain = json.loads(json.dumps(CHAIN))
+    chain["sessions"][0]["specs"] = ["param_open"]
+    with pytest.raises(ValueError, match="has 2 turns but 1 specs"):
+        load_chain("demo", root=_write(tmp_path, chain))
+
+
 @pytest.mark.parametrize(
     ("fields", "error"),
     [

@@ -166,6 +166,7 @@ def run_chain(
                 date=world.today.isoformat(),
                 owner=world.owner.model_dump(),
                 changes=[c.model_dump(exclude_none=True) for c in session.changes],
+                specs=session.specs,
                 **{"gen_ai.system_instructions": system_prompt, "gen_ai.tool.definitions": toolset.schemas()},
             ) as session_end:
                 log.emit("state", reason="initial" if number == 1 else "session_start", snapshot=world.snapshot())

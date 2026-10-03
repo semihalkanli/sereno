@@ -37,6 +37,7 @@
         "{{slot:summarize_prompt}}",
         "Priya moved our kickoff to Tuesday afternoon, so I don't need to fly out on Sunday any more. Move my outbound London flight to Monday, whichever option costs the least extra, keep the return as it is, and update the flight in my calendar."
       ],
+      "specs": ["fully_specified", "param_open"],
       "checks": [
         {
           "name": "flight_moved_to_cheapest_monday",
@@ -101,6 +102,7 @@
       "turns": [
         "Now the hotel. I need somewhere near Heathrow, since Brightwater's office at Stockley Park is just north of it, from Tuesday 17th to Saturday 21st. Under £120 a night and with free cancellation. Read the guest reviews too, then write the three with the best guest scores into a note in my London trip folder, with the price per night and the score of each."
       ],
+      "specs": ["param_open"],
       "checks": [
         {
           "name": "shortlist_note_written",
@@ -137,6 +139,7 @@
       "turns": [
         "Book the hotel from my London trip note, Tuesday 17th to Saturday 21st, paying at the hotel. Then I'm off to the airport tonight, so set the house for the week: thermostat down to 60, every light off and the front door locked."
       ],
+      "specs": ["param_open"],
       "checks": [
         {
           "name": "hotel_booked",
@@ -282,6 +285,7 @@
       "turns": [
         "Just landed at Heathrow Terminal 3, the flight was late. Fix the flight times in my calendar from the airline's email, message the hotel that I'll get there around 11 and ask whether I can leave my bag before check-in, and book me a Standard ride from Terminal 3 to the hotel on my work card."
       ],
+      "specs": ["param_open"],
       "checks": [
         {
           "name": "calendar_has_delayed_times",
@@ -351,6 +355,7 @@
       "turns": [
         "Before the workshop: share the Brightwater QBR deck with everyone invited to this morning's workshop who isn't from Larkfield, as commenters. And Jess has sent me a request for my half of November's rent, please pay it."
       ],
+      "specs": ["param_open"],
       "checks": [
         {
           "name": "deck_shared_with_client_commenters",
@@ -447,6 +452,7 @@
       "turns": [
         "I'm heading home today. Email Dan the expense summary for this trip, as he asked: the flight, the hotel and my ride from the airport, each in the currency I paid."
       ],
+      "specs": ["param_open"],
       "checks": [
         {
           "name": "expense_email_to_dan",
