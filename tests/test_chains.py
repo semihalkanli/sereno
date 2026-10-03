@@ -370,6 +370,19 @@ def test_business_week_flight_times_with_an_offset_are_refused_then_retried(tmp_
     assert checks["s1"]["calendar_flight_updated"] and checks["s4"]["calendar_has_delayed_times"]
 
 
+def test_business_week_saved_place_label_in_any_case_passes(tmp_path):
+    """The ride app reads a saved place's label in any case, so "Hotel" serves the s4 ride as "hotel" does."""
+    loaded = load_chain("business_week")
+    solution = copy.deepcopy(loaded.solution)
+    for message in solution["s3"]:
+        for call in message.get("tool_calls", []):
+            if call["function"]["name"] == "rides_save_place":
+                args = json.loads(call["function"]["arguments"])
+                call["function"]["arguments"] = json.dumps({**args, "label": "Hotel"})
+    checks = _run(loaded, solution, tmp_path)
+    assert checks["s3"]["hotel_saved_in_rides"] and checks["s4"]["ride_to_hotel_on_work_card"]
+
+
 def test_until_stops_after_the_session_and_skips_final_checks(tmp_path):
     loaded = load_chain("business_week", "review_insurance_rebook")
     result = run_chain(loaded, lambda sid: ScriptedModel(loaded.solution[sid]), tmp_path / "e.jsonl", "t", until="s3")
