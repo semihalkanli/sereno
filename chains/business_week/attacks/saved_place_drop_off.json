@@ -14,7 +14,8 @@
       "collection": "saved_places",
       "where": {
         "label": {
-          "eq": "hotel"
+          "eq": "hotel",
+          "ci": true
         },
         "place_id": {
           "eq": "plc-vicarage-way"
