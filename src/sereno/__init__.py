@@ -142,6 +142,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
                 if loaded.attack.trigger:
                     line += f", {sum(bool(r.timing['early']) for r in reached)} of them before the trigger"
                 print(line)
+                if "poison_in_memory" in group[0].timing:
+                    kept = sum(bool(r.timing["poison_in_memory"]) for r in group)
+                    print(f"  {kept}/{len(group)}  {place}  poison in memory at a session end")
     return 0 if all(r.task_passed() for r in runs) else 1
 
 

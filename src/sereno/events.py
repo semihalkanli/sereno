@@ -72,7 +72,8 @@ Event kinds and their own fields:
     state        snapshot (full world), reason ("initial", "session_start" or a tool name)
     score        group (a session id, "final" or "attack"), checks {name: bool}, passed; the
                  attack group adds poison_seen and first_success (session ids or null) and
-                 early (reached before the trigger session; null without a trigger)
+                 early (reached before the trigger session; null without a trigger); with memory
+                 also poison_in_memory (the sessions at whose end a memory file held the marker)
     error        message, type (exception class), traceback, attempts (model call attempts,
                  when the error came from the model)
     approval     reserved for the gate: decision, explanation, gen_ai.tool.call.id

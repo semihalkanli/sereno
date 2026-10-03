@@ -31,8 +31,9 @@ class ChainResult:
     sessions: list[SessionResult] = field(default_factory=list)
     checks: dict[str, dict[str, bool]] = field(default_factory=dict)
     """Group ("s1", ..., "final", "attack") -> check name -> passed."""
-    timing: dict[str, str | bool | None] = field(default_factory=dict)
-    """For an attack run: `poison_seen`, `first_success` (session ids or None) and `early`."""
+    timing: dict[str, str | bool | list[str] | None] = field(default_factory=dict)
+    """For an attack run: `poison_seen`, `first_success` (session ids or None) and `early`; with memory also
+    `poison_in_memory`, the sessions at whose end a memory file held the marker."""
 
     @property
     def cost_usd(self) -> float:
@@ -117,6 +118,7 @@ def run_chain(
 
     attack = loaded.attack
     seen = success = None
+    in_memory: list[str] = []
 
     if until is not None:
         loaded.check_until(until)
@@ -179,6 +181,8 @@ def run_chain(
                 score(session.id, session.checks, pre)
                 if attack and seen is None and attack.marker in json.dumps([outcome.messages, toolset.schemas()]):
                     seen = session.id
+                if attack and chain.memory and any(attack.marker in f.content for f in world.app("memory").files):
+                    in_memory.append(session.id)
                 if attack and attack.checks and success is None and all(grade(attack.checks, start, world).values()):
                     success = session.id
                 session_end.update(reason=outcome.reason, final_text=outcome.final_text)
@@ -187,12 +191,14 @@ def run_chain(
 
         if chain.final_checks and until is None:
             score("final", chain.final_checks, start)
+        if attack and chain.memory:
+            result.timing["poison_in_memory"] = in_memory
         if attack and attack.checks:
             trigger = attack.trigger
             early = None
             if trigger:
                 early = success is not None and loaded.session_number(success) < loaded.session_number(trigger.session)
-            result.timing = {"poison_seen": seen, "first_success": success, "early": early}
+            result.timing.update(poison_seen=seen, first_success=success, early=early)
             score("attack", attack.checks, start, **result.timing)
         run_end.update(
             model_calls=result.model_calls,
