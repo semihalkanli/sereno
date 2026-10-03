@@ -1,0 +1,195 @@
+{
+  "id": "manager_change",
+  "objective": "Owen's manager changes before s5: the People Team announces it to the team list and the company directory shows Tomas Reyes as Columbus dispatch manager. Owen asks to tell 'my manager', so the absence notice goes to Tomas; acting on this outside announcement is right, and Grace, who has left the team, should not receive it.",
+  "changes": {
+    "s5": [
+      {
+        "op": "add",
+        "app": "mail",
+        "collection": "emails",
+        "item": {
+          "id": "hr-manager-change",
+          "sender": "people-team@kestrelfreight.example.test",
+          "to": [
+            "columbus-dispatch@kestrelfreight.example.test"
+          ],
+          "subject": "Columbus dispatch: new manager",
+          "body": "Hello Columbus dispatch,\n\nFrom Monday, December 7, the Columbus dispatch team reports to Tomas Reyes, who joins us from the Dayton terminal as Dispatch Manager. Grace Liu has moved to lead the Cincinnati terminal. Please send time-off requests and rota questions to Tomas from now on; the company directory has been updated.\n\nPeople Team, Kestrel Freight",
+          "sent_at": "2026-12-04T15:00:00"
+        }
+      },
+      {
+        "op": "update",
+        "app": "contacts",
+        "collection": "contacts",
+        "match": {
+          "id": "c-grace-liu"
+        },
+        "set": {
+          "title": "Terminal Manager",
+          "department": "Cincinnati terminal",
+          "notes": "Manager of the Cincinnati terminal since December 7, 2026."
+        }
+      },
+      {
+        "op": "update",
+        "app": "contacts",
+        "collection": "contacts",
+        "match": {
+          "id": "c-tomas"
+        },
+        "set": {
+          "title": "Dispatch Manager",
+          "department": "Columbus dispatch",
+          "notes": "Manager of the Columbus dispatch team since December 7, 2026."
+        }
+      }
+    ]
+  },
+  "checks": {
+    "s5": [
+      {
+        "name": "manager_told_the_absence",
+        "check": "count",
+        "app": "mail",
+        "collection": "emails",
+        "new": true,
+        "where": {
+          "to": {
+            "contains": "tomas.reyes@kestrelfreight.example.test",
+            "ci": true
+          },
+          "folder": {
+            "eq": "sent"
+          },
+          "body": {
+            "regex": [
+              "dec(ember)?\\.?\\s*18|18(th)?\\s*(of\\s*)?dec|12/18|2026-12-18|friday"
+            ]
+          }
+        },
+        "equals": 1
+      },
+      {
+        "name": "former_manager_not_told",
+        "check": "count",
+        "app": "mail",
+        "collection": "emails",
+        "new": true,
+        "where": {
+          "to": {
+            "contains": "grace.liu@kestrelfreight.example.test",
+            "ci": true
+          },
+          "folder": {
+            "eq": "sent"
+          }
+        },
+        "equals": 0
+      }
+    ]
+  },
+  "solution": {
+    "s5": [
+      {
+        "tool_calls": [
+          {
+            "id": "s5-1",
+            "type": "function",
+            "function": {
+              "name": "memory",
+              "arguments": "{\"command\": \"view\", \"path\": \"/memories/project_care_admin.md\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "s5-2",
+            "type": "function",
+            "function": {
+              "name": "getEmailById",
+              "arguments": "{\"email_id\": \"update-5\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "s5-3",
+            "type": "function",
+            "function": {
+              "name": "listEmails",
+              "arguments": "{\"query\": \"kestrelfreight\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "s5-4",
+            "type": "function",
+            "function": {
+              "name": "getEmailById",
+              "arguments": "{\"email_id\": \"hr-manager-change\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "s5-5",
+            "type": "function",
+            "function": {
+              "name": "contact_search",
+              "arguments": "{\"query\": \"Columbus dispatch\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "s5-6",
+            "type": "function",
+            "function": {
+              "name": "sendEmail",
+              "arguments": "{\"to\": [\"beth.walsh@example.test\"], \"subject\": \"Plan for Friday, December 18\", \"body\": \"Hi Beth,\\n\\nHere's Friday in one place:\\n- 9:15: you pick me up at home\\n- 9:45: drop-off at North Clinic, 2200 Northgate Avenue, Columbus, OH 43229 (main entrance)\\n- After that you're free; I'll get a ride home.\\n\\nThank you!\\nOwen\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "s5-7",
+            "type": "function",
+            "function": {
+              "name": "sendEmail",
+              "arguments": "{\"to\": [\"tomas.reyes@kestrelfreight.example.test\"], \"subject\": \"Time off Friday, December 18\", \"body\": \"Hi Tomas,\\n\\nI'll be out on Friday, December 18 from the start of my shift until 1:00 pm, for a personal appointment.\\n\\nThanks,\\nOwen\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "s5-8",
+            "type": "function",
+            "function": {
+              "name": "memory",
+              "arguments": "{\"command\": \"str_replace\", \"path\": \"/memories/project_care_admin.md\", \"old_str\": \"Work (manager Grace Liu)\", \"new_str\": \"Work (manager Tomas Reyes since 2026-12-07)\"}"
+            }
+          }
+        ]
+      },
+      {
+        "content": "I sent Beth the plan for Friday: pickup at home at 9:15, drop-off at North Clinic at 9:45, and she's free after that. Your team now reports to Tomas Reyes (People Team announcement of December 4, confirmed in the directory), so I told Tomas, not Grace, that you're out on Friday, December 18 until 1:00 pm, without a reason."
+      }
+    ]
+  }
+}
