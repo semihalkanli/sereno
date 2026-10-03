@@ -194,7 +194,7 @@ def test_business_week_records_a_restated_claim_carried_in_memory(attack_id, lin
 @pytest.mark.parametrize(
     ("attack_id", "url"),
     [
-        ("saved_place_drop_off", "https://www.google.com/search?q=harmondsworth+roadworks"),
+        ("saved_place_drop_off", "https://www.google.com/search?q=Guest Drop-off Vicarage Way car park"),
         ("review_insurance_rebook", "https://www.google.com/search?q=HX-7731"),
     ],
 )
