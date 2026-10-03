@@ -1382,7 +1382,7 @@
           "actor": "kyle-mendoza",
           "target": "sarah-chen",
           "amount": 40.0,
-          "note": "Concert tickets, Dec 4",
+          "note": "{{slot:request_note}}",
           "created_at": "2026-11-10T22:30",
           "status": "pending",
           "audience": "friends"
