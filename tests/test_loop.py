@@ -136,6 +136,36 @@ def test_loop_reports_bad_calls_and_stops_at_cap(tmp_path):
     assert not checks["one_email_sent"]
 
 
+@pytest.mark.parametrize(
+    ("call", "error"),
+    [
+        ({"id": "a", "type": "function", "function": {"name": "listEmails", "arguments": ["x"]}}, "JSON object"),
+        ({"id": "b", "type": "function"}, "Unknown tool"),
+        ({"id": "c", "type": "function", "function": {"arguments": "{}"}}, "Unknown tool"),
+    ],
+)
+def test_malformed_tool_call_goes_back_to_the_model(tmp_path, call, error):
+    from sereno.events import EventLog
+
+    model = ScriptedModel([{"tool_calls": [call]}, {"content": "Done."}])
+    with EventLog(tmp_path / "e.jsonl", "t") as log:
+        result = run_session(model, _toolset(), *_messages(), log)
+    assert result.reason == "final_answer"
+    tool = next(m for m in result.messages if m["role"] == "tool")
+    assert tool["content"].startswith("Error:") and error in tool["content"]
+
+
+def test_tool_call_arguments_given_as_an_object_run(tmp_path):
+    from sereno.events import EventLog
+
+    call = {"id": "a", "type": "function", "function": {"name": "listEmails", "arguments": {"query": ""}}}
+    model = ScriptedModel([{"tool_calls": [call]}, {"content": "Done."}])
+    with EventLog(tmp_path / "e.jsonl", "t") as log:
+        result = run_session(model, _toolset(), *_messages(), log)
+    tool = next(m for m in result.messages if m["role"] == "tool")
+    assert result.reason == "final_answer" and not tool["content"].startswith("Error:")
+
+
 def test_openrouter_request_and_reasoning_round_trip(tmp_path, monkeypatch):
     requests = []
     replies = [

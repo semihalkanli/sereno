@@ -32,7 +32,11 @@ class SessionResult:
     """The answer that ended the last turn with a question to the user, when the user's reply was sent."""
 
 
-def _parse_args(raw: str | None) -> tuple[dict[str, Any] | None, str | None]:
+def _parse_args(raw: Any) -> tuple[dict[str, Any] | None, str | None]:
+    if isinstance(raw, dict):
+        return raw, None
+    if raw is not None and not isinstance(raw, str):
+        return None, "Arguments must be a JSON object."
     try:
         args = json.loads(raw or "{}")
     except json.JSONDecodeError as e:
@@ -58,12 +62,13 @@ def output_messages(message: dict[str, Any], finish_reason: str | None = None) -
     if message.get("content"):
         parts.append({"type": "text", "content": message["content"]})
     for call in message.get("tool_calls") or []:
+        function = call.get("function") or {}
         parts.append(
             {
                 "type": "tool_call",
                 "id": call.get("id"),
-                "name": call["function"]["name"],
-                "arguments": call["function"].get("arguments"),
+                "name": function.get("name"),
+                "arguments": function.get("arguments"),
             }
         )
     out = {"role": "assistant", "parts": parts}
@@ -183,8 +188,9 @@ def run_tool_call(
     toolset: Toolset, call: dict[str, Any], log: EventLog, step: int | None, prefilled: bool = False
 ) -> dict[str, Any]:
     """Run one tool call on the world, log it, and return the tool message for the conversation."""
-    name = call["function"]["name"]
-    raw_args = call["function"].get("arguments")
+    function = call.get("function") or {}
+    name = function.get("name")
+    raw_args = function.get("arguments")
     args, parse_error = _parse_args(raw_args)
     t0 = time.monotonic()
     if parse_error is None:
