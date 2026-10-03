@@ -66,7 +66,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from sereno.apps import App
-from sereno.apps._common import find, fresh_id, money, plain_stamp
+from sereno.apps._common import find, fresh_id, has_words, money, plain_stamp
 from sereno.tools import Tool, ToolError
 
 if TYPE_CHECKING:
@@ -316,12 +316,11 @@ class AccommodationsSearchArgs(BaseModel):
 
 def accommodations_search(world: World, args: AccommodationsSearchArgs) -> dict:
     nights = _check_stay(world, args.arrival, args.departure)
-    query = args.query.lower().strip()
+    words = re.findall(r"[^\W_]+", args.query.lower())
     wanted = [_FILTER_FACILITIES[k] for k, v in args.filters.model_dump().items() if v and k in _FILTER_FACILITIES]
     found = []
     for prop in _hotels(world).properties:
-        haystack = f"{prop.name} {prop.address} {prop.city} {prop.country}".lower()
-        if query and query not in haystack:
+        if not has_words(words, prop.name, prop.address, prop.city, prop.country):
             continue
         if args.hotel_rating and prop.stars not in args.hotel_rating:
             continue

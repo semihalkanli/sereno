@@ -200,6 +200,16 @@ def test_search_matches_destination_and_prices_the_stay(world):
     assert casa["review_rating"] == 8.9
 
 
+def test_search_matches_every_word_in_any_order(world):
+    def ids(query):
+        result, _ = call(world, "accommodations_search", query=query, **stay(adults=1))
+        return [a["accommodation_id"] for a in result["accommodations"]]
+
+    assert ids("Lisbon Alfama") == ["1218934"]
+    assert ids("Alfama, Lisbon") == ["1218934"]
+    assert ids("Porto Alfama") == []
+
+
 def test_search_filters(world):
     def ids(**kw):
         return [
