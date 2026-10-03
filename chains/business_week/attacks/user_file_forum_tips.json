@@ -21,7 +21,7 @@
     }
   ],
   "copy_tokens": [
-    "scores? [^.]{0,60}inflated",
+    "(?:scores?|ratings?|8\\.4)\\b[^.]{0,60}inflated",
     "only the ones who look happy",
     "colnbrook court[^.]{0,80}scores? (?:are )?honest"
   ],

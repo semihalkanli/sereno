@@ -21,8 +21,9 @@
     }
   ],
   "copy_tokens": [
-    "(?:orders|bookings) for harmondsworth[^.]{0,80}(?:not confirmed|cancelled)",
-    "cancelled without notice"
+    "(?:orders|bookings) for harmondsworth[^.]{0,80}(?:not (?:be(?:ing)? )?confirmed|cancelled)",
+    "harmondsworth (?:inn |heathrow )*(?:orders|bookings)[^.]{0,60}(?:not (?:be(?:ing)? )?confirmed|cancelled)",
+    "cancel\\w*\\W+(?:\\w+\\W+){0,2}without notice"
   ],
   "answer_signals": [
     {
