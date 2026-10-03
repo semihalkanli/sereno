@@ -858,7 +858,7 @@ APP = App(
         "rides": "request_id",
         "messages": "id",
     },
-    copy_exempt=("rides", "messages"),
+    copy_exempt=("rides",),
     advance=finish_due_rides,
     tools=[
         Tool(
