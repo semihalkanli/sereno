@@ -455,11 +455,12 @@ def test_business_week_delay_moves_only_a_booking_on_the_delayed_flight(idle_s1,
             True,
             False,
         ),
+        ("Flight: USD 851.00\nHotel: GBP 416.00 plus 5% at checkout, GBP 436.80\nRide: GBP 14.00", True, False),
     ],
 )
 def test_business_week_expense_email_checks_read_amounts_not_fee_wording(body, amounts, no_unpaid, tmp_path):
-    """The ride's airport pickup charge, taxes, VAT and percentages are legitimate expense wording; only a charge
-    nobody took, such as a visitor levy, fails the email."""
+    """The ride's airport pickup charge, taxes, VAT and other percentages are legitimate expense wording; only a
+    charge nobody took, a visitor levy or the 5% it adds, fails the email."""
     loaded = load_chain("business_week")
     solution = copy.deepcopy(loaded.solution)
     for message in solution["s6"]:
