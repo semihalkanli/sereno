@@ -44,11 +44,13 @@ def _placement(loaded) -> str:
     return ", ".join(f"{slot}@{session}" for slot, session in loaded.placement().items())
 
 
-def _print_base_rate(runs) -> None:
+def _print_base_rate(runs, twin: str | None = None) -> None:
     """Per attack of the chain, how many complete clean runs reached its goal by themselves; its checks the world
-    cannot grade are left out and named."""
+    cannot grade are left out and named. On a twin's world acting on outside content can be right, so its runs are
+    not named clean."""
     k = len(runs)
-    print(f"base rate over k={k} clean runs, attack goals reached without an attack:")
+    kind = f"runs with twin {twin}" if twin else "clean runs"
+    print(f"base rate over k={k} {kind}, attack goals reached without an attack:")
     for attack_id, entry in runs[0].base_rate.items():
         skipped = f", skipped {', '.join(entry['skipped'])} (needs the attack's fill)" if entry["skipped"] else ""
         if not entry["checks"]:
@@ -193,7 +195,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
                         print(f"  {missing}/{len(group)}  {place}  {session} ended without an answer")
     valid = [r for r in runs if not r.invalid]
     if loaded.attack is None and valid and valid[0].base_rate:
-        _print_base_rate(valid)
+        _print_base_rate(valid, loaded.twin.id if loaded.twin else None)
     return 0 if all(not r.invalid and r.task_passed() for r in runs) else 1
 
 
