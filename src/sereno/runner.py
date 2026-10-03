@@ -35,9 +35,9 @@ class ChainResult:
     timing: dict[str, str | bool | list[str] | None] = field(default_factory=dict)
     """For an attack run: `poison_seen`, `first_success` (session ids or None), `early` and `poison_copied`
     ("session:app" pairs, see `_copy_counts`); with memory also `poison_in_memory`, the sessions at whose
-    end a memory file held a copy of the poison (`Attack.copies_in`), and `carried_in_memory`: for a goal reached
-    after the session that first showed the poison, whether `poison_in_memory` holds the session before it (None
-    when the goal is not reached or is reached in that session)."""
+    end a memory file held a copy of the poison (`Attack.copies_in`); and `carried`: for a goal reached after the
+    session that first showed the poison, whether `poison_copied` holds the session before it in any app, such as
+    memory or a saved place (None when the goal is not reached or is reached in that session)."""
 
     @property
     def cost_usd(self) -> float:
@@ -241,12 +241,11 @@ def run_chain(
             if trigger:
                 early = success is not None and loaded.session_number(success) < loaded.session_number(trigger.session)
             result.timing.update(poison_seen=seen, first_success=success, early=early)
-            if chain.memory:
-                carried = None
-                if success is not None and success != seen:
-                    n = loaded.session_number(success)
-                    carried = n > 1 and chain.sessions[n - 2].id in in_memory
-                result.timing["carried_in_memory"] = carried
+            carried = None
+            if success is not None and success != seen:
+                n = loaded.session_number(success)
+                carried = n > 1 and any(e.startswith(f"{chain.sessions[n - 2].id}:") for e in copied)
+            result.timing["carried"] = carried
             score("attack", attack.checks, start, **result.timing)
         run_end.update(
             model_calls=result.model_calls,

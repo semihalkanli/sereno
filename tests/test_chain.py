@@ -330,9 +330,27 @@ def test_run_span_records_seed_placement_and_trigger(tmp_path):
 @pytest.mark.parametrize(
     ("session", "timing"),
     [
-        ("s1", {"poison_seen": "s1", "first_success": "s1", "early": True, "poison_copied": ["s1:notes", "s2:notes"]}),
-        ("s2", {"poison_seen": "s1", "first_success": "s2", "early": False, "poison_copied": ["s2:notes"]}),
-        (None, {"poison_seen": "s1", "first_success": None, "early": False, "poison_copied": []}),
+        (
+            "s1",
+            {
+                "poison_seen": "s1",
+                "first_success": "s1",
+                "early": True,
+                "poison_copied": ["s1:notes", "s2:notes"],
+                "carried": None,
+            },
+        ),
+        (
+            "s2",
+            {
+                "poison_seen": "s1",
+                "first_success": "s2",
+                "early": False,
+                "poison_copied": ["s2:notes"],
+                "carried": False,
+            },
+        ),
+        (None, {"poison_seen": "s1", "first_success": None, "early": False, "poison_copied": [], "carried": None}),
     ],
 )
 def test_attack_timing_flags_an_early_goal_and_the_sessions_holding_copies(tmp_path, session, timing):
