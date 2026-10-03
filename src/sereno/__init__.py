@@ -2,7 +2,7 @@
 
 sereno run <chain> --scripted                 replay the chain's correct solution, free
 sereno run <chain> --model glm53|glm53flash [--watch] [--attack ID] [--repeats K] [--seed N]
-                  [--temperature T] [--top-p P] [--reasoning-effort LEVEL]
+                                              sampling stays at the provider's defaults
 sereno watch                                  agent view: every run under runs/agent, live
 sereno watch <events.jsonl> | --latest [--marker REGEX]   one run's transcript
 """
@@ -103,13 +103,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     else:
         load_dotenv(REPO / ".env")
         name, provider = MODELS[args.model]
-        sampling = "_".join(f"{k}{v:g}" for k, v in (("t", args.temperature), ("p", args.top_p)) if v is not None)
-        label = f"{args.model}_{sampling or 'default'}"
-        if args.reasoning_effort:
-            label = f"{label}_{args.reasoning_effort}"
-        model = OpenRouterModel(
-            name, provider, temperature=args.temperature, top_p=args.top_p, reasoning_effort=args.reasoning_effort
-        )
+        label = args.model
+        model = OpenRouterModel(name, provider)
 
         def make_model(session_id: str):
             return model
@@ -176,13 +171,6 @@ def main() -> None:
     source = run.add_mutually_exclusive_group(required=True)
     source.add_argument("--scripted", action="store_true", help="replay the correct solution, no API calls")
     source.add_argument("--model", choices=sorted(MODELS), help="paid run on OpenRouter")
-    run.add_argument("--temperature", type=float, help="without it the provider's default applies")
-    run.add_argument("--top-p", type=float, help="without it the provider's default applies")
-    run.add_argument(
-        "--reasoning-effort",
-        choices=["none", "minimal", "low", "medium", "high", "xhigh", "max"],
-        help="sent as reasoning.effort; without it the provider's default applies",
-    )
     run.add_argument("--max-steps", type=int, default=30)
     run.add_argument("--watch", action="store_true", help="open the live viewer while the run goes")
     run.add_argument("--until", help="stop after this session id (final checks are skipped)")

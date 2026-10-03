@@ -141,9 +141,6 @@ def run_chain(
                 "gen_ai.request.model": first.name,
                 "gen_ai.provider.name": "openrouter" if first.provider else None,
                 "sereno.upstream_provider": first.provider,
-                "gen_ai.request.temperature": first.temperature,
-                "gen_ai.request.top_p": first.top_p,
-                "sereno.reasoning_effort": first.reasoning_effort,
             },
         ) as run_end,
     ):

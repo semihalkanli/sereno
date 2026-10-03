@@ -210,7 +210,7 @@ def test_reasoning_falls_back_to_details_and_counts_tokens(tmp_path):
     from sereno.model import Completion
 
     class DetailsOnly:
-        name, provider, temperature = "m", "p", 0.0
+        name, provider = "m", "p"
 
         def complete(self, messages, tools):
             message = {

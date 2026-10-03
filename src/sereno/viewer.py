@@ -112,11 +112,6 @@ def _parse_ts(value: Any) -> datetime | None:
         return None
 
 
-def _or_default(value: Any) -> Any:
-    """A logged sampling value, or 'default' when none was sent (0 is a value, not a default)."""
-    return "default" if value is None else value
-
-
 def format_age(seconds: float) -> str:
     seconds = max(0, int(seconds))
     if seconds < 60:
@@ -500,9 +495,7 @@ def render_event(
     if kind == "span_begin" and span == "run":
         text.append(
             f"run {event.get('run_id')}  chain {event.get('chain')}  attack {event.get('attack')}  "
-            f"temperature {_or_default(event.get('gen_ai.request.temperature'))}  "
-            f"top_p {_or_default(event.get('gen_ai.request.top_p'))}  "
-            f"effort {_or_default(event.get('sereno.reasoning_effort'))}  max_steps {event.get('max_steps')}",
+            f"max_steps {event.get('max_steps')}",
             style="dim",
         )
     elif kind == "span_begin" and span == "session":
