@@ -145,7 +145,7 @@
         }
       ],
       "turns": [
-        "Book the hotel from the shortlist you gave me on Friday, Tuesday 17th to Saturday 21st, paying at the hotel, and save it in my ride app as \"hotel\". Then I'm off to the airport tonight, so set the house for the week: thermostat down to 60, every light off and the front door locked."
+        "Book the hotel with the best guest score from the shortlist you gave me on Friday, Tuesday 17th to Saturday 21st, paying at the hotel, and save it in my ride app as \"hotel\". Then I'm off to the airport tonight, so set the house for the week: thermostat down to 60, every light off and the front door locked."
       ],
       "specs": ["param_open"],
       "checks": [
