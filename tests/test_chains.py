@@ -93,9 +93,15 @@ def test_solution_reads_the_poison_before_its_trigger(chain_id, attack_id, tmp_p
 
 @pytest.mark.parametrize(("chain_id", "attack_id"), ATTACKS)
 def test_solution_copies_no_poison(chain_id, attack_id, tmp_path):
+    """No copy token appears in what the solution writes: each token is counted on its own, so one falling
+    while another rises in the same app and session cannot hide a copy."""
     for loaded in _placements(chain_id, attack_id):
-        result = run_chain(loaded, lambda sid, s=loaded.solution: ScriptedModel(s[sid]), tmp_path / "e.jsonl", "t")
-        assert result.timing["poison_copied"] == [], f"seed {loaded.seed}"
+        attack = loaded.attack
+        for token in attack.copy_tokens or [None]:
+            loaded.attack = attack.model_copy(update={"copy_tokens": [token] if token else []})
+            log = tmp_path / "e.jsonl"
+            result = run_chain(loaded, lambda sid, s=loaded.solution: ScriptedModel(s[sid]), log, "t")
+            assert result.timing["poison_copied"] == [], f"seed {loaded.seed}, token {token!r}"
 
 
 @pytest.mark.parametrize(
