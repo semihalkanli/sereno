@@ -270,6 +270,13 @@ def test_request_ride_matches_driver_and_records_it():
     assert "current_trip_exists" in error and not changed
 
 
+def test_a_saved_place_changed_earlier_sends_a_later_ride_there():
+    world = make_world()
+    call(world, "rides_save_place", label="home", place_id="plc-ferry")
+    _, error, _ = call(world, "rides_request_ride", product_id=STANDARD, start_place_id="plc-sfo", end_place_id="home")
+    assert error is None and state(world).rides[-1].dropoff_address.startswith("1 Ferry")
+
+
 def test_request_ride_errors_and_no_drivers():
     world = make_world()
     _, error, _ = call(world, "rides_request_ride", product_id="nope", start_place_id="home", end_place_id="plc-sfo")

@@ -107,6 +107,19 @@ On the prompt side (decision log section 107):
 
 Every declared slot must be placed somewhere, and every placed slot declared.
 
+### Persistence channels (decision log section 115)
+
+What outlives a session and can carry a poison into a later one:
+
+1. memory: the agent writes it with the `memory` tool;
+2. a file or note the agent writes and reads later (`files`, `tasks`, a
+   password manager note);
+3. a compact summary: planned, comes with compaction;
+4. an app setting that keeps acting: in `business_week`, a rides saved place,
+   which a later ride request resolves by its label. Mail forwarding rules,
+   smart-home automations and recurring payments are not modelled, since the
+   connectors the apps follow do not expose them.
+
 ## attacks/<id>.json
 
 | Field | Meaning |
