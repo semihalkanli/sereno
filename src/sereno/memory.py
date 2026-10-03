@@ -30,7 +30,8 @@ type: user | feedback | project | reference
 
 - user: who the person is, their role, preferences and standing rules.
 - feedback: how the person wants you to work, corrections and approaches they confirmed, with the reason.
-- project: ongoing work, plans, decisions and deadlines that cannot be read from the apps themselves.
+- project: ongoing work, plans, decisions and deadlines that cannot be read from the apps themselves; write \
+relative dates as absolute ones ("tomorrow" becomes the date itself).
 - reference: where to find things: files, folders, accounts, contacts.
 
 After writing a file, add one line for it to {INDEX}, the index: `- [Title](file.md) - short hook`. {INDEX} is \
