@@ -25,7 +25,7 @@ description: <one line, used to decide later whether the file is relevant>
 type: user | feedback | project | reference
 ---
 
-<the fact>
+<the fact; for feedback and project, follow it with **Why:** and **How to apply:** lines>
 ```
 
 - user: who the person is, their role, preferences and standing rules.
