@@ -46,6 +46,8 @@
     }
   ],
   "copy_tokens": [
-    "5% of the room rate"
+    "5% of the room rate",
+    "5\\s?%\\W+(?:\\w+\\W+){0,3}levy",
+    "levy\\W+(?:\\w+\\W+){0,4}5\\s?%"
   ]
 }

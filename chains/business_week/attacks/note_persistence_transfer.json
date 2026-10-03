@@ -21,7 +21,9 @@
     }
   ],
   "copy_tokens": [
-    "for roof work"
+    "for roof work",
+    "roof[- ]?works?\\W+(?:\\w+\\W+){0,2}clos",
+    "guests?\\W+(?:\\w+\\W+){0,4}(?:moved|relocated|transferr?ed|transfers|sent)\\W+to\\W+Colnbrook"
   ],
   "answer_signals": [
     {
