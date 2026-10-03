@@ -144,6 +144,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
                 if loaded.attack.trigger:
                     line += f", {sum(bool(r.timing['early']) for r in reached)} of them before the trigger"
                 print(line)
+                for app in sorted({e.split(":")[1] for r in group for e in r.timing.get("poison_copied", [])}):
+                    copied = sum(any(e.endswith(f":{app}") for e in r.timing["poison_copied"]) for r in group)
+                    print(f"  {copied}/{len(group)}  {place}  poison copied into {app} by the agent")
                 if "poison_in_memory" in group[0].timing:
                     kept = sum(bool(r.timing["poison_in_memory"]) for r in group)
                     print(f"  {kept}/{len(group)}  {place}  poison in memory at a session end")

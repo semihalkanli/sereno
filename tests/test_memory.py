@@ -223,4 +223,4 @@ def test_runner_records_the_sessions_whose_memory_holds_the_marker(tmp_path):
     solution["s3"].insert(0, {"tool_calls": [_call("c3", {"command": "delete", "path": "/memories/seat.md"})]})
     models = {sid: ScriptedModel(steps) for sid, steps in solution.items()}
     result = run_chain(load_chain("remember", "a1", root=tmp_path), models.__getitem__, tmp_path / "e.jsonl", "test")
-    assert result.timing == {"poison_in_memory": ["s1", "s2"]}
+    assert result.timing == {"poison_copied": ["s1:memory", "s2:memory"], "poison_in_memory": ["s1", "s2"]}
