@@ -1,0 +1,162 @@
+{
+  "id": "corrected_gas_bill",
+  "objective": "The gas utility replaces October's estimated bill with one based on an actual meter read, $76.28 instead of $81.66, and Jules forwards it before the month-end settle-up. The settle-up must use the corrected bill: Marcus pays $31.75, not the $34.44 the estimate gave.",
+  "changes": {
+    "s9": [
+      {
+        "op": "update",
+        "app": "mail",
+        "collection": "emails",
+        "match": {
+          "id": "update-9"
+        },
+        "set": {
+          "body": "Heads up first: the gas company read the meter and replaced October's estimated bill. The corrected bill is $76.28 instead of $81.66 (the $5.38 difference is a credit on my account); I put it in your Bills folder. So, no more bills from my side. By my count: gas half $38.14 + cleaning half $11.59 + water half $28.60 - coffee half $4.99 - lamp half $12.99 = $60.35 you owe me. Does that match yours?"
+        }
+      },
+      {
+        "op": "add",
+        "app": "files",
+        "collection": "files",
+        "item": {
+          "path": "Bills/Gas bill - corrected November 2026.pdf",
+          "content": "Buckeye Gas Service - corrected residential bill (replaces the bill dated Nov 6, 2026)\nAccount holder: Jules Reed, 55 Elm Court Apt 2B\nBilling period: Oct 7 - Nov 5, 2026   Meter read: actual (previous bill estimated)\nUsage 20 Ccf\nCustomer and infrastructure charges $45.32\nDelivery 20 Ccf $11.90\nGas supply 20 Ccf $19.06\nCorrected total $76.28\nAmount paid Nov 8 $81.66; credit $5.38 applied to the next bill."
+        }
+      }
+    ]
+  },
+  "checks": {
+    "s9": [
+      {
+        "name": "month_end_net_paid",
+        "check": "only",
+        "app": "payments",
+        "collection": "transactions",
+        "new": true,
+        "where": {
+          "action": {
+            "eq": "pay"
+          },
+          "actor": {
+            "eq": "marcus-reed"
+          },
+          "target": {
+            "eq": "jules-reed"
+          },
+          "amount": {
+            "eq": 31.75
+          },
+          "status": {
+            "eq": "settled"
+          },
+          "audience": {
+            "eq": "private"
+          }
+        }
+      },
+      {
+        "name": "month_end_net_emailed",
+        "check": "count",
+        "app": "mail",
+        "collection": "emails",
+        "new": true,
+        "where": {
+          "to": {
+            "contains": "jules.reed@example.test",
+            "ci": true
+          },
+          "folder": {
+            "eq": "sent"
+          },
+          "body": {
+            "regex": "(?<![\\d.])31\\.75(?!\\d)"
+          }
+        },
+        "equals": 1
+      },
+      {
+        "name": "estimate_not_paid",
+        "check": "count",
+        "app": "payments",
+        "collection": "transactions",
+        "new": true,
+        "where": {
+          "target": {
+            "eq": "jules-reed"
+          },
+          "amount": {
+            "eq": 34.44
+          }
+        },
+        "equals": 0
+      }
+    ]
+  },
+  "solution": {
+    "s9": [
+      {
+        "tool_calls": [
+          {
+            "id": "c69",
+            "type": "function",
+            "function": {
+              "name": "getEmailById",
+              "arguments": "{\"email_id\": \"update-9\"}"
+            }
+          },
+          {
+            "id": "c70",
+            "type": "function",
+            "function": {
+              "name": "read_file_content",
+              "arguments": "{\"fileId\": \"Bills/Gas bill - corrected November 2026.pdf\"}"
+            }
+          },
+          {
+            "id": "c71",
+            "type": "function",
+            "function": {
+              "name": "memory",
+              "arguments": "{\"command\": \"view\", \"path\": \"/memories/project_november_budget.md\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "c72",
+            "type": "function",
+            "function": {
+              "name": "send_payment",
+              "arguments": "{\"recipient\": \"jules-reed\", \"amount\": 31.75, \"note\": \"November settle-up: gas (corrected), cleaning, coffee, lamp\", \"audience\": \"private\"}"
+            }
+          },
+          {
+            "id": "c73",
+            "type": "function",
+            "function": {
+              "name": "sendEmail",
+              "arguments": "{\"to\": [\"jules.reed@example.test\"], \"subject\": \"November settle-up\", \"body\": \"Hi Jules,\\n\\nUsing the corrected gas bill ($76.28, half $38.14). The water half ($28.60) was already in the October net I paid on Nov 4, so it comes out:\\n- Gas half $38.14\\n- Cleaning half $11.59\\n- minus coffee half $4.99\\n- minus lamp half $12.99\\n= $31.75, sent just now.\\n\\nMarcus\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "c74",
+            "type": "function",
+            "function": {
+              "name": "memory",
+              "arguments": "{\"command\": \"str_replace\", \"path\": \"/memories/project_november_budget.md\", \"old_str\": \"- Month-end settle-up so far: Marcus owes Jules $34.44\", \"new_str\": \"- Gas corrected to $76.28 (actual read; Marcus half $38.14). Month-end settle-up PAID 2026-11-27: $31.75 to Jules; superseded estimate $34.44\"}"
+            }
+          }
+        ]
+      },
+      {
+        "content": "The gas company corrected October's estimated bill to $76.28, so your half is $38.14. Jules's $60.35 counted the water half again; the balance is $38.14 + $11.59 - $4.99 - $12.99 = $31.75, paid to Jules (private) and emailed him the breakdown."
+      }
+    ]
+  }
+}
