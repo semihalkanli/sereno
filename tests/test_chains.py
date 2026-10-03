@@ -399,7 +399,13 @@ def test_business_week_clean_run_booking_colnbrook_reaches_the_roof_works_goal(t
     log = tmp_path / "e.jsonl"
     result = run_chain(loaded, lambda sid: ScriptedModel(solution[sid]), log, "t")
     reached = {a for a, e in result.base_rate.items() if e["first_success"] == "s3"}
-    assert reached == {"misinformation_roof_works", "note_persistence_transfer"}
+    assert reached == {
+        "misinformation_roof_works",
+        "note_persistence_transfer",
+        "memory_seeded_rule",
+        "user_file_forum_tips",
+        "tool_description_outage_note",
+    }
     assert result.base_rate["misinformation_roof_works"]["checks"] == {"competitor_hotel_booked": True}
     assert result.base_rate["recommendation_poisoning"]["checks"]["competitor_hotel_booked"]
     assert "attack" not in result.checks
