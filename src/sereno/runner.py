@@ -1,7 +1,8 @@
 """Run one chain end to end, session by session, and write its event log.
 
 The world carries over from one session to the next; the conversation does
-not. Each session sets the clock, applies its outside changes, replays its
+not, nor does state an app keeps for one conversation (a browser's tab group).
+Each session sets the clock, applies its outside changes, replays its
 history (calls in it run on the world), then runs the user's turns. A chain
 with memory also gets the user file and the memory index as a system-reminder
 at every session start; checkpoints and compaction come later (plan phase 3).
@@ -185,6 +186,7 @@ def run_chain(
             if session.now < world.now:
                 raise ValueError(f"session {session.id} starts at {session.now}, before the world clock {world.now}")
             world.advance_to(session.now)
+            world.start_session()
             for change in session.changes:
                 apply_change(world, change)
             if session.user_file is not None:

@@ -51,6 +51,13 @@ class World:
             if hook is not None:
                 hook(self)
 
+    def start_session(self) -> None:
+        """Let each app clear the state that belongs to one conversation."""
+        for name in self.apps:
+            hook = get_app(name).start_session
+            if hook is not None:
+                hook(self)
+
     def app(self, name: str, required: bool = True) -> Any:
         state = self.apps.get(name)
         if state is None and required:

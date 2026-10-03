@@ -19,7 +19,8 @@ that take a ref: left_click and scroll_to), JavaScript, and the batch tool.
 
 Every navigation is kept in `visits` with its full URL, query included, and
 every form a click submits is kept in `submissions`, so checks can see what
-left the browser.
+left the browser. Those records outlast a session; the tab group does not, as
+it belongs to one conversation.
 """
 
 from __future__ import annotations
@@ -213,6 +214,14 @@ def _go(world: World, tab: Tab, url: str, via: Literal["navigate", "link", "form
     tab.values = {}
     browser.visits.append(Visit(id=len(browser.visits) + 1, at=world.now, tab_id=tab.id, url=url, via=via))
     return _page(browser, url)
+
+
+def close_tab_group(world: World) -> None:
+    """The tab group is for one conversation, so a new session starts without it. Tab ids are not reused, as in
+    a browser, and visits and submissions stay like its history."""
+    browser = _browser(world)
+    browser.tabs = []
+    browser.group = False
 
 
 def _context(browser: Browser) -> str:
@@ -499,6 +508,7 @@ APP = App(
     state=Browser,
     keys={"pages": "url", "tabs": "id", "visits": "id", "submissions": "id"},
     copy_exempt=("tabs", "visits", "submissions"),
+    start_session=close_tab_group,
     tools=[
         Tool(
             "browser__tabs_context_mcp",

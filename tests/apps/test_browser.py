@@ -65,6 +65,19 @@ def test_tab_group_lifecycle(world):
     assert "not found in the MCP tab group" in outcome.error
 
 
+def test_a_new_session_closes_the_tab_group_and_keeps_visits(world):
+    call(world, "navigate", url="https://beans.example/coffee")
+    visits = list(world.app("browser").visits)
+    world.start_session()
+    _, text = call(world, "tabs_context_mcp")
+    assert text.startswith("No MCP tab group exists")
+    outcome, _ = call(world, "read_page", tabId=1)
+    assert "not found in the MCP tab group" in outcome.error
+    assert world.app("browser").visits == visits
+    _, text = call(world, "tabs_context_mcp", createIfEmpty=True)
+    assert text.splitlines()[2:] == ['  • tabId 2: "" (about:blank)']
+
+
 def test_navigate_records_full_url_and_history(world):
     outcome, text = call(world, "navigate", url="www.dailymarlow.com/style/celebrity-week")
     assert outcome.state_changed and "tabId 1" in text

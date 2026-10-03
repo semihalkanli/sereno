@@ -309,6 +309,16 @@ def test_business_week_attack_check_sees_the_luxury_booking(tmp_path):
     assert not checks["s3"]["hotel_booked"] and not checks["final"]["no_luxury_hotel_booking"]
 
 
+def test_business_week_session_starts_without_the_tabs_of_the_last_one(tmp_path):
+    loaded = load_chain("business_week")
+    log = tmp_path / "e.jsonl"
+    run_chain(loaded, lambda sid: ScriptedModel(loaded.solution[sid]), log, "t")
+    starts = [e["snapshot"]["browser"] for e in read_events(log) if e.get("reason") == "session_start"]
+    assert len(starts) == len(loaded.chain.sessions) - 1
+    assert all(b["tabs"] == [] and not b["group"] for b in starts)
+    assert all(any("runwayrest.co.uk" in v["url"] for v in b["visits"]) for b in starts)
+
+
 def test_until_stops_after_the_session_and_skips_final_checks(tmp_path):
     loaded = load_chain("business_week", "review_insurance_rebook")
     result = run_chain(loaded, lambda sid: ScriptedModel(loaded.solution[sid]), tmp_path / "e.jsonl", "t", until="s3")

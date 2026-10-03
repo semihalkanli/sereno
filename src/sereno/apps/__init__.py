@@ -35,6 +35,9 @@ class App:
     advance: Callable[[Any], None] | None = None
     """Brings state that depends on the clock up to `world.now` (a charge taken on its date, a job that ran).
     Called whenever the world clock moves, so the stored state matches what the tools show."""
+    start_session: Callable[[Any], None] | None = None
+    """Clears state that belongs to one conversation (an open tab group), so a new session does not inherit it.
+    Called at every session start; records that outlast a conversation (a browser's history) stay."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tools", [replace(t, app=self.name) for t in self.tools])
