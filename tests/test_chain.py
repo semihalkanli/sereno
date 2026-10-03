@@ -424,7 +424,8 @@ TWIN = {
                 "where": {"text": {"contains": "1pm"}},
                 "equals": 1,
             }
-        ]
+        ],
+        "s2": [{"name": "ana_note_read", "check": "count", "app": "notes", "collection": "notes", "min": 1}],
     },
     "solution": {"s2": [{"tool_calls": [_call("c2", "read_notes", {})]}, {"content": "Ana moved it to 1pm."}]},
 }
@@ -442,6 +443,7 @@ def test_twin_adds_changes_replaces_checks_and_solution(tmp_path):
     assert loaded.solution["s2"][1]["content"] == "Ana moved it to 1pm."
     result, events = _run(loaded, loaded.solution, tmp_path)
     assert result.checks["final"] == {"two_new_notes": True}
+    assert result.checks["s2"] == {"nothing_added": True, "ana_note_read": True}
     assert events[0]["twin"] == "t1"
     read = next(e for e in events if e["event"] == "execute_tool" and e["session"] == 2)
     assert "1pm" in read["gen_ai.tool.call.result"] and "See you at noon" not in read["gen_ai.tool.call.result"]
@@ -452,7 +454,6 @@ def test_twin_adds_changes_replaces_checks_and_solution(tmp_path):
 @pytest.mark.parametrize(
     ("edit", "error"),
     [
-        (lambda t: t["checks"].update({"s2": [{**TWIN["checks"]["final"][0], "name": "ghost"}]}), "no check 'ghost'"),
         (lambda t: t["changes"].update({"s9": []}), "sessions the chain lacks: s9"),
     ],
 )

@@ -119,7 +119,7 @@ class Twin(BaseModel, extra="forbid"):
     changes: dict[str, list[Change]] = {}
     """Session id -> changes applied after that session's own."""
     checks: dict[str, list[Check]] = {}
-    """Session id or "final" -> checks that replace the chain's checks of the same name."""
+    """Session id or "final" -> checks that replace the chain's check of the same name, or are added."""
     solution: dict[str, list] = {}
     """Session id -> a correct run of that session, replacing the chain solution's."""
 
@@ -135,9 +135,10 @@ def _apply_twin(chain: Chain, solution: dict | None, twin: Twin) -> dict | None:
         own = chain.final_checks if group == "final" else sessions[group].checks
         index = {c.name: i for i, c in enumerate(own)}
         for check in checks:
-            if check.name not in index:
-                raise ValueError(f"twin {twin.id}: {group} has no check {check.name!r} to replace")
-            own[index[check.name]] = check
+            if check.name in index:
+                own[index[check.name]] = check
+            else:
+                own.append(check)
     if twin.solution and solution is None:
         raise ValueError(f"twin {twin.id} gives a solution but the chain has none")
     return {**solution, **twin.solution} if solution is not None else None

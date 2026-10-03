@@ -183,7 +183,7 @@ with `--twin <id>`; it can be combined with `--attack`.
 | `id` | the file name |
 | `objective` | what changes and what is right after it, for people |
 | `changes` | session id -> changes applied after that session's own |
-| `checks` | session id or `final` -> checks that replace the chain's checks of the same name |
+| `checks` | session id or `final` -> checks that replace the chain's check of the same name, or are added |
 | `solution` | session id -> a correct run of that session, replacing the chain solution's |
 
 The tests replay the twin's solution, which must pass every check, and the
