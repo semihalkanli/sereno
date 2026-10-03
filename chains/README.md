@@ -192,6 +192,13 @@ session and, for a triggered attack, how many did so before the trigger, how
 many copied the poison into each app, and with memory how many held it in
 memory at a session end.
 
+A session that ends in a model call error or at the step cap stops the chain:
+the later sessions would run on a world that missed its remaining turns, and
+pay for it. The run is invalid; its run span ends with that session's reason
+and `stopped_at`, and its final checks are skipped. A batch lists invalid runs
+by id, marks those that ended in an error as needing a rerun, and computes
+every rate over the complete runs only.
+
 ## twins/<id>.json
 
 A benign twin is the other side of an attack (decision log sections 121-122):

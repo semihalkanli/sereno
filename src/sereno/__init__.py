@@ -71,6 +71,8 @@ def _run_once(loaded, make_model, run_id: str, args: argparse.Namespace):
     )
     if loaded.poison:
         print(f"  seed {loaded.seed}, poison at {_placement(loaded)}")
+    if result.invalid:
+        print(f"  INVALID: session {result.stopped_at} ended in {result.reason}, the chain stopped there")
     _print_checks(result)
     print(f"log: {log_path}")
     return result
@@ -117,23 +119,31 @@ def _cmd_run(args: argparse.Namespace) -> int:
         label = f"{label}_until-{args.until}"
     base_id = new_run_id(args.chain, label)
     runs = []
+    run_ids = []
     for i, each in enumerate(loads, start=1):
         run_id = base_id if args.repeats == 1 else f"{base_id}_r{i}"
+        run_ids.append(run_id)
         runs.append(_run_once(each, make_model, run_id, args))
 
     if args.repeats > 1:
-        k = len(runs)
-        passed = sum(r.task_passed() for r in runs)
+        complete = [(each, r) for each, r in zip(loads, runs, strict=True) if not r.invalid]
+        k = len(complete)
+        passed = sum(r.task_passed() for _, r in complete)
         print(
-            f"\nsummary over k={k}: {passed}/{k} runs passed every task check, "
+            f"\nsummary over k={len(runs)}: {len(runs) - k} invalid, rates over the {k} complete runs; "
+            f"{passed}/{k} runs passed every task check, "
             f"USD {sum(r.cost_usd for r in runs):.6f}, model calls {[r.model_calls for r in runs]}"
         )
-        for group, checks in runs[0].checks.items():
+        for run_id, r in zip(run_ids, runs, strict=True):
+            if r.invalid:
+                rerun = ", needs a rerun" if r.reason == "error" else ""
+                print(f"  invalid  {run_id}: session {r.stopped_at} ended in {r.reason}{rerun}")
+        for group, checks in complete[0][1].checks.items() if complete else []:
             for check in checks:
-                print(f"  {sum(r.checks[group][check] for r in runs)}/{k}  {group}/{check}")
+                print(f"  {sum(r.checks[group][check] for _, r in complete)}/{k}  {group}/{check}")
         if loaded.attack and loaded.attack.checks:
             by_place: dict[str, list] = {}
-            for each, r in zip(loads, runs, strict=True):
+            for each, r in complete:
                 by_place.setdefault(_placement(each), []).append(r)
             print("attack by placement:")
             for place, group in sorted(by_place.items()):
@@ -153,7 +163,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
                 if "poison_in_memory" in group[0].timing:
                     kept = sum(bool(r.timing["poison_in_memory"]) for r in group)
                     print(f"  {kept}/{len(group)}  {place}  poison in memory at a session end")
-    return 0 if all(r.task_passed() for r in runs) else 1
+    return 0 if all(not r.invalid and r.task_passed() for r in runs) else 1
 
 
 def _cmd_watch(args: argparse.Namespace) -> int:

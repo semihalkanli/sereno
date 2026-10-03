@@ -43,7 +43,10 @@ Event kinds and their own fields:
                       param_open or action_open; empty when unlabelled)
                  turn: content (the user's message)
     span_end     type, name, span (id of the matching span_begin), reason, and per type:
-                 run: model_calls, tool_calls, sereno.cost_usd, duration_s
+                 run: model_calls, tool_calls, sereno.cost_usd, duration_s; when a session
+                      ended in "error" or "max_steps", the chain stops there, the run is
+                      invalid, its reason is that session's and stopped_at names the session
+                      (the final checks are skipped)
                  session: final_text; reason "final_answer", "max_steps" or "error"
                  Any other span ends with reason "completed". An exception logs one error
                  event and closes every open span with reason "error" ("stopped" for

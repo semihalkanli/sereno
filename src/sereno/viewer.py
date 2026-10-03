@@ -515,7 +515,7 @@ def render_event(
         text.append(
             f"run ended: USD {event.get('sereno.cost_usd')}, {event.get('model_calls')} model calls, "
             f"{event.get('tool_calls')} tool calls, {event.get('duration_s')} s",
-            style="bold red" if event.get("reason") in ("error", "stopped") else "dim",
+            style="bold red" if event.get("reason") in ("error", "max_steps", "stopped") else "dim",
         )
     elif kind == "score":
         score_lines(text, event, f"{DOT} score {event.get('group')} ")

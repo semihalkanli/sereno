@@ -222,6 +222,78 @@ def test_attack_fills_a_late_slot_and_is_graded(tmp_path):
     assert clean.checks["attack"] == {"marker_note": False}
 
 
+THREE = {
+    **CHAIN,
+    "sessions": [*CHAIN["sessions"], {"id": "s3", "now": "2026-03-05T10:00", "turns": ["Read my notes."]}],
+}
+THREE_SOLUTION = {**SOLUTION, "s3": [{"tool_calls": [_call("c3", "read_notes", {})]}, {"content": "Two notes."}]}
+
+
+@pytest.mark.parametrize(
+    ("s2", "reason"),
+    [
+        ([], "error"),
+        ([{"tool_calls": [_call("c2", "read_notes", {})]}] * 4, "max_steps"),
+    ],
+)
+def test_a_failing_session_stops_the_chain_and_marks_the_run_invalid(tmp_path, s2, reason):
+    loaded = load_chain("demo", root=_write(tmp_path, chain=THREE, solution=THREE_SOLUTION))
+    solution = {**THREE_SOLUTION, "s2": s2}
+    asked = []
+
+    def make_model(sid):
+        asked.append(sid)
+        return ScriptedModel(solution[sid])
+
+    log = tmp_path / "events.jsonl"
+    result = run_chain(loaded, make_model, log, "t", max_steps=3)
+    events = read_events(log)
+    assert (result.invalid, result.stopped_at, result.reason) == (True, "s2", reason)
+    assert asked == ["s1", "s2"] and len(result.sessions) == 2
+    assert set(result.checks) == {"s1", "s2"}
+    assert [e["session_id"] for e in events if e["event"] == "span_begin" and e["type"] == "session"] == ["s1", "s2"]
+    run_end = events[-1]
+    assert run_end["type"] == "run" and (run_end["reason"], run_end["stopped_at"]) == (reason, "s2")
+    assert any(e["event"] == "error" for e in events) == (reason == "error")
+
+
+def test_a_complete_run_is_valid_and_its_run_span_completes(tmp_path):
+    loaded = load_chain("demo", root=_write(tmp_path, chain=THREE, solution=THREE_SOLUTION))
+    result, events = _run(loaded, THREE_SOLUTION, tmp_path)
+    assert not result.invalid and result.stopped_at is None and "final" in result.checks
+    assert events[-1]["reason"] == "completed" and "stopped_at" not in events[-1]
+
+
+def test_batch_summary_lists_invalid_runs_and_leaves_them_out_of_the_rates(tmp_path, monkeypatch, capsys):
+    import argparse
+
+    import sereno
+    from sereno import chain as chain_module
+
+    root = _write(tmp_path, chain=THREE, solution=THREE_SOLUTION)
+    real_load = chain_module.load_chain
+    monkeypatch.setattr(chain_module, "load_chain", lambda cid, aid=None, **kw: real_load(cid, aid, root=root, **kw))
+    monkeypatch.setattr("sereno.runner.RUNS_DIR", tmp_path / "runs")
+    made = []
+
+    def scripted(messages):
+        made.append(1)
+        return ScriptedModel([] if len(made) == 5 else messages)
+
+    monkeypatch.setattr("sereno.model.ScriptedModel", scripted)
+    args = argparse.Namespace(
+        chain="demo", attack=None, twin=None, seed=0, repeats=2, until=None, scripted=True, model=None, watch=False
+    )
+    args.max_steps = 30
+    code = sereno._cmd_run(args)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "INVALID: session s2 ended in error, the chain stopped there" in out
+    assert "summary over k=2: 1 invalid, rates over the 1 complete runs; 1/1 runs passed every task check" in out
+    assert "_r2: session s2 ended in error, needs a rerun" in out
+    assert "  1/1  final/two_new_notes" in out
+
+
 @pytest.mark.parametrize(
     ("change", "error"),
     [
