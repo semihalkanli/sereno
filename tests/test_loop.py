@@ -205,6 +205,50 @@ def test_openrouter_retries_then_raises(tmp_path, monkeypatch):
     assert all(d["event_id"] == error["id"] and d["run_id"] == "t" for d in diag)
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        httpx.Response(520, json={"error": {"message": "Provider returned error", "code": 520}}),
+        httpx.Response(502, content=b"<html>Bad gateway</html>"),
+        httpx.Response(200, content=b"<html>upstream reset</html>"),
+        httpx.Response(200, json={"choices": []}),
+        httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "partial output"},
+                        "finish_reason": "error",
+                        "error": {"code": 502, "message": "Provider disconnected mid-stream"},
+                    }
+                ]
+            },
+        ),
+    ],
+    ids=["520", "html_502", "html_200", "no_choices", "choice_error"],
+)
+def test_openrouter_retries_transient_failures(tmp_path, monkeypatch, failure):
+    monkeypatch.setattr("sereno.model.time.sleep", lambda s: None)
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return failure
+        message = {"role": "assistant", "content": "Done."}
+        return httpx.Response(200, json={"choices": [{"message": message, "finish_reason": "stop"}], "usage": {}})
+
+    model = OpenRouterModel("m", "p", api_key="test")
+    model._client = httpx.Client(transport=httpx.MockTransport(handler))
+    from sereno.events import EventLog
+
+    with EventLog(tmp_path / "events.jsonl", "t") as log:
+        result = run_session(model, _toolset(), *_messages(), log)
+    assert (result.reason, result.final_text, len(calls)) == ("final_answer", "Done.", 2)
+    chat = next(e for e in read_events(tmp_path / "events.jsonl") if e["event"] == "chat")
+    assert chat["retries"] == 1 and chat["attempts"][0]["status"] == failure.status_code
+
+
 def test_reasoning_falls_back_to_details_and_counts_tokens(tmp_path):
     from sereno.events import EventLog
     from sereno.model import Completion

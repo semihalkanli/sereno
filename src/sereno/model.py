@@ -86,13 +86,25 @@ class OpenRouterModel:
                     raise ModelCallError(f"OpenRouter transport error: {e!r}", attempts) from e
             else:
                 duration = round(time.monotonic() - t0, 3)
-                data = response.json() if response.content else {}
-                if response.status_code == 200 and "choices" in data:
+                try:
+                    data = response.json() if response.content else {}
+                except ValueError:
+                    data = {}
+                if not isinstance(data, dict):
+                    data = {}
+                choices = data.get("choices")
+                choice = choices[0] if isinstance(choices, list) and choices else None
+                complete = (
+                    isinstance(choice, dict)
+                    and isinstance(choice.get("message"), dict)
+                    and not choice.get("error")
+                    and choice.get("finish_reason") != "error"
+                )
+                if response.status_code == 200 and complete:
                     attempts.append({"status": 200, "duration_s": duration, "error": None})
                     log.info(
                         "attempt %d ok", attempt, extra={"attempt": attempt, "status": 200, "duration_s": duration}
                     )
-                    choice = data["choices"][0]
                     return Completion(
                         message=choice["message"],
                         finish_reason=choice.get("finish_reason"),
@@ -102,14 +114,22 @@ class OpenRouterModel:
                         response=data,
                         attempts=attempts,
                     )
-                error = data.get("error") if isinstance(data, dict) and data.get("error") else response.text[:500]
+                if data.get("error"):
+                    error = data["error"]
+                elif isinstance(choice, dict) and choice.get("error"):
+                    error = choice["error"]
+                else:
+                    error = response.text[:500]
                 record = {"status": response.status_code, "duration_s": duration, "error": error}
                 attempts.append(record)
                 log.warning(
                     "attempt %d failed with %d", attempt, response.status_code, extra={"attempt": attempt, **record}
                 )
-                # OpenRouter reports some upstream provider failures as 200 with an error body.
-                retryable = response.status_code in RETRY_STATUS or response.status_code == 200
+                # OpenRouter reports some upstream provider failures as 200 with an error body, or with an
+                # error inside the choice; a pinned provider's 5xx (Z.AI's 520, say) is as transient.
+                retryable = (
+                    response.status_code in RETRY_STATUS or response.status_code >= 500 or response.status_code == 200
+                )
                 if not retryable or attempt == MAX_ATTEMPTS:
                     raise ModelCallError(f"OpenRouter {response.status_code}: {data or response.text[:500]}", attempts)
             wait = min(2**attempt, 30)
