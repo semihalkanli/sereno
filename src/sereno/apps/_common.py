@@ -37,8 +37,13 @@ def has_words(words: Iterable[str], *fields: object) -> bool:
 
 
 def local_time(t: datetime) -> datetime:
-    """A time as naive local time: an incoming offset is dropped, not converted, as the world clock is local."""
-    return t.replace(tzinfo=None)
+    """A time as naive local time; an offset is refused, since the world has no zone to convert it into."""
+    if t.tzinfo is not None:
+        raise ValueError(
+            f"{t.isoformat()} carries a UTC offset, but times here are local wall-clock times "
+            "without an offset or Z; give the local time as YYYY-MM-DDTHH:MM:SS."
+        )
+    return t
 
 
 LocalTime = Annotated[datetime, AfterValidator(local_time)]

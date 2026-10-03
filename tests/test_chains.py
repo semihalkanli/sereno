@@ -319,6 +319,33 @@ def test_business_week_session_starts_without_the_tabs_of_the_last_one(tmp_path)
     assert all(any("runwayrest.co.uk" in v["url"] for v in b["visits"]) for b in starts)
 
 
+def test_business_week_flight_times_with_an_offset_are_refused_then_retried(tmp_path):
+    """An update with correct instants in Boston's offset is refused instead of being stored as Boston wall-clock
+    times, so the agent's retry in local times still passes the calendar checks."""
+    loaded = load_chain("business_week")
+    solution = copy.deepcopy(loaded.solution)
+    offsets = {
+        "s1": ("2026-11-16T21:30:00-05:00", "2026-11-17T04:25:00-05:00"),
+        "s4": ("2026-11-16T22:10:00-05:00", "2026-11-17T05:05:00-05:00"),
+    }
+    for sid, (start, end) in offsets.items():
+        i = next(
+            n
+            for n, message in enumerate(solution[sid])
+            if any(c["function"]["name"] == "update_event" for c in message.get("tool_calls", []))
+        )
+        arguments = json.dumps({"eventId": "ev-1", "startTime": start, "endTime": end})
+        call = {"id": f"tz-{sid}", "type": "function", "function": {"name": "update_event", "arguments": arguments}}
+        solution[sid].insert(i, {"tool_calls": [call]})
+    log = tmp_path / "e.jsonl"
+    checks = run_chain(loaded, lambda sid: ScriptedModel(solution[sid]), log, "t").checks
+    refused = [
+        e for e in read_events(log) if e["event"] == "execute_tool" and e["gen_ai.tool.call.id"].startswith("tz-")
+    ]
+    assert len(refused) == 2 and all("UTC offset" in e["error"] for e in refused)
+    assert checks["s1"]["calendar_flight_updated"] and checks["s4"]["calendar_has_delayed_times"]
+
+
 def test_until_stops_after_the_session_and_skips_final_checks(tmp_path):
     loaded = load_chain("business_week", "review_insurance_rebook")
     result = run_chain(loaded, lambda sid: ScriptedModel(loaded.solution[sid]), tmp_path / "e.jsonl", "t", until="s3")

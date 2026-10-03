@@ -379,7 +379,7 @@ def test_schedule_appointment(tools):
         tools,
         "schedule_appointment",
         department_id="physical_therapy",
-        preferred_datetime="2025-06-10T09:00:00Z",
+        preferred_datetime="2025-06-10T09:00:00",
         visit_reason="Knee rehab follow-up",
         provider_id="PT-CHEN-007",
     )

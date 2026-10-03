@@ -34,7 +34,9 @@ https://developers.google.com/workspace/calendar/api/v3/reference/events
 (guest permission "Modify event"). Empty description, location and
 conferenceUrl are omitted, as optional Event fields are absent when unset (same
 reference; not stated explicitly, so partly unverified). Times are naive
-local times; an offset in an incoming time is dropped. An event with an empty
+local times. The real API converts an offset to an instant and keeps a zone
+per start and end; this world keeps no zones, so a time with an offset is
+refused rather than silently misread. An event with an empty
 organizer is the person's own. respond_to_event records the person's RSVP in
 response_status and response_comment and works only on events organised by
 someone else. suggest_time sees only the person's calendar, so other

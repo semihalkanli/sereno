@@ -490,9 +490,19 @@ def test_campus_reservation(world, tools):
         facility_category="study_room",
         reservation_duration="1_hour",
         group_size=2,
-        start_time="2025-01-15T09:00Z",
+        start_time="2025-01-15T09:00",
     )
     assert result["start"] == "2025-01-15T09:00"
+    refused = tools.call(
+        "campus_resource_reservation",
+        {
+            "facility_category": "study_room",
+            "reservation_duration": "1_hour",
+            "group_size": 2,
+            "start_time": "2025-01-15T10:00Z",
+        },
+    )
+    assert "UTC offset" in refused.error and not refused.state_changed
 
 
 def test_reservation_day_blocks_last_four_and_eight_hours(world, tools):

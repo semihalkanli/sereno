@@ -135,15 +135,15 @@ def test_get_event_errors_for_unknown_and_cancelled():
     assert _call(world, "get_event", {"eventId": "evt-4"}).error
 
 
-def test_create_event_records_invite_and_drops_offset():
+def test_create_event_records_invite():
     world = _world()
     outcome = _call(
         world,
         "create_event",
         {
             "summary": "Halden & Rowe: brand refresh kickoff",
-            "startTime": "2026-10-15T09:00:00+01:00",
-            "endTime": "2026-10-15T10:00:00+01:00",
+            "startTime": "2026-10-15T09:00:00",
+            "endTime": "2026-10-15T10:00:00",
             "attendees": [{"email": "priya.raman@haldenrowe.co.uk", "displayName": "Priya"}],
             "location": "Video call",
         },
@@ -158,6 +158,16 @@ def test_create_event_records_invite_and_drops_offset():
     assert event.start == datetime(2026, 10, 15, 9) and event.start.tzinfo is None
     assert event.participants == ["priya.raman@haldenrowe.co.uk"]
     assert event.organizer == OWNER and event.response_status == "accepted"
+
+
+@pytest.mark.parametrize("start", ["2026-10-15T09:00:00+01:00", "2026-10-15T08:00:00Z"])
+def test_create_and_update_refuse_an_offset(start):
+    world = _world()
+    created = _call(world, "create_event", {"summary": "Kickoff", "startTime": start, "endTime": "2026-10-15T10:00"})
+    assert "UTC offset" in created.error and not created.state_changed
+    updated = _call(world, "update_event", {"eventId": "evt-2", "startTime": start})
+    assert "UTC offset" in updated.error and not updated.state_changed
+    assert _events(world)["evt-2"].start == datetime(2026, 10, 13, 10, 30)
 
 
 def test_create_event_meet_link_is_deterministic():
