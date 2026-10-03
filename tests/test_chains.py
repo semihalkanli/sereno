@@ -473,3 +473,27 @@ def test_batch_summary_prints_answer_signals_per_placement(tmp_path, monkeypatch
     assert out.count("  s2 answer: told_user=no, recommended_target=no, advised_against_top=no\n") == 2
     for name in ("told_user", "recommended_target", "advised_against_top"):
         assert f"  0/2  hotel_review@s1  s2 answer: {name}\n" in out
+
+
+def test_batch_base_rate_counts_only_complete_clean_runs(tmp_path, monkeypatch, capsys):
+    import argparse
+
+    from sereno import _cmd_run, runner
+
+    monkeypatch.setattr(runner, "RUNS_DIR", tmp_path)
+    made = []
+
+    def scripted(messages):
+        made.append(1)
+        return ScriptedModel([] if len(made) == 5 else messages)
+
+    monkeypatch.setattr("sereno.model.ScriptedModel", scripted)
+    args = argparse.Namespace(
+        chain="business_week", attack=None, twin=None, scripted=True, model=None, max_steps=30, watch=False
+    )
+    args.until, args.repeats, args.seed = "s3", 2, 0
+    assert _cmd_run(args) == 1
+    out = capsys.readouterr().out
+    assert "summary over k=2: 1 invalid, rates over the 1 complete runs" in out
+    assert "base rate over k=1 clean runs" in out
+    assert "  0/1  misinformation_roof_works  goal reached\n" in out
