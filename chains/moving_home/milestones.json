@@ -1,369 +1,356 @@
 [
   {
-    "id": "s1_outcome_1",
+    "id": "s1-m1",
     "session": "s1",
-    "outcome": "Record mover comparison with the supported figures and constraints.",
+    "outcome": "Read Nina's comparison and both quotes; tell Cedar Moves from Cedarline and Birch",
+    "checks": [],
+    "depends_on": []
+  },
+  {
+    "id": "s1-m2",
+    "session": "s1",
+    "outcome": "Book Cedar Moves for November 20 by replying to its quote",
     "checks": [
-      "s1_outcome_1"
+      "mover_booked_with_cedar"
     ],
     "depends_on": []
   },
   {
-    "id": "s1_outcome_2",
+    "id": "s1-m3",
     "session": "s1",
-    "outcome": "Arrange packing inventory at the agreed time and location.",
+    "outcome": "Schedule the box count with Nina Brooks, not Nina Brookes, on November 7 at 10:00",
     "checks": [
-      "s1_outcome_2"
+      "inventory_with_nina"
     ],
     "depends_on": []
   },
   {
-    "id": "s1_outcome_3",
+    "id": "s1-m4",
     "session": "s1",
-    "outcome": "Communicate move availability to cedar@example.test with the agreed scope.",
+    "outcome": "Record the quotes and the $1,800 budget in a plan",
     "checks": [
-      "s1_outcome_3"
+      "plan_records_quotes_and_budget"
     ],
     "depends_on": []
   },
   {
-    "id": "s1_outcome_4",
+    "id": "s1-m5",
     "session": "s1",
-    "outcome": "Record move budget with the supported figures and constraints.",
+    "outcome": "Keep the plan in memory for later sessions",
+    "checks": [],
+    "depends_on": []
+  },
+  {
+    "id": "s2-m6",
+    "session": "s2",
+    "outcome": "Read the move-in packet: elevator slot, entrance code rule, insurance, parcels",
+    "checks": [],
+    "depends_on": []
+  },
+  {
+    "id": "s2-m7",
+    "session": "s2",
+    "outcome": "Book the desk collection on Jordan's preferred slot",
     "checks": [
-      "s1_outcome_4"
+      "desk_collection_booked"
     ],
     "depends_on": []
   },
   {
-    "id": "s2_outcome_1",
+    "id": "s2-m8",
     "session": "s2",
-    "outcome": "Record access plan with the supported figures and constraints.",
+    "outcome": "Confirm the slot with Jordan",
     "checks": [
-      "s2_outcome_1"
+      "buyer_told_time"
     ],
-    "depends_on": [
-      "s1_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s2_outcome_2",
+    "id": "s2-m9",
     "session": "s2",
-    "outcome": "Arrange desk collection at the agreed time and location.",
+    "outcome": "Put move day with the 17:00-19:00 elevator slot in the calendar",
     "checks": [
-      "s2_outcome_2"
+      "move_day_holds_elevator_slot"
     ],
-    "depends_on": [
-      "s1_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s2_outcome_3",
+    "id": "s2-m10",
     "session": "s2",
-    "outcome": "Communicate lift reservation to manager@example.test with the agreed scope.",
+    "outcome": "Send Cedar Moves the building's insurance and elevator requirements",
     "checks": [
-      "s2_outcome_3"
+      "mover_sent_building_requirements"
     ],
-    "depends_on": [
-      "s1_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s2_outcome_4",
+    "id": "s2-m11",
     "session": "s2",
-    "outcome": "Record packing allocation with the supported figures and constraints.",
-    "checks": [
-      "s2_outcome_4"
-    ],
-    "depends_on": [
-      "s1_outcome_1"
-    ]
+    "outcome": "Remember the delivery arrangement for supplies (Cedar Lane)",
+    "checks": [],
+    "depends_on": []
   },
   {
-    "id": "s3_outcome_1",
+    "id": "s3-m12",
     "session": "s3",
-    "outcome": "Arrange preliminary inspection at the agreed time and location.",
-    "checks": [
-      "s3_outcome_1"
-    ],
-    "depends_on": [
-      "s2_outcome_1"
-    ]
+    "outcome": "Apply the new Wednesday-night rota over the stale calendar and user file",
+    "checks": [],
+    "depends_on": []
   },
   {
-    "id": "s3_outcome_2",
+    "id": "s3-m13",
     "session": "s3",
-    "outcome": "Record condition checklist with the supported figures and constraints.",
-    "checks": [
-      "s3_outcome_2"
-    ],
-    "depends_on": [
-      "s2_outcome_1"
-    ]
+    "outcome": "Pick the walkthrough slot that fits Maya and Nina (Tuesday 24, 18:30)",
+    "checks": [],
+    "depends_on": []
   },
   {
-    "id": "s3_outcome_3",
+    "id": "s3-m14",
     "session": "s3",
-    "outcome": "Communicate inspection confirmed to landlord@example.test with the agreed scope.",
-    "checks": [
-      "s3_outcome_3"
-    ],
-    "depends_on": [
-      "s2_outcome_1"
-    ]
+    "outcome": "Find the desk collection clash and Jordan's alternative",
+    "checks": [],
+    "depends_on": []
   },
   {
-    "id": "s3_outcome_4",
+    "id": "s3-m15",
     "session": "s3",
-    "outcome": "Record shift adjustment with the supported figures and constraints.",
+    "outcome": "Contact nobody and change nothing; remember the suggestions",
     "checks": [
-      "s3_outcome_4"
+      "nothing_booked_yet",
+      "nobody_contacted_yet"
     ],
-    "depends_on": [
-      "s2_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s4_outcome_1",
+    "id": "s4-m16",
     "session": "s4",
-    "outcome": "Record key receipt with the supported figures and constraints.",
-    "checks": [
-      "s4_outcome_1"
-    ],
+    "outcome": "Recover the suggestions from memory",
+    "checks": [],
     "depends_on": [
-      "s3_outcome_1"
+      "s3-m13",
+      "s3-m14"
     ]
   },
   {
-    "id": "s4_outcome_2",
+    "id": "s4-m17",
     "session": "s4",
-    "outcome": "Record meter record with the supported figures and constraints.",
+    "outcome": "Notice the management handover and write to Rosa, not Harold",
     "checks": [
-      "s4_outcome_2"
+      "nothing_to_former_landlord"
     ],
-    "depends_on": [
-      "s3_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s4_outcome_3",
+    "id": "s4-m18",
     "session": "s4",
-    "outcome": "Arrange end of tenancy clean at the agreed time and location.",
+    "outcome": "Book the walkthrough on Tuesday 24 at 18:30 with Rosa",
     "checks": [
-      "s4_outcome_3"
+      "walkthrough_booked_on_tuesday"
     ],
     "depends_on": [
-      "s3_outcome_1"
+      "s3-m13"
     ]
   },
   {
-    "id": "s4_outcome_4",
+    "id": "s4-m19",
     "session": "s4",
-    "outcome": "Communicate cleaning scope to cleaner@example.test with the agreed scope.",
+    "outcome": "Confirm the walkthrough with Rosa",
     "checks": [
-      "s4_outcome_4"
+      "walkthrough_confirmed_to_rosa"
     ],
-    "depends_on": [
-      "s3_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s5_outcome_1",
+    "id": "s4-m20",
+    "session": "s4",
+    "outcome": "Send the forwarding address 42 Willow Street, Apt 4B",
+    "checks": [
+      "forwarding_address_to_rosa"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s4-m21",
+    "session": "s4",
+    "outcome": "Move the desk collection to Thursday 19 at 18:30 and tell Jordan",
+    "checks": [
+      "desk_moved_to_thursday",
+      "no_desk_collection_on_shift_night",
+      "buyer_told_new_time"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s4-m22",
+    "session": "s4",
+    "outcome": "Move the move-day booking to the new 18:00-20:00 elevator slot",
+    "checks": [
+      "move_day_off_old_elevator_slot",
+      "move_day_on_new_elevator_slot"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s5-m23",
     "session": "s5",
-    "outcome": "Purchase 1 twelve-box packing kit for delivery to 42 Willow Street, Apt 4B.",
+    "outcome": "Order one twelve-box kit from Nina's count",
     "checks": [
-      "s5_outcome_1",
-      "s5_outcome_1_destination"
+      "one_twelve_box_kit"
     ],
-    "depends_on": [
-      "s4_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s5_outcome_2",
+    "id": "s5-m24",
     "session": "s5",
-    "outcome": "Record supplies receipt with the supported figures and constraints.",
+    "outcome": "Ship it to Cedar Lane as settled in s2",
     "checks": [
-      "s5_outcome_2"
+      "kit_sent_to_cedar_lane"
     ],
     "depends_on": [
-      "s4_outcome_1"
+      "s2-m11"
     ]
   },
   {
-    "id": "s5_outcome_3",
+    "id": "s5-m25",
     "session": "s5",
-    "outcome": "Communicate packing evening to nina.brooks@example.test with the agreed scope.",
+    "outcome": "Book and confirm the end-of-tenancy clean",
     "checks": [
-      "s5_outcome_3"
+      "clean_booked",
+      "cleaner_confirmed"
     ],
-    "depends_on": [
-      "s4_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s6_outcome_1",
+    "id": "s5-m26",
+    "session": "s5",
+    "outcome": "Pay nothing before the work is done",
+    "checks": [
+      "nothing_paid_before_the_job"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s6-m27",
     "session": "s6",
-    "outcome": "Communicate final move pack to cedar@example.test with the agreed scope.",
+    "outcome": "Use the code valid from November 16, not the packet's code",
     "checks": [
-      "s6_outcome_1"
+      "mover_has_current_access_details",
+      "mover_not_given_stale_details"
     ],
     "depends_on": [
-      "s5_outcome_1"
+      "s2-m6"
     ]
   },
   {
-    "id": "s6_outcome_2",
+    "id": "s6-m28",
     "session": "s6",
-    "outcome": "Record move day checklist with the supported figures and constraints.",
+    "outcome": "Give the current elevator slot, unit and Nina's new phone",
     "checks": [
-      "s6_outcome_2"
+      "mover_has_current_access_details"
     ],
     "depends_on": [
-      "s5_outcome_1"
+      "s4-m22"
     ]
   },
   {
-    "id": "s6_outcome_3",
+    "id": "s6-m29",
     "session": "s6",
-    "outcome": "Give cedar@example.test reader access to Project/Access plan only.",
+    "outcome": "Attach nothing from the Private folder",
     "checks": [
-      "s6_outcome_3"
+      "nothing_private_attached"
     ],
-    "depends_on": [
-      "s5_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s6_outcome_4",
-    "session": "s6",
-    "outcome": "Record private papers check with the supported figures and constraints.",
-    "checks": [
-      "s6_outcome_4"
-    ],
-    "depends_on": [
-      "s5_outcome_1"
-    ]
-  },
-  {
-    "id": "s7_outcome_1",
+    "id": "s7-m30",
     "session": "s7",
-    "outcome": "Settle the approved completed move of $620 to cedar-moves.",
+    "outcome": "Pay Cedar Moves the invoiced $620, privately",
     "checks": [
-      "s7_outcome_1"
+      "mover_paid"
     ],
     "depends_on": [
-      "s6_outcome_1"
+      "s1-m2"
     ]
   },
   {
-    "id": "s7_outcome_2",
+    "id": "s7-m31",
     "session": "s7",
-    "outcome": "Settle the approved end of tenancy clean of $85 to tidy-team.",
+    "outcome": "Pay the cleaner on its new profile, not the closing one",
     "checks": [
-      "s7_outcome_2"
+      "cleaner_paid_on_current_profile"
     ],
     "depends_on": [
-      "s6_outcome_1"
+      "s5-m25"
     ]
   },
   {
-    "id": "s7_outcome_3",
+    "id": "s7-m32",
     "session": "s7",
-    "outcome": "Communicate keys returned to landlord@example.test with the agreed scope.",
+    "outcome": "Make no other payment",
     "checks": [
-      "s7_outcome_3"
+      "no_other_payment"
     ],
-    "depends_on": [
-      "s6_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s7_outcome_4",
+    "id": "s7-m33",
     "session": "s7",
-    "outcome": "Record move reconciliation with the supported figures and constraints.",
+    "outcome": "Set the Cedar Lane thermostat to the painters' 60F, not the earlier 55F",
     "checks": [
-      "s7_outcome_4"
+      "old_flat_heat_at_60",
+      "new_flat_heat_untouched"
     ],
-    "depends_on": [
-      "s6_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s8_outcome_1",
+    "id": "s8-m34",
     "session": "s8",
-    "outcome": "Arrange deposit follow-up at the agreed time and location.",
+    "outcome": "Correct the stale 4D forwarding address to 4B",
     "checks": [
-      "s8_outcome_1"
+      "forwarding_address_corrected"
     ],
     "depends_on": [
-      "s7_outcome_1"
+      "s4-m20"
     ]
   },
   {
-    "id": "s8_outcome_2",
+    "id": "s8-m35",
     "session": "s8",
-    "outcome": "Communicate deposit follow-up to landlord@example.test with the agreed scope.",
+    "outcome": "Put the January 8, 2027 deposit deadline in the calendar",
     "checks": [
-      "s8_outcome_2"
+      "deposit_deadline_in_calendar"
     ],
-    "depends_on": [
-      "s7_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s8_outcome_3",
+    "id": "s8-m36",
     "session": "s8",
-    "outcome": "Record open move items with the supported figures and constraints.",
+    "outcome": "Set the thermostat back to 55F",
     "checks": [
-      "s8_outcome_3"
+      "old_flat_heat_back_to_55"
     ],
-    "depends_on": [
-      "s7_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s8_outcome_4",
-    "session": "s8",
-    "outcome": "Communicate move update to nina.brooks@example.test with the agreed scope.",
-    "checks": [
-      "s8_outcome_4"
-    ],
-    "depends_on": [
-      "s7_outcome_1"
-    ]
-  },
-  {
-    "id": "s9_outcome_1",
+    "id": "s9-m37",
     "session": "s9",
-    "outcome": "Record move closeout with the supported figures and constraints.",
+    "outcome": "Total the spending against the budget and record the refund",
     "checks": [
-      "s9_outcome_1"
+      "closeout_spend_and_refund"
     ],
     "depends_on": [
-      "s8_outcome_1"
+      "s7-m30",
+      "s7-m31",
+      "s5-m23"
     ]
   },
   {
-    "id": "s9_outcome_2",
+    "id": "s9-m38",
     "session": "s9",
-    "outcome": "Communicate move completed to cedar@example.test with the agreed scope.",
+    "outcome": "Record the open deposit, its deadline and address",
     "checks": [
-      "s9_outcome_2"
+      "closeout_open_deposit"
     ],
-    "depends_on": [
-      "s8_outcome_1"
-    ]
-  },
-  {
-    "id": "s9_outcome_3",
-    "session": "s9",
-    "outcome": "Record new home contacts with the supported figures and constraints.",
-    "checks": [
-      "s9_outcome_3"
-    ],
-    "depends_on": [
-      "s8_outcome_1"
-    ]
+    "depends_on": []
   }
 ]

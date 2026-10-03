@@ -1,0 +1,158 @@
+{
+  "id": "entrance_keypad_replaced",
+  "objective": "The building's front desk, the sender of the monthly code, replaces the failed service entrance keypad the evening before the mover's request and announces a new code. The agent must give the mover the new code, not the November code it already holds.",
+  "changes": {
+    "s6": [
+      {
+        "op": "add",
+        "app": "mail",
+        "collection": "emails",
+        "item": {
+          "id": "msg-keypad-replaced",
+          "sender": "frontdesk@willowstreetres.com",
+          "to": [
+            "maya.brooks@example.test",
+            "residents@willowstreetres.com"
+          ],
+          "subject": "Service entrance keypad replaced",
+          "body": "Dear residents,\n\nThe alley service entrance keypad failed this morning and was replaced. From now on the code is 5126; the November code 7093 no longer opens the door. Please pass this on to anyone moving in this week.\n\nWillow Street front desk",
+          "sent_at": "2026-11-18T17:40:00",
+          "folder": "inbox",
+          "read": false
+        }
+      }
+    ]
+  },
+  "checks": {
+    "s6": [
+      {
+        "name": "mover_has_current_access_details",
+        "check": "count",
+        "app": "mail",
+        "collection": "emails",
+        "new": true,
+        "where": {
+          "folder": {
+            "eq": "sent"
+          },
+          "to": {
+            "regex": "cedarmovesil\\.com"
+          },
+          "body": {
+            "regex": [
+              "\\b5126\\b",
+              "18[:.]00|\\b6(?:[:.]00)?(?:\\s*(?:-|–|to)\\s*8(?:[:.]00)?)?\\s*(pm|p\\.m\\.)",
+              "\\b4B\\b",
+              "773\\D{0,3}555\\D?0193"
+            ]
+          }
+        },
+        "equals": 1
+      },
+      {
+        "name": "mover_not_given_stale_details",
+        "check": "count",
+        "app": "mail",
+        "collection": "emails",
+        "new": true,
+        "where": {
+          "folder": {
+            "eq": "sent"
+          },
+          "to": {
+            "regex": "cedarmovesil\\.com"
+          },
+          "body": {
+            "regex": [
+              "\\b4471\\b|\\b7093\\b|555\\D?0148"
+            ]
+          }
+        },
+        "equals": 0
+      }
+    ]
+  },
+  "solution": {
+    "s6": [
+      {
+        "tool_calls": [
+          {
+            "id": "c74",
+            "type": "function",
+            "function": {
+              "name": "memory",
+              "arguments": "{\"command\": \"view\", \"path\": \"/memories/move.md\"}"
+            }
+          },
+          {
+            "id": "c75",
+            "type": "function",
+            "function": {
+              "name": "listEmails",
+              "arguments": "{\"query\": \"after:2026/11/14\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "c76",
+            "type": "function",
+            "function": {
+              "name": "getEmailById",
+              "arguments": "{\"email_id\": \"msg-cedar-final\"}"
+            }
+          },
+          {
+            "id": "c77",
+            "type": "function",
+            "function": {
+              "name": "getEmailById",
+              "arguments": "{\"email_id\": \"msg-code-change\"}"
+            }
+          },
+          {
+            "id": "c78",
+            "type": "function",
+            "function": {
+              "name": "getEmailById",
+              "arguments": "{\"email_id\": \"msg-keypad-replaced\"}"
+            }
+          },
+          {
+            "id": "c79",
+            "type": "function",
+            "function": {
+              "name": "getEmailById",
+              "arguments": "{\"email_id\": \"msg-nina-phone\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "c80",
+            "type": "function",
+            "function": {
+              "name": "replyToEmail",
+              "arguments": "{\"email_id\": \"msg-cedar-final\", \"body\": \"Hi Luis,\\n\\nHere are the move-day details for Friday, November 20:\\n\\n- Elevator at 42 Willow Street: 6:00 pm to 8:00 pm\\n- Truck: alley loading zone behind the building; use the alley service entrance, code 5126\\n- Apartment: 4B (4th floor)\\n- Meeting the crew at Willow: my sister Nina Brooks, (773) 555-0193\\n\\nThanks, see Andre at Cedar Lane at 3:30 pm.\\n\\nMaya\"}"
+            }
+          },
+          {
+            "id": "c81",
+            "type": "function",
+            "function": {
+              "name": "memory",
+              "arguments": "{\"command\": \"str_replace\", \"path\": \"/memories/move.md\", \"old_str\": \"Open: \", \"new_str\": \"Nov 19: sent Cedar the move-day details: elevator 18:00-20:00, entrance code 5126 (keypad replaced Nov 18), Apt 4B, Nina at Willow on (773) 555-0193 (her new number). Crew starts Cedar Lane 15:30.\\nOpen: \"}"
+            }
+          }
+        ]
+      },
+      {
+        "content": "Sent Cedar Moves the move-day details with the new entrance code 5126 (the keypad was replaced)."
+      }
+    ]
+  }
+}
