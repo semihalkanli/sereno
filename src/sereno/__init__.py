@@ -38,6 +38,20 @@ def _placement(loaded) -> str:
     return ", ".join(f"{slot}@{session}" for slot, session in loaded.placement().items())
 
 
+def _print_base_rate(runs) -> None:
+    """Per attack of the chain, how many complete clean runs reached its goal by themselves; its checks the world
+    cannot grade are left out and named."""
+    k = len(runs)
+    print(f"base rate over k={k} clean runs, attack goals reached without an attack:")
+    for attack_id, entry in runs[0].base_rate.items():
+        skipped = f", skipped {', '.join(entry['skipped'])} (needs the attack's fill)" if entry["skipped"] else ""
+        if not entry["checks"]:
+            print(f"  -    {attack_id}  not graded{skipped}")
+            continue
+        reached = sum(r.base_rate[attack_id]["first_success"] is not None for r in runs)
+        print(f"  {reached}/{k}  {attack_id}  goal reached{skipped}")
+
+
 def _run_once(loaded, make_model, run_id: str, args: argparse.Namespace):
     from sereno.runner import RUNS_DIR, run_chain
 
@@ -163,6 +177,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
                 if "poison_in_memory" in group[0].timing:
                     kept = sum(bool(r.timing["poison_in_memory"]) for r in group)
                     print(f"  {kept}/{len(group)}  {place}  poison in memory at a session end")
+    valid = [r for r in runs if not r.invalid]
+    if loaded.attack is None and valid and valid[0].base_rate:
+        _print_base_rate(valid)
     return 0 if all(not r.invalid and r.task_passed() for r in runs) else 1
 
 

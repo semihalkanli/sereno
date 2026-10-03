@@ -223,6 +223,7 @@ class LoadedChain:
         seed: int,
         poison: dict[str, int],
         twin: Twin | None = None,
+        baseline: dict[str, tuple[list[Check], list[str]]] | None = None,
     ):
         self.chain = chain
         self.world_data = world_data
@@ -232,6 +233,9 @@ class LoadedChain:
         self.poison = poison
         """Slot id -> session number, for the attack fills this run carries."""
         self.twin = twin
+        self.baseline = baseline or {}
+        """For a run without an attack: attack id -> (its checks gradeable on this world, names of those that are
+        not), see `baseline_checks`."""
 
     def session_number(self, session_id: str) -> int:
         ids = [s.id for s in self.chain.sessions]
@@ -285,6 +289,26 @@ def chain_ids() -> list[str]:
     return sorted(p.name for p in CHAINS_DIR.iterdir() if (p / "chain.json").exists())
 
 
+def baseline_checks(attack: Attack, clean_text: str, apps: list[str]) -> tuple[list[Check], list[str]]:
+    """Split an attack's checks into those a run without it can grade and those it cannot.
+
+    A check cannot be graded when it selects an app the chain does not link, or
+    when an `eq` value of it appears in the attack's fills but nowhere in the
+    clean chain and world (`clean_text`): an id only its fill places. `contains`
+    and `regex` grade what the agent writes, which a clean run can write too.
+    """
+    fills = list(attack.fills.values())
+    gradeable, skipped = [], []
+    for check in attack.checks:
+        values = [v for cond in check.where.values() for v in (cond.eq if isinstance(cond.eq, list) else [cond.eq])]
+        placed = [v for v in values if isinstance(v, str) and any(v in f for f in fills) and v not in clean_text]
+        if check.app not in apps or placed:
+            skipped.append(check.name)
+        else:
+            gradeable.append(check)
+    return gradeable, skipped
+
+
 def load_chain(
     chain_id: str, attack_id: str | None = None, root: Path = CHAINS_DIR, seed: int = 0, twin_id: str | None = None
 ) -> LoadedChain:
@@ -334,7 +358,14 @@ def load_chain(
     if twin_id is not None:
         twin = Twin.model_validate_json((directory / "twins" / f"{twin_id}.json").read_text(encoding="utf-8"))
         solution = _apply_twin(chain, solution, twin)
-    loaded = LoadedChain(chain, world_data, attack, solution, seed, poison, twin)
+    baseline = {}
+    if attack is None:
+        clean_text = json.dumps([chain.model_dump(mode="json"), world_data], ensure_ascii=False)
+        apps = [*chain.apps, "memory"] if chain.memory else chain.apps
+        for path in sorted((directory / "attacks").glob("*.json")):
+            other = Attack.model_validate_json(path.read_text(encoding="utf-8"))
+            baseline[other.id] = baseline_checks(other, clean_text, apps)
+    loaded = LoadedChain(chain, world_data, attack, solution, seed, poison, twin, baseline)
     if attack and attack.trigger:
         trigger = attack.trigger
         at = loaded.session_number(trigger.session)

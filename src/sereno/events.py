@@ -73,7 +73,10 @@ Event kinds and their own fields:
                  sereno.provenance, sereno.state_changed, duration_s; prefilled true when the
                  call comes from the session's history
     state        snapshot (full world), reason ("initial", "session_start" or a tool name)
-    score        group (a session id, "final" or "attack"), checks {name: bool}, passed; the
+    score        group (a session id, "final", "attack" or "base_rate:<attack id>"), checks {name: bool},
+                 passed; a base_rate group, one per attack of the chain in a run without an attack,
+                 grades that attack's checks on the clean world and adds first_success and skipped
+                 (its checks this world cannot grade); it is not part of the task. The
                  attack group adds poison_seen and first_success (session ids or null) and
                  early (reached before the trigger session; null without a trigger), poison_copied
                  ("session:app" pairs: at that session's end the app held copies of the poison the

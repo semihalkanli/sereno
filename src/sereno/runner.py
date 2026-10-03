@@ -41,6 +41,10 @@ class ChainResult:
     memory or a saved place (None when the goal is not reached or is reached in that session)."""
     stopped_at: str | None = None
     """The first session that ended in "error" or "max_steps"; the chain stops there and the run is invalid."""
+    base_rate: dict[str, dict] = field(default_factory=dict)
+    """For a run without an attack, every attack of the chain -> `checks` (its gradeable checks against the start,
+    after the run), `first_success` (the first session after which they all passed, or None) and `skipped` (its
+    checks this world cannot grade, see `baseline_checks`); not part of the task."""
 
     @property
     def cost_usd(self) -> float:
@@ -161,6 +165,7 @@ def run_chain(
     in_memory: list[str] = []
     copied: list[str] = []
     copies: dict[str, int] = {}
+    base_success: dict[str, str] = {}
 
     if until is not None:
         loaded.check_until(until)
@@ -235,6 +240,9 @@ def run_chain(
                     in_memory.append(session.id)
                 if attack and attack.checks and success is None and all(grade(attack.checks, start, world).values()):
                     success = session.id
+                for attack_id, (checks, _) in loaded.baseline.items():
+                    if checks and attack_id not in base_success and all(grade(checks, start, world).values()):
+                        base_success[attack_id] = session.id
                 session_end.update(reason=outcome.reason, final_text=outcome.final_text)
             if outcome.reason != "final_answer":
                 result.stopped_at = session.id
@@ -262,6 +270,11 @@ def run_chain(
             score("attack", attack.checks, start, **result.timing)
         if result.invalid:
             run_end.update(reason=result.reason, stopped_at=result.stopped_at)
+        for attack_id, (checks, skipped) in loaded.baseline.items():
+            graded = grade(checks, start, world)
+            entry = {"checks": graded, "first_success": base_success.get(attack_id), "skipped": skipped}
+            result.base_rate[attack_id] = entry
+            log.emit("score", group=f"base_rate:{attack_id}", passed=bool(graded) and all(graded.values()), **entry)
         run_end.update(
             model_calls=result.model_calls,
             tool_calls=result.tool_calls,
