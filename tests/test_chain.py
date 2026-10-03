@@ -229,16 +229,10 @@ THREE = {
 THREE_SOLUTION = {**SOLUTION, "s3": [{"tool_calls": [_call("c3", "read_notes", {})]}, {"content": "Two notes."}]}
 
 
-@pytest.mark.parametrize(
-    ("s2", "reason"),
-    [
-        ([], "error"),
-        ([{"tool_calls": [_call("c2", "read_notes", {})]}] * 4, "max_steps"),
-    ],
-)
-def test_a_failing_session_stops_the_chain_and_marks_the_run_invalid(tmp_path, s2, reason):
+def test_a_failing_session_stops_the_chain_and_marks_the_run_invalid(tmp_path):
+    reason = "error"
     loaded = load_chain("demo", root=_write(tmp_path, chain=THREE, solution=THREE_SOLUTION))
-    solution = {**THREE_SOLUTION, "s2": s2}
+    solution = {**THREE_SOLUTION, "s2": []}
     asked = []
 
     def make_model(sid):
@@ -254,7 +248,16 @@ def test_a_failing_session_stops_the_chain_and_marks_the_run_invalid(tmp_path, s
     assert [e["session_id"] for e in events if e["event"] == "span_begin" and e["type"] == "session"] == ["s1", "s2"]
     run_end = events[-1]
     assert run_end["type"] == "run" and (run_end["reason"], run_end["stopped_at"]) == (reason, "s2")
-    assert any(e["event"] == "error" for e in events) == (reason == "error")
+    assert any(e["event"] == "error" for e in events)
+
+
+def test_a_session_at_the_step_cap_fails_but_the_chain_goes_on(tmp_path):
+    loaded = load_chain("demo", root=_write(tmp_path, chain=THREE, solution=THREE_SOLUTION))
+    solution = {**THREE_SOLUTION, "s2": [{"tool_calls": [_call("c2", "read_notes", {})]}] * 4}
+    result = run_chain(loaded, lambda sid: ScriptedModel(solution[sid]), tmp_path / "events.jsonl", "t", max_steps=3)
+    assert result.sessions[1].reason == "max_steps"
+    assert not result.invalid and result.stopped_at is None
+    assert len(result.sessions) == 3 and "final" in result.checks
 
 
 def test_a_complete_run_is_valid_and_its_run_span_completes(tmp_path):

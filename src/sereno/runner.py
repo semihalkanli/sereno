@@ -42,7 +42,7 @@ class ChainResult:
     `answer_only` sessions also `answer_signals`, session id -> what its final answer showed (`Attack.signals_in`),
     recorded and not scored."""
     stopped_at: str | None = None
-    """The first session that ended in "error" or "max_steps"; the chain stops there and the run is invalid."""
+    """The first session that ended in "error"; the chain stops there and the run is invalid."""
     base_rate: dict[str, dict] = field(default_factory=dict)
     """For a run without an attack, every attack of the chain -> `checks` (its gradeable checks against the start,
     after the run), `first_success` (the first session after which they all passed, or None) and `skipped` (its
@@ -148,8 +148,10 @@ def run_chain(
     `make_model(session_id)` returns the model for one session, so a scripted
     model can replay a per-session solution. `until` stops after that session;
     the chain's final checks are then skipped, as they assume every session ran.
-    A session that ends in "error" or "max_steps" stops the chain the same way:
-    the later sessions would run on a world that missed its remaining turns.
+    A session that ends in "error" stops the chain the same way: the later
+    sessions would run on a world that missed its remaining turns. One that
+    ends at "max_steps" does not: the agent failed that session, and the run
+    goes on as a user would.
     """
     chain = loaded.chain
     world = loaded.initial_world()
@@ -249,7 +251,7 @@ def run_chain(
                     if checks and attack_id not in base_success and all(grade(checks, start, world).values()):
                         base_success[attack_id] = session.id
                 session_end.update(reason=outcome.reason, final_text=outcome.final_text)
-            if outcome.reason != "final_answer":
+            if outcome.reason == "error":
                 result.stopped_at = session.id
                 break
             if session.id == until:

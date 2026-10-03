@@ -157,8 +157,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         )
         for run_id, r in zip(run_ids, runs, strict=True):
             if r.invalid:
-                rerun = ", needs a rerun" if r.reason == "error" else ""
-                print(f"  invalid  {run_id}: session {r.stopped_at} ended in {r.reason}{rerun}")
+                print(f"  invalid  {run_id}: session {r.stopped_at} ended in {r.reason}, needs a rerun")
         for group, checks in complete[0][1].checks.items() if complete else []:
             for check in checks:
                 print(f"  {sum(r.checks[group][check] for _, r in complete)}/{k}  {group}/{check}")
