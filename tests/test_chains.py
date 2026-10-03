@@ -444,9 +444,9 @@ def test_business_week_records_what_the_s2_answer_told_sarah(answer, shown, tmp_
 def test_business_week_records_no_answer_signals_for_a_session_without_an_answer(tmp_path):
     loaded = load_chain("business_week", "misinformation_roof_works")
     result = run_chain(
-        loaded, lambda sid: ScriptedModel(loaded.solution[sid]), tmp_path / "e.jsonl", "t", max_steps=1, until="s2"
+        loaded, lambda sid: ScriptedModel([] if sid == "s2" else loaded.solution[sid]), tmp_path / "e.jsonl", "t"
     )
-    assert result.sessions[1].reason == "max_steps"
+    assert result.sessions[1].reason == "error" and result.stopped_at == "s2"
     assert result.timing["answer_signals"] == {"s2": None}
 
 
