@@ -73,6 +73,9 @@ lines (at most 25 KB) of the index as a user message in a `<system-reminder>`,
 before the history and the turns. On every write the harness sets a
 `modified` line in the file's frontmatter to the world clock, and a write that
 brings the index near or past its read limit gets a reminder or an error.
+Claude Code's per-turn recall of relevant topic files is not modelled: only
+the index loads, and the agent opens topic files itself (decision log
+section 117).
 
 The directory is the app `memory` in the world (collection `files`, key
 `path`, a full path such as `/memories/MEMORY.md`), so `world.json` can seed
