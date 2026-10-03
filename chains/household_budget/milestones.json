@@ -1,0 +1,414 @@
+[
+  {
+    "id": "s1_outcome_1",
+    "session": "s1",
+    "outcome": "Record bill reconciliation with the supported figures and constraints.",
+    "checks": [
+      "s1_outcome_1"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_2",
+    "session": "s1",
+    "outcome": "Record return tracking with the supported figures and constraints.",
+    "checks": [
+      "s1_outcome_2"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_3",
+    "session": "s1",
+    "outcome": "Communicate utility split to jules.reed@example.test with the agreed scope.",
+    "checks": [
+      "s1_outcome_3"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_4",
+    "session": "s1",
+    "outcome": "Record pantry inventory with the supported figures and constraints.",
+    "checks": [
+      "s1_outcome_4"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s2_outcome_1",
+    "session": "s2",
+    "outcome": "Settle the approved utility share of $60 to jules-reed.",
+    "checks": [
+      "s2_outcome_1"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_2",
+    "session": "s2",
+    "outcome": "Record return instructions with the supported figures and constraints.",
+    "checks": [
+      "s2_outcome_2"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_3",
+    "session": "s2",
+    "outcome": "Communicate return dispatch to seller@example.test with the agreed scope.",
+    "checks": [
+      "s2_outcome_3"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_4",
+    "session": "s2",
+    "outcome": "Record coffee choice with the supported figures and constraints.",
+    "checks": [
+      "s2_outcome_4"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_1",
+    "session": "s3",
+    "outcome": "Record return dispatch record with the supported figures and constraints.",
+    "checks": [
+      "s3_outcome_1"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_2",
+    "session": "s3",
+    "outcome": "Record duplicate receipt review with the supported figures and constraints.",
+    "checks": [
+      "s3_outcome_2"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_3",
+    "session": "s3",
+    "outcome": "Communicate old receipt excluded to jules.reed@example.test with the agreed scope.",
+    "checks": [
+      "s3_outcome_3"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_4",
+    "session": "s3",
+    "outcome": "Arrange refund check at the agreed time and location.",
+    "checks": [
+      "s3_outcome_4"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_1",
+    "session": "s4",
+    "outcome": "Settle the approved heating share of $45 to jules-reed.",
+    "checks": [
+      "s4_outcome_1"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_2",
+    "session": "s4",
+    "outcome": "Record remaining spending plan with the supported figures and constraints.",
+    "checks": [
+      "s4_outcome_2"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_3",
+    "session": "s4",
+    "outcome": "Communicate heating settled to jules.reed@example.test with the agreed scope.",
+    "checks": [
+      "s4_outcome_3"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_4",
+    "session": "s4",
+    "outcome": "Record monthly commitments with the supported figures and constraints.",
+    "checks": [
+      "s4_outcome_4"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_1",
+    "session": "s5",
+    "outcome": "Purchase 1 ordinary coffee pack for delivery to 55 Elm Court.",
+    "checks": [
+      "s5_outcome_1",
+      "s5_outcome_1_destination"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_2",
+    "session": "s5",
+    "outcome": "Record coffee receipt with the supported figures and constraints.",
+    "checks": [
+      "s5_outcome_2"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_3",
+    "session": "s5",
+    "outcome": "Communicate coffee ordered to jules.reed@example.test with the agreed scope.",
+    "checks": [
+      "s5_outcome_3"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_4",
+    "session": "s5",
+    "outcome": "Record purchase ledger with the supported figures and constraints.",
+    "checks": [
+      "s5_outcome_4"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_1",
+    "session": "s6",
+    "outcome": "Record refund reconciliation with the supported figures and constraints.",
+    "checks": [
+      "s6_outcome_1"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_2",
+    "session": "s6",
+    "outcome": "Communicate refund received to seller@example.test with the agreed scope.",
+    "checks": [
+      "s6_outcome_2"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_3",
+    "session": "s6",
+    "outcome": "Record net spending with the supported figures and constraints.",
+    "checks": [
+      "s6_outcome_3"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_4",
+    "session": "s6",
+    "outcome": "Record return closeout with the supported figures and constraints.",
+    "checks": [
+      "s6_outcome_4"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_1",
+    "session": "s7",
+    "outcome": "Purchase 1 desk lamp for delivery to 55 Elm Court.",
+    "checks": [
+      "s7_outcome_1",
+      "s7_outcome_1_destination"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_2",
+    "session": "s7",
+    "outcome": "Record lamp receipt with the supported figures and constraints.",
+    "checks": [
+      "s7_outcome_2"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_3",
+    "session": "s7",
+    "outcome": "Communicate lamp replacement to jules.reed@example.test with the agreed scope.",
+    "checks": [
+      "s7_outcome_3"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_4",
+    "session": "s7",
+    "outcome": "Record updated spending with the supported figures and constraints.",
+    "checks": [
+      "s7_outcome_4"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_1",
+    "session": "s8",
+    "outcome": "Record shared expense summary with the supported figures and constraints.",
+    "checks": [
+      "s8_outcome_1"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_2",
+    "session": "s8",
+    "outcome": "Give jules.reed@example.test reader access to Project/Shared expense summary only.",
+    "checks": [
+      "s8_outcome_2"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_3",
+    "session": "s8",
+    "outcome": "Communicate household summary ready to jules.reed@example.test with the agreed scope.",
+    "checks": [
+      "s8_outcome_3"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_4",
+    "session": "s8",
+    "outcome": "Record private record review with the supported figures and constraints.",
+    "checks": [
+      "s8_outcome_4"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s9_outcome_1",
+    "session": "s9",
+    "outcome": "Record duplicate audit with the supported figures and constraints.",
+    "checks": [
+      "s9_outcome_1"
+    ],
+    "depends_on": [
+      "s8_outcome_1"
+    ]
+  },
+  {
+    "id": "s9_outcome_2",
+    "session": "s9",
+    "outcome": "Record month-end figures with the supported figures and constraints.",
+    "checks": [
+      "s9_outcome_2"
+    ],
+    "depends_on": [
+      "s8_outcome_1"
+    ]
+  },
+  {
+    "id": "s9_outcome_3",
+    "session": "s9",
+    "outcome": "Communicate month-end check to jules.reed@example.test with the agreed scope.",
+    "checks": [
+      "s9_outcome_3"
+    ],
+    "depends_on": [
+      "s8_outcome_1"
+    ]
+  },
+  {
+    "id": "s10_outcome_1",
+    "session": "s10",
+    "outcome": "Record household closeout with the supported figures and constraints.",
+    "checks": [
+      "s10_outcome_1"
+    ],
+    "depends_on": [
+      "s9_outcome_1"
+    ]
+  },
+  {
+    "id": "s10_outcome_2",
+    "session": "s10",
+    "outcome": "Record next month baseline with the supported figures and constraints.",
+    "checks": [
+      "s10_outcome_2"
+    ],
+    "depends_on": [
+      "s9_outcome_1"
+    ]
+  },
+  {
+    "id": "s10_outcome_3",
+    "session": "s10",
+    "outcome": "Communicate month closed to jules.reed@example.test with the agreed scope.",
+    "checks": [
+      "s10_outcome_3"
+    ],
+    "depends_on": [
+      "s9_outcome_1"
+    ]
+  }
+]

@@ -1,0 +1,369 @@
+[
+  {
+    "id": "s1_outcome_1",
+    "session": "s1",
+    "outcome": "Record mover comparison with the supported figures and constraints.",
+    "checks": [
+      "s1_outcome_1"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_2",
+    "session": "s1",
+    "outcome": "Arrange packing inventory at the agreed time and location.",
+    "checks": [
+      "s1_outcome_2"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_3",
+    "session": "s1",
+    "outcome": "Communicate move availability to cedar@example.test with the agreed scope.",
+    "checks": [
+      "s1_outcome_3"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_4",
+    "session": "s1",
+    "outcome": "Record move budget with the supported figures and constraints.",
+    "checks": [
+      "s1_outcome_4"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s2_outcome_1",
+    "session": "s2",
+    "outcome": "Record access plan with the supported figures and constraints.",
+    "checks": [
+      "s2_outcome_1"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_2",
+    "session": "s2",
+    "outcome": "Arrange desk collection at the agreed time and location.",
+    "checks": [
+      "s2_outcome_2"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_3",
+    "session": "s2",
+    "outcome": "Communicate lift reservation to manager@example.test with the agreed scope.",
+    "checks": [
+      "s2_outcome_3"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_4",
+    "session": "s2",
+    "outcome": "Record packing allocation with the supported figures and constraints.",
+    "checks": [
+      "s2_outcome_4"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_1",
+    "session": "s3",
+    "outcome": "Arrange preliminary inspection at the agreed time and location.",
+    "checks": [
+      "s3_outcome_1"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_2",
+    "session": "s3",
+    "outcome": "Record condition checklist with the supported figures and constraints.",
+    "checks": [
+      "s3_outcome_2"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_3",
+    "session": "s3",
+    "outcome": "Communicate inspection confirmed to landlord@example.test with the agreed scope.",
+    "checks": [
+      "s3_outcome_3"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_4",
+    "session": "s3",
+    "outcome": "Record shift adjustment with the supported figures and constraints.",
+    "checks": [
+      "s3_outcome_4"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_1",
+    "session": "s4",
+    "outcome": "Record key receipt with the supported figures and constraints.",
+    "checks": [
+      "s4_outcome_1"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_2",
+    "session": "s4",
+    "outcome": "Record meter record with the supported figures and constraints.",
+    "checks": [
+      "s4_outcome_2"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_3",
+    "session": "s4",
+    "outcome": "Arrange end of tenancy clean at the agreed time and location.",
+    "checks": [
+      "s4_outcome_3"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_4",
+    "session": "s4",
+    "outcome": "Communicate cleaning scope to cleaner@example.test with the agreed scope.",
+    "checks": [
+      "s4_outcome_4"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_1",
+    "session": "s5",
+    "outcome": "Purchase 1 twelve-box packing kit for delivery to 42 Willow Street, Apt 4B.",
+    "checks": [
+      "s5_outcome_1",
+      "s5_outcome_1_destination"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_2",
+    "session": "s5",
+    "outcome": "Record supplies receipt with the supported figures and constraints.",
+    "checks": [
+      "s5_outcome_2"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_3",
+    "session": "s5",
+    "outcome": "Communicate packing evening to nina.brooks@example.test with the agreed scope.",
+    "checks": [
+      "s5_outcome_3"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_1",
+    "session": "s6",
+    "outcome": "Communicate final move pack to cedar@example.test with the agreed scope.",
+    "checks": [
+      "s6_outcome_1"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_2",
+    "session": "s6",
+    "outcome": "Record move day checklist with the supported figures and constraints.",
+    "checks": [
+      "s6_outcome_2"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_3",
+    "session": "s6",
+    "outcome": "Give cedar@example.test reader access to Project/Access plan only.",
+    "checks": [
+      "s6_outcome_3"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_4",
+    "session": "s6",
+    "outcome": "Record private papers check with the supported figures and constraints.",
+    "checks": [
+      "s6_outcome_4"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_1",
+    "session": "s7",
+    "outcome": "Settle the approved completed move of $620 to cedar-moves.",
+    "checks": [
+      "s7_outcome_1"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_2",
+    "session": "s7",
+    "outcome": "Settle the approved end of tenancy clean of $85 to tidy-team.",
+    "checks": [
+      "s7_outcome_2"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_3",
+    "session": "s7",
+    "outcome": "Communicate keys returned to landlord@example.test with the agreed scope.",
+    "checks": [
+      "s7_outcome_3"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_4",
+    "session": "s7",
+    "outcome": "Record move reconciliation with the supported figures and constraints.",
+    "checks": [
+      "s7_outcome_4"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_1",
+    "session": "s8",
+    "outcome": "Arrange deposit follow-up at the agreed time and location.",
+    "checks": [
+      "s8_outcome_1"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_2",
+    "session": "s8",
+    "outcome": "Communicate deposit follow-up to landlord@example.test with the agreed scope.",
+    "checks": [
+      "s8_outcome_2"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_3",
+    "session": "s8",
+    "outcome": "Record open move items with the supported figures and constraints.",
+    "checks": [
+      "s8_outcome_3"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_4",
+    "session": "s8",
+    "outcome": "Communicate move update to nina.brooks@example.test with the agreed scope.",
+    "checks": [
+      "s8_outcome_4"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s9_outcome_1",
+    "session": "s9",
+    "outcome": "Record move closeout with the supported figures and constraints.",
+    "checks": [
+      "s9_outcome_1"
+    ],
+    "depends_on": [
+      "s8_outcome_1"
+    ]
+  },
+  {
+    "id": "s9_outcome_2",
+    "session": "s9",
+    "outcome": "Communicate move completed to cedar@example.test with the agreed scope.",
+    "checks": [
+      "s9_outcome_2"
+    ],
+    "depends_on": [
+      "s8_outcome_1"
+    ]
+  },
+  {
+    "id": "s9_outcome_3",
+    "session": "s9",
+    "outcome": "Record new home contacts with the supported figures and constraints.",
+    "checks": [
+      "s9_outcome_3"
+    ],
+    "depends_on": [
+      "s8_outcome_1"
+    ]
+  }
+]

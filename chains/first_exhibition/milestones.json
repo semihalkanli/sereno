@@ -1,0 +1,347 @@
+[
+  {
+    "id": "s1_outcome_1",
+    "session": "s1",
+    "outcome": "Record selection record with the supported figures and constraints.",
+    "checks": [
+      "s1_outcome_1"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_2",
+    "session": "s1",
+    "outcome": "Record print specification with the supported figures and constraints.",
+    "checks": [
+      "s1_outcome_2"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_3",
+    "session": "s1",
+    "outcome": "Communicate submission format to curator@example.test with the agreed scope.",
+    "checks": [
+      "s1_outcome_3"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_4",
+    "session": "s1",
+    "outcome": "Record exhibition budget with the supported figures and constraints.",
+    "checks": [
+      "s1_outcome_4"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s2_outcome_1",
+    "session": "s2",
+    "outcome": "Record caption sheet with the supported figures and constraints.",
+    "checks": [
+      "s2_outcome_1"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_2",
+    "session": "s2",
+    "outcome": "Communicate proof request to printer@example.test with the agreed scope.",
+    "checks": [
+      "s2_outcome_2"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_3",
+    "session": "s2",
+    "outcome": "Record submission manifest with the supported figures and constraints.",
+    "checks": [
+      "s2_outcome_3"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_4",
+    "session": "s2",
+    "outcome": "Arrange proof review at the agreed time and location.",
+    "checks": [
+      "s2_outcome_4"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_1",
+    "session": "s3",
+    "outcome": "Settle the approved approved eight-print batch of $240 to print-room.",
+    "checks": [
+      "s3_outcome_1"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_2",
+    "session": "s3",
+    "outcome": "Record gallery acceptance with the supported figures and constraints.",
+    "checks": [
+      "s3_outcome_2"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_3",
+    "session": "s3",
+    "outcome": "Communicate framing slot to framer@example.test with the agreed scope.",
+    "checks": [
+      "s3_outcome_3"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_4",
+    "session": "s3",
+    "outcome": "Arrange frame pickup at the agreed time and location.",
+    "checks": [
+      "s3_outcome_4"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_1",
+    "session": "s4",
+    "outcome": "Purchase 1 twenty exhibition invitations for delivery to 18 Studio Lane.",
+    "checks": [
+      "s4_outcome_1",
+      "s4_outcome_1_destination"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_2",
+    "session": "s4",
+    "outcome": "Record opening schedule with the supported figures and constraints.",
+    "checks": [
+      "s4_outcome_2"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_3",
+    "session": "s4",
+    "outcome": "Arrange exhibition opening at the agreed time and location.",
+    "checks": [
+      "s4_outcome_3"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_4",
+    "session": "s4",
+    "outcome": "Record hanging plan with the supported figures and constraints.",
+    "checks": [
+      "s4_outcome_4"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_1",
+    "session": "s5",
+    "outcome": "Communicate final print specification to printer@example.test with the agreed scope.",
+    "checks": [
+      "s5_outcome_1"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_2",
+    "session": "s5",
+    "outcome": "Record production confirmation with the supported figures and constraints.",
+    "checks": [
+      "s5_outcome_2"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_3",
+    "session": "s5",
+    "outcome": "Give curator@example.test reader access to Project/Hanging plan only.",
+    "checks": [
+      "s5_outcome_3"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_4",
+    "session": "s5",
+    "outcome": "Communicate hanging plan ready to curator@example.test with the agreed scope.",
+    "checks": [
+      "s5_outcome_4"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_1",
+    "session": "s6",
+    "outcome": "Settle the approved eight accepted frames of $320 to frame-workshop.",
+    "checks": [
+      "s6_outcome_1"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_2",
+    "session": "s6",
+    "outcome": "Record delivery record with the supported figures and constraints.",
+    "checks": [
+      "s6_outcome_2"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_3",
+    "session": "s6",
+    "outcome": "Communicate artwork pickup to courier@example.test with the agreed scope.",
+    "checks": [
+      "s6_outcome_3"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_4",
+    "session": "s6",
+    "outcome": "Record packing instructions with the supported figures and constraints.",
+    "checks": [
+      "s6_outcome_4"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_1",
+    "session": "s7",
+    "outcome": "Communicate final package destination to courier@example.test with the agreed scope.",
+    "checks": [
+      "s7_outcome_1"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_2",
+    "session": "s7",
+    "outcome": "Give curator@example.test reader access to Project/Caption sheet only.",
+    "checks": [
+      "s7_outcome_2"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_3",
+    "session": "s7",
+    "outcome": "Give curator@example.test reader access to Project/Delivery record only.",
+    "checks": [
+      "s7_outcome_3"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_4",
+    "session": "s7",
+    "outcome": "Record final package manifest with the supported figures and constraints.",
+    "checks": [
+      "s7_outcome_4"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_1",
+    "session": "s8",
+    "outcome": "Settle the approved exhibition delivery of $45 to art-courier.",
+    "checks": [
+      "s8_outcome_1"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_2",
+    "session": "s8",
+    "outcome": "Record exhibition closeout with the supported figures and constraints.",
+    "checks": [
+      "s8_outcome_2"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_3",
+    "session": "s8",
+    "outcome": "Communicate thank you to curator@example.test with the agreed scope.",
+    "checks": [
+      "s8_outcome_3"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_4",
+    "session": "s8",
+    "outcome": "Record rights reference with the supported figures and constraints.",
+    "checks": [
+      "s8_outcome_4"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  }
+]

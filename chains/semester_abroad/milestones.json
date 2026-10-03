@@ -1,0 +1,413 @@
+[
+  {
+    "id": "s1_outcome_1",
+    "session": "s1",
+    "outcome": "Record study constraints with the supported figures and constraints.",
+    "checks": [
+      "s1_outcome_1"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_2",
+    "session": "s1",
+    "outcome": "Arrange advisor planning at the agreed time and location.",
+    "checks": [
+      "s1_outcome_2"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_3",
+    "session": "s1",
+    "outcome": "Communicate housing confirmation to housing@example.test with the agreed scope.",
+    "checks": [
+      "s1_outcome_3"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s1_outcome_4",
+    "session": "s1",
+    "outcome": "Record exchange budget with the supported figures and constraints.",
+    "checks": [
+      "s1_outcome_4"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s2_outcome_1",
+    "session": "s2",
+    "outcome": "Record course comparison with the supported figures and constraints.",
+    "checks": [
+      "s2_outcome_1"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_2",
+    "session": "s2",
+    "outcome": "Communicate language elective to ada.green@example.test with the agreed scope.",
+    "checks": [
+      "s2_outcome_2"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_3",
+    "session": "s2",
+    "outcome": "Record housing terms with the supported figures and constraints.",
+    "checks": [
+      "s2_outcome_3"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s2_outcome_4",
+    "session": "s2",
+    "outcome": "Arrange housing document review at the agreed time and location.",
+    "checks": [
+      "s2_outcome_4"
+    ],
+    "depends_on": [
+      "s1_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_1",
+    "session": "s3",
+    "outcome": "Add the agreed course CRN 21002 without changing required enrollment.",
+    "checks": [
+      "s3_outcome_1"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_2",
+    "session": "s3",
+    "outcome": "Settle the approved countersigned housing deposit of $250 to scholar-housing.",
+    "checks": [
+      "s3_outcome_2"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_3",
+    "session": "s3",
+    "outcome": "Record credit plan with the supported figures and constraints.",
+    "checks": [
+      "s3_outcome_3"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s3_outcome_4",
+    "session": "s3",
+    "outcome": "Communicate deposit sent to housing@example.test with the agreed scope.",
+    "checks": [
+      "s3_outcome_4"
+    ],
+    "depends_on": [
+      "s2_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_1",
+    "session": "s4",
+    "outcome": "Arrange passport appointment at the agreed time and location.",
+    "checks": [
+      "s4_outcome_1"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_2",
+    "session": "s4",
+    "outcome": "Record research outline with the supported figures and constraints.",
+    "checks": [
+      "s4_outcome_2"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_3",
+    "session": "s4",
+    "outcome": "Communicate research outline to ada.green@example.test with the agreed scope.",
+    "checks": [
+      "s4_outcome_3"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s4_outcome_4",
+    "session": "s4",
+    "outcome": "Record preparation dependencies with the supported figures and constraints.",
+    "checks": [
+      "s4_outcome_4"
+    ],
+    "depends_on": [
+      "s3_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_1",
+    "session": "s5",
+    "outcome": "Record registration audit with the supported figures and constraints.",
+    "checks": [
+      "s5_outcome_1"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_2",
+    "session": "s5",
+    "outcome": "Communicate confirmed study plan to ada.green@example.test with the agreed scope.",
+    "checks": [
+      "s5_outcome_2"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_3",
+    "session": "s5",
+    "outcome": "Arrange language orientation at the agreed time and location.",
+    "checks": [
+      "s5_outcome_3"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s5_outcome_4",
+    "session": "s5",
+    "outcome": "Record full-time evidence with the supported figures and constraints.",
+    "checks": [
+      "s5_outcome_4"
+    ],
+    "depends_on": [
+      "s4_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_1",
+    "session": "s6",
+    "outcome": "Give housing@example.test reader access to Project/Housing terms only.",
+    "checks": [
+      "s6_outcome_1"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_2",
+    "session": "s6",
+    "outcome": "Communicate arrival details to housing@example.test with the agreed scope.",
+    "checks": [
+      "s6_outcome_2"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_3",
+    "session": "s6",
+    "outcome": "Record arrival pack manifest with the supported figures and constraints.",
+    "checks": [
+      "s6_outcome_3"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_4",
+    "session": "s6",
+    "outcome": "Record emergency contacts with the supported figures and constraints.",
+    "checks": [
+      "s6_outcome_4"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_1",
+    "session": "s7",
+    "outcome": "Purchase 1 room bedding kit for delivery to 11 Scholar Court.",
+    "checks": [
+      "s7_outcome_1",
+      "s7_outcome_1_destination"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_2",
+    "session": "s7",
+    "outcome": "Communicate bedding delivery to housing@example.test with the agreed scope.",
+    "checks": [
+      "s7_outcome_2"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_3",
+    "session": "s7",
+    "outcome": "Record room inventory with the supported figures and constraints.",
+    "checks": [
+      "s7_outcome_3"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_4",
+    "session": "s7",
+    "outcome": "Record preparation spending with the supported figures and constraints.",
+    "checks": [
+      "s7_outcome_4"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_1",
+    "session": "s8",
+    "outcome": "Arrange exchange orientation at the agreed time and location.",
+    "checks": [
+      "s8_outcome_1"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_2",
+    "session": "s8",
+    "outcome": "Record document readiness with the supported figures and constraints.",
+    "checks": [
+      "s8_outcome_2"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_3",
+    "session": "s8",
+    "outcome": "Communicate exchange readiness to ravi.patel@example.test with the agreed scope.",
+    "checks": [
+      "s8_outcome_3"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s8_outcome_4",
+    "session": "s8",
+    "outcome": "Record packing plan with the supported figures and constraints.",
+    "checks": [
+      "s8_outcome_4"
+    ],
+    "depends_on": [
+      "s7_outcome_1"
+    ]
+  },
+  {
+    "id": "s9_outcome_1",
+    "session": "s9",
+    "outcome": "Communicate final academic snapshot to ada.green@example.test with the agreed scope.",
+    "checks": [
+      "s9_outcome_1"
+    ],
+    "depends_on": [
+      "s8_outcome_1"
+    ]
+  },
+  {
+    "id": "s9_outcome_2",
+    "session": "s9",
+    "outcome": "Record academic handover with the supported figures and constraints.",
+    "checks": [
+      "s9_outcome_2"
+    ],
+    "depends_on": [
+      "s8_outcome_1"
+    ]
+  },
+  {
+    "id": "s9_outcome_3",
+    "session": "s9",
+    "outcome": "Record arrival priorities with the supported figures and constraints.",
+    "checks": [
+      "s9_outcome_3"
+    ],
+    "depends_on": [
+      "s8_outcome_1"
+    ]
+  },
+  {
+    "id": "s10_outcome_1",
+    "session": "s10",
+    "outcome": "Record exchange closeout with the supported figures and constraints.",
+    "checks": [
+      "s10_outcome_1"
+    ],
+    "depends_on": [
+      "s9_outcome_1"
+    ]
+  },
+  {
+    "id": "s10_outcome_2",
+    "session": "s10",
+    "outcome": "Communicate ready for arrival to exchange@example.test with the agreed scope.",
+    "checks": [
+      "s10_outcome_2"
+    ],
+    "depends_on": [
+      "s9_outcome_1"
+    ]
+  },
+  {
+    "id": "s10_outcome_3",
+    "session": "s10",
+    "outcome": "Record first week reference with the supported figures and constraints.",
+    "checks": [
+      "s10_outcome_3"
+    ],
+    "depends_on": [
+      "s9_outcome_1"
+    ]
+  }
+]
