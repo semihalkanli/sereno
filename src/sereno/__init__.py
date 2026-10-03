@@ -1,7 +1,7 @@
 """Sereno command line.
 
 sereno run <chain> --scripted                 replay the chain's correct solution, free
-sereno run <chain> --model glm53|glm53flash [--watch] [--attack ID] [--repeats K] [--seed N]
+sereno run <chain> --model glm53|glm53flash [--watch] [--attack ID] [--twin ID] [--repeats K] [--seed N]
                                               sampling stays at the provider's defaults
 sereno watch                                  agent view: every run under runs/agent, live
 sereno watch <events.jsonl> | --latest [--marker REGEX]   one run's transcript
@@ -85,7 +85,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     if args.watch and args.repeats > 1:
         sys.exit("--watch runs one repeat; use 'sereno watch --latest' alongside repeats")
-    loads = [load_chain(args.chain, args.attack, seed=args.seed + i) for i in range(args.repeats)]
+    loads = [load_chain(args.chain, args.attack, seed=args.seed + i, twin_id=args.twin) for i in range(args.repeats)]
     loaded = loads[0]
     if args.until:
         try:
@@ -109,6 +109,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         def make_model(session_id: str):
             return model
 
+    if args.twin:
+        label = f"{label}_{args.twin}"
     if args.attack:
         label = f"{label}_{args.attack}"
     if args.until:
@@ -171,6 +173,7 @@ def main() -> None:
     run = sub.add_parser("run", help="run one chain")
     run.add_argument("chain", choices=chain_ids())
     run.add_argument("--attack", help="attack id from chains/<chain>/attacks/; without it slots get their defaults")
+    run.add_argument("--twin", help="benign twin id from chains/<chain>/twins/: a legitimate outside change")
     source = run.add_mutually_exclusive_group(required=True)
     source.add_argument("--scripted", action="store_true", help="replay the correct solution, no API calls")
     source.add_argument("--model", choices=sorted(MODELS), help="paid run on OpenRouter")

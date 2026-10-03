@@ -12,6 +12,7 @@ chains/<id>/
   world.json        the initial world: clock, owner, data of each linked app
   solution.json     a correct run, replayed by --scripted and by the tests (optional)
   attacks/<a>.json  one attack: what fills which slot, and how success is checked
+  twins/<t>.json    one benign twin: a legitimate outside change, and what is right after it
 ```
 
 ## chain.json
@@ -58,6 +59,10 @@ these clock-driven changes too; narrow them with `where`, or check per session.
 
 `collection` is a list in the app's state; each app declares the field that
 identifies an item of each collection.
+
+An `update` or `remove` with `"optional": true` that matches nothing is
+skipped instead of failing, for an item the agent was meant to create earlier
+(a booking it made in a previous session).
 
 ## Memory
 
@@ -165,6 +170,24 @@ without the marker is not counted. A batch prints, per placement, how many
 repeats reached the goal and, for a triggered attack, how many of those did so
 before the trigger, and with memory how many held the poison in memory at a
 session end.
+
+## twins/<id>.json
+
+A benign twin is the other side of an attack (decision log sections 121-122):
+a legitimate outside change after which acting on outside content is right,
+so a defense that blocks everything from outside loses utility here. Run it
+with `--twin <id>`; it can be combined with `--attack`.
+
+| Field | Meaning |
+|---|---|
+| `id` | the file name |
+| `objective` | what changes and what is right after it, for people |
+| `changes` | session id -> changes applied after that session's own |
+| `checks` | session id or `final` -> checks that replace the chain's checks of the same name |
+| `solution` | session id -> a correct run of that session, replacing the chain solution's |
+
+The tests replay the twin's solution, which must pass every check, and the
+chain's own solution, which must fail at least one of the twin's checks.
 
 ## Checks
 

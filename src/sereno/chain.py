@@ -41,6 +41,8 @@ class Change(BaseModel, extra="forbid"):
     item: dict[str, Any] | None = None
     match: dict[str, Any] | None = None
     set: dict[str, Any] | None = None
+    optional: bool = False
+    """An update or remove that matches nothing is skipped, for an item the agent was meant to create."""
 
 
 class Call(BaseModel, extra="forbid"):
@@ -109,6 +111,38 @@ class Attack(BaseModel, extra="forbid"):
     checks: list[Check] = []
 
 
+class Twin(BaseModel, extra="forbid"):
+    """A benign twin: a legitimate outside change after which acting on outside content is right."""
+
+    id: str
+    objective: str
+    changes: dict[str, list[Change]] = {}
+    """Session id -> changes applied after that session's own."""
+    checks: dict[str, list[Check]] = {}
+    """Session id or "final" -> checks that replace the chain's checks of the same name."""
+    solution: dict[str, list] = {}
+    """Session id -> a correct run of that session, replacing the chain solution's."""
+
+
+def _apply_twin(chain: Chain, solution: dict | None, twin: Twin) -> dict | None:
+    sessions = {s.id: s for s in chain.sessions}
+    unknown = sorted((set(twin.changes) | set(twin.solution) | (set(twin.checks) - {"final"})) - set(sessions))
+    if unknown:
+        raise ValueError(f"twin {twin.id} names sessions the chain lacks: {', '.join(unknown)}")
+    for sid, changes in twin.changes.items():
+        sessions[sid].changes.extend(changes)
+    for group, checks in twin.checks.items():
+        own = chain.final_checks if group == "final" else sessions[group].checks
+        index = {c.name: i for i, c in enumerate(own)}
+        for check in checks:
+            if check.name not in index:
+                raise ValueError(f"twin {twin.id}: {group} has no check {check.name!r} to replace")
+            own[index[check.name]] = check
+    if twin.solution and solution is None:
+        raise ValueError(f"twin {twin.id} gives a solution but the chain has none")
+    return {**solution, **twin.solution} if solution is not None else None
+
+
 def _fill_slots(value: Any, fills: dict[str, str], used: set[str]) -> Any:
     if isinstance(value, str):
 
@@ -164,7 +198,7 @@ def _join(names: list[str]) -> str:
 
 
 class LoadedChain:
-    """A chain with its slots filled, ready to run: the chain, its world data and the attack, if any."""
+    """A chain with its slots filled, ready to run: the chain, its world data, and the attack and twin, if any."""
 
     def __init__(
         self,
@@ -174,6 +208,7 @@ class LoadedChain:
         solution: list | None,
         seed: int,
         poison: dict[str, int],
+        twin: Twin | None = None,
     ):
         self.chain = chain
         self.world_data = world_data
@@ -182,6 +217,7 @@ class LoadedChain:
         self.seed = seed
         self.poison = poison
         """Slot id -> session number, for the attack fills this run carries."""
+        self.twin = twin
 
     def session_number(self, session_id: str) -> int:
         ids = [s.id for s in self.chain.sessions]
@@ -235,7 +271,9 @@ def chain_ids() -> list[str]:
     return sorted(p.name for p in CHAINS_DIR.iterdir() if (p / "chain.json").exists())
 
 
-def load_chain(chain_id: str, attack_id: str | None = None, root: Path = CHAINS_DIR, seed: int = 0) -> LoadedChain:
+def load_chain(
+    chain_id: str, attack_id: str | None = None, root: Path = CHAINS_DIR, seed: int = 0, twin_id: str | None = None
+) -> LoadedChain:
     """Load a chain with its slots filled. `seed` picks the attack's placement when it lists `one_of`."""
     directory = root / chain_id
     raw_chain = json.loads((directory / "chain.json").read_text(encoding="utf-8"))
@@ -278,7 +316,11 @@ def load_chain(chain_id: str, attack_id: str | None = None, root: Path = CHAINS_
         raise ValueError(f"chain id {chain.id!r} does not match its directory {chain_id!r}")
     if not chain.memory and (chain.user_file or any(s.user_file is not None for s in chain.sessions)):
         raise ValueError(f"chain {chain_id} has a user file but no memory; the user file is loaded with memory")
-    loaded = LoadedChain(chain, world_data, attack, solution, seed, poison)
+    twin = None
+    if twin_id is not None:
+        twin = Twin.model_validate_json((directory / "twins" / f"{twin_id}.json").read_text(encoding="utf-8"))
+        solution = _apply_twin(chain, solution, twin)
+    loaded = LoadedChain(chain, world_data, attack, solution, seed, poison, twin)
     if attack and attack.trigger:
         trigger = attack.trigger
         at = loaded.session_number(trigger.session)
@@ -313,6 +355,8 @@ def apply_change(world: World, change: Change) -> None:
     match = {f: TypeAdapter(kind.model_fields[f].annotation).validate_python(v) for f, v in change.match.items()}
     hits = [i for i, it in enumerate(items) if all(getattr(it, f) == v for f, v in match.items())]
     if not hits:
+        if change.optional:
+            return
         raise ValueError(f"{change.op}: nothing in {change.app}.{change.collection} matches {change.match}")
     for index in reversed(hits):
         if change.op == "remove":

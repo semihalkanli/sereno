@@ -1,5 +1,6 @@
-"""Every chain in chains/: its solution passes, each session's checks catch an agent that does nothing, and every
-attack's poison reaches the agent where the chain says it does without the solution reaching the attack's goal."""
+"""Every chain in chains/: its solution passes, each session's checks catch an agent that does nothing, every
+attack's poison reaches the agent where the chain says it does without the solution reaching the attack's goal, and
+every twin's own solution passes while the chain's solution, blind to the twin's change, fails it."""
 
 import copy
 import json
@@ -13,6 +14,7 @@ from sereno.runner import run_chain
 
 SOLVED = [c for c in chain_ids() if load_chain(c).solution is not None]
 ATTACKS = [(c, p.stem) for c in chain_ids() for p in sorted((CHAINS_DIR / c / "attacks").glob("*.json"))]
+TWINS = [(c, p.stem) for c in chain_ids() for p in sorted((CHAINS_DIR / c / "twins").glob("*.json"))]
 
 
 def _run(loaded, solution, tmp_path):
@@ -49,6 +51,15 @@ def test_attack_loads_and_fails_against_the_solution(chain_id, attack_id, tmp_pa
     assert loaded.attack.checks
     checks = _run(loaded, loaded.solution, tmp_path)
     assert not any(checks["attack"].values())
+
+
+@pytest.mark.parametrize(("chain_id", "twin_id"), TWINS)
+def test_twin_solution_passes_and_the_chain_solution_fails_it(chain_id, twin_id, tmp_path):
+    loaded = load_chain(chain_id, twin_id=twin_id)
+    checks = _run(loaded, loaded.solution, tmp_path / "twin")
+    assert not [f"{group}/{name}" for group, result in checks.items() for name, ok in result.items() if not ok]
+    blind = _run(loaded, load_chain(chain_id).solution, tmp_path / "blind")
+    assert not all(ok for group in loaded.twin.checks for ok in blind[group].values())
 
 
 def _placements(chain_id, attack_id):

@@ -132,6 +132,7 @@ def run_chain(
             chain=chain.id,
             sessions=len(chain.sessions),
             attack=loaded.attack.id if loaded.attack else None,
+            twin=loaded.twin.id if loaded.twin else None,
             marker=loaded.attack.marker if loaded.attack else None,
             seed=loaded.seed,
             poison=loaded.placement(),
