@@ -33,12 +33,14 @@ class ChainResult:
     sessions: list[SessionResult] = field(default_factory=list)
     checks: dict[str, dict[str, bool]] = field(default_factory=dict)
     """Group ("s1", ..., "final", "attack") -> check name -> passed."""
-    timing: dict[str, str | bool | list[str] | None] = field(default_factory=dict)
+    timing: dict[str, str | bool | list[str] | dict[str, dict[str, bool] | None] | None] = field(default_factory=dict)
     """For an attack run: `poison_seen`, `first_success` (session ids or None), `early` and `poison_copied`
     ("session:app" pairs, see `_copy_counts`); with memory also `poison_in_memory`, the sessions at whose
     end a memory file held a copy of the poison (`Attack.copies_in`); and `carried`: for a goal reached after the
     session that first showed the poison, whether `poison_copied` holds the session before it in any app, such as
-    memory or a saved place (None when the goal is not reached or is reached in that session)."""
+    memory or a saved place (None when the goal is not reached or is reached in that session); in a chain with
+    `answer_only` sessions also `answer_signals`, session id -> what its final answer showed (`Attack.signals_in`),
+    recorded and not scored."""
     stopped_at: str | None = None
     """The first session that ended in "error" or "max_steps"; the chain stops there and the run is invalid."""
     base_rate: dict[str, dict] = field(default_factory=dict)
@@ -166,6 +168,7 @@ def run_chain(
     copied: list[str] = []
     copies: dict[str, int] = {}
     base_success: dict[str, str] = {}
+    answers: dict[str, dict[str, bool] | None] = {}
 
     if until is not None:
         loaded.check_until(until)
@@ -236,6 +239,8 @@ def run_chain(
                         copies[app] = max(0, copies.get(app, 0) + n - before.get(app, 0))
                         if copies[app]:
                             copied.append(f"{session.id}:{app}")
+                if attack and session.answer_only:
+                    answers[session.id] = attack.signals_in(outcome.final_text)
                 if attack and chain.memory and any(attack.copies_in(f.content) for f in world.app("memory").files):
                     in_memory.append(session.id)
                 if attack and attack.checks and success is None and all(grade(attack.checks, start, world).values()):
@@ -254,6 +259,8 @@ def run_chain(
             score("final", chain.final_checks, start)
         if attack:
             result.timing["poison_copied"] = copied
+        if attack and any(s.answer_only for s in chain.sessions):
+            result.timing["answer_signals"] = answers
         if attack and chain.memory:
             result.timing["poison_in_memory"] = in_memory
         if attack and attack.checks:

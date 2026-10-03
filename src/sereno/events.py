@@ -84,7 +84,9 @@ Event kinds and their own fields:
                  memory also poison_in_memory (the sessions at whose end a memory file held such a
                  copy); carried (for a goal reached after the session that first showed the poison,
                  whether any app held such a copy at that session's start; null when the goal is not
-                 reached or is reached in that session)
+                 reached or is reached in that session); in a chain with answer_only sessions also
+                 answer_signals (session id -> {told_user, and the attack's answer_signals by name} read in
+                 that session's final answer, null when it ended without one; recorded, not scored)
     error        message, type (exception class), traceback, attempts (model call attempts,
                  when the error came from the model)
     approval     reserved for the gate: decision, explanation, gen_ai.tool.call.id

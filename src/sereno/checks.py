@@ -78,6 +78,12 @@ def _adapter(model: type[BaseModel], field: str) -> TypeAdapter:
     return TypeAdapter(model.model_fields[field].annotation)
 
 
+def matches_all(regex: str | list[str], text: str) -> bool:
+    """The `regex` operator: every pattern is found in `text`, ignoring case."""
+    patterns = [regex] if isinstance(regex, str) else regex
+    return all(re.search(p, text, re.IGNORECASE) for p in patterns)
+
+
 def _holds(item: BaseModel, field: str, cond: Cond) -> bool:
     if field not in type(item).model_fields:
         raise ValueError(f"{type(item).__name__} has no field {field!r}")
@@ -101,10 +107,8 @@ def _holds(item: BaseModel, field: str, cond: Cond) -> bool:
         limit = _adapter(type(item), field).validate_python(bound)
         if not COMPARE[op](value, limit):
             return False
-    if cond.regex is not None:
-        patterns = [cond.regex] if isinstance(cond.regex, str) else cond.regex
-        if not all(re.search(p, str(value), re.IGNORECASE) for p in patterns):
-            return False
+    if cond.regex is not None and not matches_all(cond.regex, str(value)):
+        return False
     if cond.empty is not None and (not value) != cond.empty:
         return False
     return True

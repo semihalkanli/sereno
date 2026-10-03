@@ -33,6 +33,12 @@ def _print_checks(result) -> None:
             print(f"  {'PASS' if ok else 'FAIL'}  {group}/{check}")
 
 
+def _print_answers(result) -> None:
+    for session, signals in result.timing.get("answer_signals", {}).items():
+        shown = ", ".join(f"{n}={'yes' if v else 'no'}" for n, v in signals.items()) if signals else "no answer"
+        print(f"  {session} answer: {shown}")
+
+
 def _placement(loaded) -> str:
     """Where the attack's poison lands in this run, e.g. 'hotel_review@s2'."""
     return ", ".join(f"{slot}@{session}" for slot, session in loaded.placement().items())
@@ -88,6 +94,7 @@ def _run_once(loaded, make_model, run_id: str, args: argparse.Namespace):
     if result.invalid:
         print(f"  INVALID: session {result.stopped_at} ended in {result.reason}, the chain stopped there")
     _print_checks(result)
+    _print_answers(result)
     print(f"log: {log_path}")
     return result
 
@@ -177,6 +184,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
                 if "poison_in_memory" in group[0].timing:
                     kept = sum(bool(r.timing["poison_in_memory"]) for r in group)
                     print(f"  {kept}/{len(group)}  {place}  poison in memory at a session end")
+                for session in group[0].timing.get("answer_signals", {}):
+                    answers = [r.timing["answer_signals"][session] for r in group]
+                    for name in ["told_user", *(s.name for s in loaded.attack.answer_signals)]:
+                        shown = sum(bool(a and a[name]) for a in answers)
+                        print(f"  {shown}/{len(group)}  {place}  {session} answer: {name}")
+                    missing = sum(a is None for a in answers)
+                    if missing:
+                        print(f"  {missing}/{len(group)}  {place}  {session} ended without an answer")
     valid = [r for r in runs if not r.invalid]
     if loaded.attack is None and valid and valid[0].base_rate:
         _print_base_rate(valid)
