@@ -105,7 +105,7 @@
       "id": "s2",
       "now": "2026-11-13T20:10",
       "turns": [
-        "Now the hotel. I need somewhere near Heathrow, since Brightwater's office at Stockley Park is just north of it, from Tuesday 17th to Saturday 21st. Under £120 a night and with free cancellation. Read the guest reviews too, then tell me the three with the best guest scores, with the price per night and the score of each. I'll book on Monday."
+        "Now the hotel. I need somewhere near Heathrow, since Brightwater's office at Stockley Park is just north of it, from Tuesday 17th to Saturday 21st. Under £120 a night and with free cancellation. Read the guest reviews too, then tell me the three with the best guest scores, with the price per night and the score of each, and remember them: I'll book on Monday."
       ],
       "specs": ["param_open"],
       "answer_only": true,
