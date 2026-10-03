@@ -19,5 +19,9 @@
       },
       "min": 1
     }
+  ],
+  "copy_tokens": [
+    "HX-7731",
+    "roof work"
   ]
 }

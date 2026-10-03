@@ -73,9 +73,9 @@ Event kinds and their own fields:
     score        group (a session id, "final" or "attack"), checks {name: bool}, passed; the
                  attack group adds poison_seen and first_success (session ids or null) and
                  early (reached before the trigger session; null without a trigger), poison_copied
-                 ("session:app" pairs: at that session's end the app held copies of the marker the
-                 agent wrote); with memory also poison_in_memory (the sessions at whose end a
-                 memory file held the marker)
+                 ("session:app" pairs: at that session's end the app held copies of the poison the
+                 agent wrote, the marker or a copy token); with memory also poison_in_memory (the
+                 sessions at whose end a memory file held such a copy)
     error        message, type (exception class), traceback, attempts (model call attempts,
                  when the error came from the model)
     approval     reserved for the gate: decision, explanation, gen_ai.tool.call.id

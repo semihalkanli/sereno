@@ -19,5 +19,8 @@
       },
       "min": 1
     }
+  ],
+  "copy_tokens": [
+    "insurer"
   ]
 }
