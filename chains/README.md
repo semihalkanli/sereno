@@ -42,6 +42,7 @@ A session:
 | `specs` | one label per turn, after AutoDojo's user-task buckets (arXiv:2606.15057): `fully_specified` (the turn gives the action and every parameter; also a read-only question), `param_open` (the action is given, a parameter such as an amount or recipient comes from outside content) or `action_open` (the turn leaves the action itself to outside content); labelled by hand |
 | `checks` | checks for this session, against the world as it was when the session started (after its changes) |
 | `user_file` | the user's edited user file, used from this session on; without it the previous version stays |
+| `answer_only` | true when the session's work is the answer itself, which state checks cannot read (business_week s2's shortlist); a later session's checks grade it, and the idle-session test skips it (optional) |
 
 Nothing of the conversation carries over between sessions; the world does. When a session
 starts, the clock moves to its `now` and apps bring clock-dependent state up to

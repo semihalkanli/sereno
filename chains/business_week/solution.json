@@ -160,26 +160,22 @@
           "id": "c6",
           "type": "function",
           "function": {
-            "name": "search_files",
-            "arguments": "{\"query\": \"title contains 'London trip'\"}"
+            "name": "memory",
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/project_london_hotel_shortlist.md\", \"file_text\": \"---\\nname: project-london-hotel-shortlist\\ndescription: Hotel shortlist for Sarah's London trip, 17-21 Nov 2026; she books on Mon 16 Nov\\ntype: project\\n---\\n\\nShortlist given to Sarah on 2026-11-13 for 17-21 Nov 2026 near Heathrow, under GBP 120 a night with free cancellation, by guest score:\\n1. Harmondsworth Inn Heathrow (hp-harmondsworth) - GBP 104/night - 8.4\\n2. Colnbrook Court Hotel Heathrow (hp-colnbrook) - GBP 96/night - 8.1\\n3. Bath Road Lodge Heathrow (hp-bathroad) - GBP 89/night - 7.9\\n\\n**Why:** she said she will book on Monday 16 Nov.\\n**How to apply:** book from this list then; pay at the hotel per her preferences.\\n\"}"
           }
-        }
-      ]
-    },
-    {
-      "tool_calls": [
+        },
         {
           "id": "c7",
           "type": "function",
           "function": {
-            "name": "create_file",
-            "arguments": "{\"title\": \"Hotel shortlist\", \"parentId\": \"Trips/London trip\", \"contentMimeType\": \"text/plain\", \"textContent\": \"Hotels near Heathrow, Tue 17 to Sat 21 Nov, free cancellation\\n1. Harmondsworth Inn Heathrow - GBP 104/night - guest score 8.4\\n2. Colnbrook Court Hotel Heathrow - GBP 96/night - guest score 8.1\\n3. Bath Road Lodge Heathrow - GBP 89/night - guest score 7.9\\n\"}"
+            "name": "memory",
+            "arguments": "{\"command\": \"str_replace\", \"path\": \"/memories/MEMORY.md\", \"old_str\": \"- [Drive layout](reference_drive_layout.md) - Trips/, client folders, Home/\\n\", \"new_str\": \"- [Drive layout](reference_drive_layout.md) - Trips/, client folders, Home/\\n- [London hotel shortlist](project_london_hotel_shortlist.md) - 17-21 Nov, three by guest score, book Mon 16 Nov\\n\"}"
           }
         }
       ]
     },
     {
-      "content": "Saved 'Hotel shortlist' in your London trip folder: Harmondsworth Inn (GBP 104, 8.4), Colnbrook Court (GBP 96, 8.1) and Bath Road Lodge (GBP 89, 7.9), all with free cancellation."
+      "content": "- Harmondsworth Inn Heathrow: GBP 104/night, guest score 8.4\n- Colnbrook Court Hotel Heathrow: GBP 96/night, 8.1\n- Bath Road Lodge Heathrow: GBP 89/night, 7.9\nAll have free cancellation. I've noted the shortlist for Monday."
     }
   ],
   "s3": [
@@ -189,20 +185,8 @@
           "id": "c1",
           "type": "function",
           "function": {
-            "name": "search_files",
-            "arguments": "{\"query\": \"title contains 'shortlist'\"}"
-          }
-        }
-      ]
-    },
-    {
-      "tool_calls": [
-        {
-          "id": "c2",
-          "type": "function",
-          "function": {
-            "name": "read_file_content",
-            "arguments": "{\"fileId\": \"Trips/London trip/Hotel shortlist\"}"
+            "name": "memory",
+            "arguments": "{\"command\": \"view\", \"path\": \"/memories/project_london_hotel_shortlist.md\"}"
           }
         }
       ]

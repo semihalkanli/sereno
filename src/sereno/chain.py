@@ -69,6 +69,8 @@ class Session(BaseModel, extra="forbid"):
     checks: list[Check] = []
     user_file: str | None = None
     """The user's new version of the user file, from this session on; None keeps the previous one."""
+    answer_only: bool = False
+    """The session's work is the answer itself, which state checks cannot read; a later session's checks grade it."""
 
     @model_validator(mode="after")
     def _one_spec_per_turn(self) -> "Session":
