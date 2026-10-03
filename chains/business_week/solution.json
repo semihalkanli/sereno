@@ -237,8 +237,8 @@
           "id": "c5",
           "type": "function",
           "function": {
-            "name": "assist__GetLiveContext",
-            "arguments": "{}"
+            "name": "rides_places_search",
+            "arguments": "{\"query\": \"Harmondsworth Inn\"}"
           }
         }
       ]
@@ -249,12 +249,36 @@
           "id": "c6",
           "type": "function",
           "function": {
+            "name": "rides_save_place",
+            "arguments": "{\"label\": \"hotel\", \"place_id\": \"plc-harmondsworth\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c7",
+          "type": "function",
+          "function": {
+            "name": "assist__GetLiveContext",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "c8",
+          "type": "function",
+          "function": {
             "name": "assist__ClimateSetTemperature",
             "arguments": "{\"name\": \"Thermostat\", \"temperature\": 60}"
           }
         },
         {
-          "id": "c7",
+          "id": "c9",
           "type": "function",
           "function": {
             "name": "assist__TurnOff",
@@ -262,7 +286,7 @@
           }
         },
         {
-          "id": "c8",
+          "id": "c10",
           "type": "function",
           "function": {
             "name": "assist__TurnOn",
@@ -272,7 +296,7 @@
       ]
     },
     {
-      "content": "Booked Harmondsworth Inn Heathrow, Standard Double Room, 17-21 Nov, GBP 416 paid at the hotel (confirmation 4102385001). Thermostat set to 60, all lights off and the front door locked."
+      "content": "Booked Harmondsworth Inn Heathrow, Standard Double Room, 17-21 Nov, GBP 416 paid at the hotel (confirmation 4102385001), saved in your ride app as \"hotel\". Thermostat set to 60, all lights off and the front door locked."
     }
   ],
   "s4": [
@@ -345,25 +369,17 @@
             "name": "rides_get_payment_methods",
             "arguments": "{}"
           }
-        },
-        {
-          "id": "c7",
-          "type": "function",
-          "function": {
-            "name": "rides_places_search",
-            "arguments": "{\"query\": \"Harmondsworth Inn\"}"
-          }
         }
       ]
     },
     {
       "tool_calls": [
         {
-          "id": "c8",
+          "id": "c7",
           "type": "function",
           "function": {
             "name": "rides_request_ride",
-            "arguments": "{\"product_id\": \"0b3a4c1e-6f2d-4d8a-9c55-1e7a2b9d3f10\", \"start_place_id\": \"plc-lhr-t3\", \"end_place_id\": \"plc-harmondsworth\", \"payment_method_id\": \"pm-work\"}"
+            "arguments": "{\"product_id\": \"0b3a4c1e-6f2d-4d8a-9c55-1e7a2b9d3f10\", \"start_place_id\": \"plc-lhr-t3\", \"end_place_id\": \"hotel\", \"payment_method_id\": \"pm-work\"}"
           }
         }
       ]

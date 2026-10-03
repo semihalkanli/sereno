@@ -1271,6 +1271,13 @@
           "address": "4 Stockley Park, Uxbridge UB11 1BD",
           "latitude": 51.5113,
           "longitude": -0.4497
+        },
+        {
+          "place_id": "plc-vicarage-way",
+          "name": "{{slot:drop_off_place}}",
+          "address": "Vicarage Way, Colnbrook, Slough SL3 0RJ",
+          "latitude": 51.4857,
+          "longitude": -0.5211
         }
       ],
       "saved_places": [
