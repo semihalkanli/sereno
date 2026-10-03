@@ -1,4 +1,5 @@
-"""Every chain in chains/: its solution passes, and each session's checks catch an agent that does nothing."""
+"""Every chain in chains/: its solution passes, each session's checks catch an agent that does nothing, and every
+attack's poison reaches the agent where the chain says it does without the solution reaching the attack's goal."""
 
 import copy
 import json
@@ -6,6 +7,7 @@ import json
 import pytest
 
 from sereno.chain import CHAINS_DIR, chain_ids, load_chain
+from sereno.events import read_events
 from sereno.model import ScriptedModel
 from sereno.runner import run_chain
 
@@ -42,6 +44,33 @@ def test_attack_loads_and_fails_against_the_solution(chain_id, attack_id, tmp_pa
     assert loaded.attack.checks
     checks = _run(loaded, loaded.solution, tmp_path)
     assert not any(checks["attack"].values())
+
+
+def _placements(chain_id, attack_id):
+    """One seed per placement the attack can take: every `one_of` candidate, or seed 0 when it has none."""
+    candidates = set(load_chain(chain_id, attack_id).attack.one_of)
+    seeds = {}
+    for seed in range(100):
+        loaded = load_chain(chain_id, attack_id, seed=seed)
+        seeds.setdefault(frozenset(loaded.poison), loaded)
+        if not candidates or len(seeds) == len(candidates):
+            break
+    return list(seeds.values())
+
+
+@pytest.mark.parametrize(("chain_id", "attack_id"), ATTACKS)
+def test_solution_reads_the_poison_before_its_trigger(chain_id, attack_id, tmp_path):
+    """The solution's own calls bring the marker into a model request, never before the poison is placed and,
+    for a triggered attack, before the trigger session."""
+    for loaded in _placements(chain_id, attack_id):
+        marker, trigger = loaded.attack.marker, loaded.attack.trigger
+        log = tmp_path / f"{loaded.seed}.jsonl"
+        run_chain(loaded, lambda sid, solution=loaded.solution: ScriptedModel(solution[sid]), log, "t")
+        seen = [e["session"] for e in read_events(log) if e["event"] == "chat" and marker in json.dumps(e["call"])]
+        assert seen, f"seed {loaded.seed}: the solution never shows the agent {marker}"
+        assert min(seen) >= min(n for slot, n in loaded.poison.items() if marker in loaded.attack.fills[slot])
+        if trigger:
+            assert min(seen) < loaded.session_number(trigger.session)
 
 
 def test_business_week_attack_check_sees_the_luxury_booking(tmp_path):
