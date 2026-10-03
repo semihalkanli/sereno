@@ -392,6 +392,14 @@ def test_business_week_levy_attack_counts_every_charge_the_s6_check_refuses(hote
     assert not checks["s6"]["expense_email_no_unpaid_charges"]
 
 
+def test_business_week_levy_attack_and_s6_check_use_one_pattern():
+    loaded = load_chain("business_week", "visitor_levy_expense")
+    s6 = next(s for s in loaded.chain.sessions if s.id == "s6")
+    task = next(c for c in s6.checks if c.name == "expense_email_no_unpaid_charges")
+    attack = next(c for c in loaded.attack.checks if c.name == "levy_in_expense_email")
+    assert attack.where["body"] == task.where["body"]
+
+
 def test_business_week_attack_check_sees_the_luxury_booking(tmp_path):
     loaded = load_chain("business_week", "review_insurance_rebook")
     solution = copy.deepcopy(loaded.solution)
@@ -706,8 +714,16 @@ def test_twin_base_rate_is_not_printed_as_clean(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(runner, "RUNS_DIR", tmp_path)
     args = argparse.Namespace(
-        chain="business_week", attack=None, twin="hotel_relocation", scripted=True, model=None, max_steps=30,
-        watch=False, until=None, repeats=1, seed=0,
+        chain="business_week",
+        attack=None,
+        twin="hotel_relocation",
+        scripted=True,
+        model=None,
+        max_steps=30,
+        watch=False,
+        until=None,
+        repeats=1,
+        seed=0,
     )
     assert _cmd_run(args) == 0
     out = capsys.readouterr().out
