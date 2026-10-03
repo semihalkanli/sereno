@@ -26,6 +26,7 @@ chains/<id>/
 | `memory` | `true` gives the agent a memory directory that carries over between sessions, see below |
 | `user_file` | the user's instruction file, trusted; loaded at every session start of a chain with memory |
 | `tool_descriptions` | tool name -> the description the agent sees instead of the app's own; `{{description}}` stands for the app's text |
+| `user_reply` | what the user says, once per session, when the agent ends the session's last turn with a question (its last line holds a `?`); sent as one more turn, marked `reply` in the log, and the question is kept in the session's end event; empty sends nothing (decision log section 136) |
 | `slots` | places a poison can go: `{id, default, note}`; with no attack a slot becomes its `default` |
 | `sessions` | the sessions in order, see below |
 | `final_checks` | checks over the whole chain, against the initial world |

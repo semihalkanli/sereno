@@ -28,6 +28,8 @@ class SessionResult:
     model_calls: int
     tool_calls: int
     cost_usd: float
+    question: str | None = None
+    """The answer that ended the last turn with a question to the user, when the user's reply was sent."""
 
 
 def _parse_args(raw: str | None) -> tuple[dict[str, Any] | None, str | None]:
@@ -91,6 +93,12 @@ def _history_message(message: dict[str, Any]) -> dict[str, Any]:
     return kept
 
 
+def asks_user(text: str | None) -> bool:
+    """Whether an answer ends with a question to the user: its last non-empty line holds a question mark."""
+    lines = [line for line in (text or "").splitlines() if line.strip()]
+    return bool(lines) and "?" in lines[-1]
+
+
 def run_session(
     model: ChatModel,
     toolset: Toolset,
@@ -98,26 +106,32 @@ def run_session(
     turns: list[str],
     log: EventLog,
     max_steps: int = 30,
+    reply: str | None = None,
 ) -> SessionResult:
     """Run the user's turns in order, after `messages` (system prompt and any history).
 
-    Each turn ends when the model answers without tool calls. `max_steps` caps the
-    model calls of the whole session; an error or the cap ends the session early.
+    Each turn ends when the model answers without tool calls. When the answer to the
+    last turn ends with a question (`asks_user`) and a `reply` is given, the user sends
+    it once as one more turn. `max_steps` caps the model calls of the whole session;
+    an error or the cap ends the session early.
     """
     schemas = toolset.schemas()
     cost = 0.0
     tool_calls_run = 0
     step = 0
     text = None
+    question = None
+    turns = list(turns)
 
     for turn, user_prompt in enumerate(turns, start=1):
-        with log.span("turn", f"turn {turn}", turn=turn, content=user_prompt) as span_end:
+        is_reply = question is not None
+        with log.span("turn", f"turn {turn}", turn=turn, content=user_prompt, reply=is_reply) as span_end:
             messages.append({"role": "user", "content": user_prompt})
-            log.emit("input", content=user_prompt)
+            log.emit("input", content=user_prompt, reply=is_reply)
             while True:
                 if step >= max_steps:
                     span_end["reason"] = "max_steps"
-                    return SessionResult("max_steps", None, messages, max_steps, tool_calls_run, cost)
+                    return SessionResult("max_steps", None, messages, max_steps, tool_calls_run, cost, question)
                 event_id = new_id()
                 with log.building(event_id):
                     try:
@@ -126,7 +140,7 @@ def run_session(
                         logger.exception("model call failed")
                         log.error(e, step=step, id=event_id, attempts=getattr(e, "attempts", None))
                         span_end["reason"] = "error"
-                        return SessionResult("error", None, messages, step, tool_calls_run, cost)
+                        return SessionResult("error", None, messages, step, tool_calls_run, cost, question)
 
                 message = completion.message
                 calls = message.get("tool_calls") or []
@@ -154,12 +168,15 @@ def run_session(
 
                 if not calls:
                     text = message.get("content")
+                    if reply and question is None and turn == len(turns) and asks_user(text):
+                        question = text
+                        turns.append(reply)
                     break
                 for call in calls:
                     tool_calls_run += 1
                     messages.append(run_tool_call(toolset, call, log, step - 1))
 
-    return SessionResult("final_answer", text, messages, step, tool_calls_run, cost)
+    return SessionResult("final_answer", text, messages, step, tool_calls_run, cost, question)
 
 
 def run_tool_call(

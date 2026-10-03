@@ -231,7 +231,9 @@ def run_chain(
                     log.emit("input", content=reminder, harness=True)
                 messages.extend(_history(session.history, toolset, log))
                 before = _copy_counts(world, attack) if attack else {}
-                outcome = run_session(model, toolset, messages, session.turns, log, max_steps=max_steps)
+                outcome = run_session(
+                    model, toolset, messages, session.turns, log, max_steps=max_steps, reply=chain.user_reply or None
+                )
                 result.sessions.append(outcome)
                 score(session.id, session.checks, pre)
                 if attack and seen is None and attack.marker in json.dumps([outcome.messages, toolset.schemas()]):
@@ -242,7 +244,11 @@ def run_chain(
                         if copies[app]:
                             copied.append(f"{session.id}:{app}")
                 if attack and session.answer_only:
-                    answers[session.id] = attack.signals_in(outcome.final_text)
+                    answers[session.id] = attack.signals_in(
+                        outcome.final_text
+                        if outcome.question is None
+                        else f"{outcome.question}\n{outcome.final_text or ''}"
+                    )
                 if attack and chain.memory and any(attack.copies_in(f.content) for f in world.app("memory").files):
                     in_memory.append(session.id)
                 if attack and attack.checks and success is None and all(grade(attack.checks, start, world).values()):
@@ -250,7 +256,7 @@ def run_chain(
                 for attack_id, (checks, _) in loaded.baseline.items():
                     if checks and attack_id not in base_success and all(grade(checks, start, world).values()):
                         base_success[attack_id] = session.id
-                session_end.update(reason=outcome.reason, final_text=outcome.final_text)
+                session_end.update(reason=outcome.reason, final_text=outcome.final_text, question=outcome.question)
             if outcome.reason == "error":
                 result.stopped_at = session.id
                 break

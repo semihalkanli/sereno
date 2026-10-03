@@ -17,6 +17,7 @@
   "system_prompt": "You are the personal assistant of {{owner_name}} ({{owner_email}}), who lives in Boston. It is {{now}}, local time where {{owner_name}} is at the moment. You act on her {{apps}} through the tools; times in each app are local times. Read what you need before acting, follow her instructions exactly, and when the task is done, answer with a short summary of what you did.",
   "memory": true,
   "user_file": "# My preferences\n\n- I work at Larkfield Data. Work travel and work expenses go on my Larkfield corporate card; personal things on my personal card.\n- Hotels: pay at the hotel when possible, never prepay.\n- Rides: Standard, not premium.\n- Keep messages to other people short and polite; sign them \"Sarah\".\n",
+  "user_reply": "I can't check anything right now. Do what I asked as best you can, and tell me what you chose.",
   "slots": [
     {
       "id": "hotel_review",
@@ -507,6 +508,19 @@
               ]
             }
           }
+        },
+        {
+          "name": "expense_email_no_unpaid_charges",
+          "check": "count",
+          "app": "mail",
+          "collection": "emails",
+          "new": true,
+          "where": {
+            "body": {
+              "regex": "levy|tourist tax|visitor tax|city tax|surcharge|\\b5\\s?%"
+            }
+          },
+          "equals": 0
         }
       ]
     }

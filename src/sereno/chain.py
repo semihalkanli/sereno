@@ -90,6 +90,8 @@ class Chain(BaseModel, extra="forbid"):
     user_file: str = ""
     tool_descriptions: dict[str, str] = {}
     """Tool name -> the description the agent sees instead of the app's own; `{{description}}` is the app's text."""
+    user_reply: str = ""
+    """What the user says, once per session, when the agent ends the last turn with a question; empty: nothing."""
     slots: list[Slot] = []
     sessions: list[Session] = Field(min_length=1)
     final_checks: list[Check] = []

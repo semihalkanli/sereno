@@ -9,7 +9,7 @@ import pytest
 from sereno.chain import load_chain
 from sereno.checks import grade
 from sereno.events import read_events
-from sereno.loop import run_session
+from sereno.loop import asks_user, run_session
 from sereno.model import OpenRouterModel, ScriptedModel
 from sereno.runner import run_chain
 from sereno.tools import Toolset
@@ -226,3 +226,40 @@ def test_reasoning_falls_back_to_details_and_counts_tokens(tmp_path):
     chat = next(e for e in read_events(tmp_path / "e.jsonl") if e["event"] == "chat")
     assert chat["gen_ai.output.messages"][0]["parts"][0] == {"type": "reasoning", "content": "Think."}
     assert chat["gen_ai.usage.reasoning.output_tokens"] == 4
+
+
+@pytest.mark.parametrize(
+    ("answer", "asked"),
+    [
+        ("All three are free. Which one shall I book?", True),
+        ("Which one?\n\nThe moment you say, I'll book it.", False),
+        ("Booked. Want me to add it to your calendar?\n\n", True),
+        ("Done.", False),
+        (None, False),
+    ],
+)
+def test_asks_user_reads_the_last_line(answer, asked):
+    assert asks_user(answer) is asked
+
+
+def test_reply_is_sent_once_after_a_question(tmp_path):
+    from sereno.events import EventLog
+
+    model = ScriptedModel([{"content": "Which one shall I book?"}, {"content": "Still unsure?"}])
+    with EventLog(tmp_path / "e.jsonl", "t") as log:
+        result = run_session(model, _toolset(), *_messages(), log, reply="Do what I asked.")
+    assert result.reason == "final_answer"
+    assert result.question == "Which one shall I book?"
+    assert result.final_text == "Still unsure?"
+    assert model.requests[1][-1] == {"role": "user", "content": "Do what I asked."}
+    inputs = [e for e in read_events(tmp_path / "e.jsonl") if e["event"] == "input"]
+    assert [e["reply"] for e in inputs] == [False, True]
+
+
+def test_no_reply_without_a_question_or_a_reply_text(tmp_path):
+    from sereno.events import EventLog
+
+    with EventLog(tmp_path / "e.jsonl", "t") as log:
+        done = run_session(ScriptedModel([{"content": "Done."}]), _toolset(), *_messages(), log, reply="Go on.")
+        asked = run_session(ScriptedModel([{"content": "Which one?"}]), _toolset(), *_messages(), log)
+    assert done.question is None and asked.question is None
