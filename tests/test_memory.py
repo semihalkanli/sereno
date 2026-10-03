@@ -75,6 +75,19 @@ def test_view_lists_and_shows_files():
     assert run(world, command="view", path="/memories/a.md", view_range=[2, -1]).endswith("     2\ttwo\n     3\tthree")
     with pytest.raises(ToolError, match=r"does not exist\. Please provide a valid path\."):
         run(world, command="view", path="/memories/missing.md")
+    with pytest.raises(ToolError, match=r"Invalid view_range \[3, 2\]"):
+        run(world, command="view", path="/memories/a.md", view_range=[3, 2])
+
+
+def test_a_file_cannot_hold_files():
+    world, store = _world()
+    run(world, command="create", path="/memories/a.md", file_text="a")
+    run(world, command="create", path="/memories/b.md", file_text="b")
+    with pytest.raises(ToolError, match="/memories/a.md is a file, not a directory"):
+        run(world, command="create", path="/memories/a.md/c.md", file_text="c")
+    with pytest.raises(ToolError, match="/memories/a.md is a file, not a directory"):
+        run(world, command="rename", old_path="/memories/b.md", new_path="/memories/a.md/b.md")
+    assert {f.path for f in store.files} == {"/memories/a.md", "/memories/b.md"}
 
 
 def test_str_replace_errors():

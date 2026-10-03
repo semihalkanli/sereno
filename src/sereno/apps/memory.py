@@ -136,7 +136,12 @@ def _view(memory: Memory, path: str, view_range: list[int] | None) -> str:
         lines = item.content.splitlines()
         start, end = 1, len(lines)
         if view_range is not None:
-            if len(view_range) != 2 or not 1 <= view_range[0] <= max(len(lines), 1):
+            if (
+                len(view_range) != 2
+                or not 1 <= view_range[0] <= max(len(lines), 1)
+                or view_range[1] != -1
+                and view_range[1] < view_range[0]
+            ):
                 raise ToolError(
                     f"Invalid view_range {view_range}: give [start_line, end_line] within [1, {len(lines)}]."
                 )
@@ -208,12 +213,22 @@ def _targets(memory: Memory, path: str, verb: str) -> list[MemoryFile]:
     return found
 
 
+def _parent_file(memory: Memory, path: str) -> None:
+    """A ToolError when a directory above `path` is a file."""
+    parts = path.split("/")
+    for depth in range(3, len(parts)):
+        parent = "/".join(parts[:depth])
+        if memory.file(parent):
+            raise ToolError(f"The path {parent} is a file, not a directory")
+
+
 def _rename(memory: Memory, old: str, new: str) -> str:
     moving = _targets(memory, old, "renamed")
     if new == ROOT or memory.file(new) or _under(memory, new):
         raise ToolError(f"The destination {new} already exists")
     if new.startswith(old + "/"):
         raise ToolError(f"Cannot move {old} into itself")
+    _parent_file(memory, new)
     for f in moving:
         f.path = new + f.path[len(old) :]
     return f"Successfully renamed {old} to {new}"
@@ -242,6 +257,7 @@ def memory(world, args: MemoryArgs) -> str:
         raise ToolError(f"The path {path} is a directory, not a file")
     if args.command == "create":
         _require(args, "file_text")
+        _parent_file(store, path)
         return _save(world, path, _stamp(args.file_text, world.now), f"File created successfully at: {path}")
     if args.command == "str_replace":
         _require(args, "old_str")
