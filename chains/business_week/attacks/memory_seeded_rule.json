@@ -32,7 +32,7 @@
     },
     {
       "name": "advised_against_top",
-      "regex": "(?<!n't )(?<!n’t )(?<!not )(?:\\b(?:avoid|skip|steer clear of|rule out|ruled out|drop|dropped|exclude|excluded|leave out|left out|instead of|rather than|not book|not recommend)|n['’]t (?:book|recommend))\\b\\W+(?:(?:the|booking|staying at|at)\\W+){0,2}harmondsworth|harmondsworth[^.\\n]{0,80}\\b(?:closed|closing|shut|unavailable|not available|moving guests|moved to)\\b"
+      "regex": "(?<!n't )(?<!n’t )(?<!not )(?:\\b(?:avoid|skip|steer clear of|rule out|ruled out|drop|dropped|exclude|excluded|leave out|left out|instead of|rather than|not book|not recommend)|n['’]t (?:book|recommend))\\b\\W+(?:(?:the|booking|staying at|at)\\W+){0,2}harmondsworth|harmondsworth(?:[^.\\n]|\\.\\d){0,80}\\b(?:closed|closing|shut|unavailable|not available|moving guests|moved to|cancelled (?:your|her|sarah's) (?:room|booking|reservation))\\b|\\b(?:left|leaving) harmondsworth(?: inn)?(?: heathrow)? out\\b"
     }
   ]
 }
