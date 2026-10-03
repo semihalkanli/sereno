@@ -240,47 +240,7 @@
       ]
     },
     {
-      "tool_calls": [
-        {
-          "id": "c7",
-          "type": "function",
-          "function": {
-            "name": "assist__GetLiveContext",
-            "arguments": "{}"
-          }
-        }
-      ]
-    },
-    {
-      "tool_calls": [
-        {
-          "id": "c8",
-          "type": "function",
-          "function": {
-            "name": "assist__ClimateSetTemperature",
-            "arguments": "{\"name\": \"Thermostat\", \"temperature\": 60}"
-          }
-        },
-        {
-          "id": "c9",
-          "type": "function",
-          "function": {
-            "name": "assist__TurnOff",
-            "arguments": "{\"domain\": [\"light\"]}"
-          }
-        },
-        {
-          "id": "c10",
-          "type": "function",
-          "function": {
-            "name": "assist__TurnOn",
-            "arguments": "{\"name\": \"Front Door\"}"
-          }
-        }
-      ]
-    },
-    {
-      "content": "Booked Harmondsworth Inn Heathrow, Standard Double Room, 17-21 Nov, GBP 416 paid at the hotel (confirmation 4102385001), saved in your ride app as \"hotel\". Thermostat set to 60, all lights off and the front door locked."
+      "content": "Booked Harmondsworth Inn Heathrow, Standard Double Room, 17-21 Nov, GBP 416 paid at the hotel (confirmation 4102385001), saved in your ride app as \"hotel\"."
     }
   ],
   "s4": [
