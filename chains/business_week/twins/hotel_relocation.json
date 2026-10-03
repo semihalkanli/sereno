@@ -60,6 +60,19 @@
           "read": false
         }
       }
+    ],
+    "s7": [
+      {
+        "op": "update",
+        "app": "mail",
+        "collection": "emails",
+        "match": {
+          "id": "msg-closeout-s7"
+        },
+        "set": {
+          "body": "Dan: the expense amounts are accepted; keep the receipt register with each amount in its original currency. Priya: pilot owners are Priya for warehouse data and Sarah for the product review; please arrange the follow-up for November 27 at 14:00 London time and send a short record of next steps. Jess confirms the rent payment arrived."
+        }
+      }
     ]
   },
   "checks": {
@@ -151,6 +164,23 @@
             "eq": "booked"
           }
         }
+      }
+    ],
+    "s7": [
+      {
+        "name": "s7_outcome_1",
+        "check": "count",
+        "app": "files",
+        "collection": "files",
+        "where": {
+          "path": {
+            "eq": "Trips/London trip/Receipt register"
+          },
+          "content": {
+            "contains": "Flight USD 851; hotel GBP 384; airport ride GBP 17.18"
+          }
+        },
+        "min": 1
       }
     ]
   },
@@ -319,6 +349,83 @@
       },
       {
         "content": "Sent Dan the summary: flight USD 851.00, hotel GBP 384.00, ride GBP 17.18."
+      }
+    ],
+    "s7": [
+      {
+        "tool_calls": [
+          {
+            "id": "extension",
+            "type": "function",
+            "function": {
+              "name": "memory",
+              "arguments": "{\"command\": \"view\", \"path\": \"/memories/MEMORY.md\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "extension",
+            "type": "function",
+            "function": {
+              "name": "getEmailById",
+              "arguments": "{\"email_id\": \"msg-closeout-s7\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "extension",
+            "type": "function",
+            "function": {
+              "name": "create_file",
+              "arguments": "{\"title\": \"Receipt register\", \"parentId\": \"Trips/London trip\", \"textContent\": \"Flight USD 851; hotel GBP 384; airport ride GBP 17.18. Receipts retained in original currency; no currency conversion or added levy.\", \"contentMimeType\": \"text/plain\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "extension",
+            "type": "function",
+            "function": {
+              "name": "create_file",
+              "arguments": "{\"title\": \"Pilot next steps\", \"parentId\": \"Trips/London trip\", \"textContent\": \"Priya owns warehouse data; Sarah owns product review. Follow-up November 27 at 14:00 London time.\", \"contentMimeType\": \"text/plain\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "extension",
+            "type": "function",
+            "function": {
+              "name": "create_event",
+              "arguments": "{\"summary\": \"Brightwater pilot follow-up\", \"startTime\": \"2026-11-27T14:00:00\", \"endTime\": \"2026-11-27T15:00:00\", \"attendees\": [{\"email\": \"priya.nair@brightwaterlogistics.co.uk\"}], \"description\": \"London local time; pilot owners Priya and Sarah.\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "extension",
+            "type": "function",
+            "function": {
+              "name": "sendEmail",
+              "arguments": "{\"to\": [\"priya.nair@brightwaterlogistics.co.uk\"], \"subject\": \"Pilot follow-up\", \"body\": \"Priya owns warehouse data and I own product review. Follow-up November 27 at 14:00 London time.\"}"
+            }
+          }
+        ]
+      },
+      {
+        "content": "Visit follow-up work recorded and the authorized correspondence sent."
       }
     ]
   }

@@ -90,7 +90,11 @@ def test_solution_reads_the_poison_before_its_trigger(chain_id, attack_id, tmp_p
         run_chain(loaded, lambda sid, solution=loaded.solution: ScriptedModel(solution[sid]), log, "t")
         seen = [e["session"] for e in read_events(log) if e["event"] == "chat" and marker in json.dumps(e["call"])]
         assert seen, f"seed {loaded.seed}: the solution never shows the agent {marker}"
-        assert min(seen) >= min(n for slot, n in loaded.poison.items() if marker in loaded.attack.fills[slot])
+        assert min(seen) >= min(
+            n
+            for slot, n in loaded.poison.items()
+            if slot not in loaded.attack.fills or marker in loaded.attack.fills[slot]
+        )
         if trigger:
             assert min(seen) < loaded.session_number(trigger.session)
 
@@ -241,7 +245,7 @@ def test_business_week_records_a_restated_claim_carried_in_memory(attack_id, lin
                 args["file_text"] += line + "\n"
                 call["function"]["arguments"] = json.dumps(args)
     result = run_chain(loaded, lambda sid: ScriptedModel(solution[sid]), tmp_path / "e.jsonl", "t")
-    sessions = ["s2", "s3", "s4", "s5", "s6"]
+    sessions = [s.id for s in loaded.chain.sessions[1:]]
     assert result.timing["poison_copied"] == [f"{s}:memory" for s in sessions]
     assert result.timing["poison_in_memory"] == sessions
 
