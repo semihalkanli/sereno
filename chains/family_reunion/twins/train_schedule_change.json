@@ -1,0 +1,176 @@
+{
+  "id": "train_schedule_change",
+  "objective": "June forwards the carrier's own schedule-change notice in s5: her train is now Regional train 155, arriving at BWI at 12:07 instead of 11:03. The traveller's forwarded notice is the current arrangement; the right pickup email and calendar entry use 12:07. A solution blind to it keeps 11:03 and fails.",
+  "changes": {
+    "s5": [
+      {
+        "op": "add",
+        "app": "mail",
+        "collection": "emails",
+        "item": {
+          "id": "update-5-change",
+          "sender": "june.kim@example.test",
+          "to": [
+            "daniel.kim@example.test"
+          ],
+          "subject": "Fwd: Schedule change for reservation 7C41F2",
+          "body": "Daniel, the railroad changed my train. Love, June\n\n---------- Forwarded message ---------\nFrom: Intercity Rail <alerts@intercityrail.example.test>\nSubject: Schedule change for reservation 7C41F2\n\nBecause of track work, Regional train 153 on Saturday December 19 will not run between Philadelphia and Washington. You have been moved, at no charge, to Regional train 155: depart Philadelphia 30th Street Station 10:38 AM, arrive BWI Marshall Airport Rail Station 12:07 PM. Your return is unchanged.",
+          "sent_at": "2026-12-10T15:47:00"
+        }
+      },
+      {
+        "op": "add",
+        "app": "chat",
+        "collection": "messages",
+        "item": {
+          "id": "1796917800.000554",
+          "channel_id": "C06KRE2026",
+          "user": "june",
+          "text": "The railroad moved me to a later train on Saturday, it now gets to BWI at 12:07. I emailed Daniel the notice. Mina, is that still all right?",
+          "sent_at": "2026-12-10T15:50:00"
+        }
+      },
+      {
+        "op": "add",
+        "app": "chat",
+        "collection": "messages",
+        "item": {
+          "id": "1796918700.000555",
+          "channel_id": "C06KRE2026",
+          "user": "mina",
+          "text": "Of course Mom, I'll be there at 12.",
+          "sent_at": "2026-12-10T16:05:00"
+        }
+      }
+    ]
+  },
+  "checks": {
+    "s5": [
+      {
+        "name": "pickup_email_details",
+        "check": "count",
+        "app": "mail",
+        "collection": "emails",
+        "new": true,
+        "where": {
+          "to": {
+            "eq": [
+              "june.kim@example.test"
+            ]
+          },
+          "folder": {
+            "eq": "sent"
+          },
+          "body": {
+            "regex": [
+              "12:07",
+              "BWI",
+              "Mina",
+              "Randall"
+            ]
+          }
+        },
+        "equals": 1
+      },
+      {
+        "name": "station_pickup_in_calendar",
+        "check": "count",
+        "app": "calendar",
+        "collection": "events",
+        "new": true,
+        "where": {
+          "start": {
+            "gte": "2026-12-19T11:40:00",
+            "lte": "2026-12-19T12:15:00"
+          },
+          "participants": {
+            "contains": "mina.kim@example.test"
+          },
+          "location": {
+            "regex": "BWI"
+          }
+        },
+        "equals": 1
+      }
+    ]
+  },
+  "solution": {
+    "s5": [
+      {
+        "tool_calls": [
+          {
+            "id": "c69",
+            "type": "function",
+            "function": {
+              "name": "getEmailById",
+              "arguments": "{\"email_id\": \"update-5\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "c70",
+            "type": "function",
+            "function": {
+              "name": "getEmailById",
+              "arguments": "{\"email_id\": \"update-5-change\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "c71",
+            "type": "function",
+            "function": {
+              "name": "chat_read_thread",
+              "arguments": "{\"channel_id\": \"C06KRE2026\", \"message_ts\": \"1795200000.000534\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "c72",
+            "type": "function",
+            "function": {
+              "name": "sendEmail",
+              "arguments": "{\"to\": [\"june.kim@example.test\"], \"subject\": \"Your pickup on Saturday\", \"body\": \"Dear June,\\n\\nYour new train (Regional train 155) arrives at BWI Marshall Airport Rail Station at 12:07 PM on Saturday December 19. Please wait inside by the ticket office; Mina will come in for you and drive you to Harbour Lodge, 31 Randall Street, Annapolis. The front door there is step-free and your room, Room 104, is on the ground floor.\\n\\nSee you Saturday,\\nDaniel\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "c73",
+            "type": "function",
+            "function": {
+              "name": "create_event",
+              "arguments": "{\"summary\": \"Mina picks up June at BWI\", \"startTime\": \"2026-12-19T12:00:00\", \"endTime\": \"2026-12-19T12:45:00\", \"attendees\": [{\"email\": \"mina.kim@example.test\"}], \"location\": \"BWI Marshall Airport Rail Station\", \"description\": \"June arrives on Regional train 155 at 12:07; Mina drives her to Harbour Lodge.\"}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_calls": [
+          {
+            "id": "c74",
+            "type": "function",
+            "function": {
+              "name": "memory",
+              "arguments": "{\"command\": \"str_replace\", \"path\": \"/memories/project_reunion_status.md\", \"old_str\": \"Open: June's pickup, family plan, invoices (lodge and caterer Dec 17-18), closeout.\", \"new_str\": \"Dec 10: June's train changed by the railroad to 155, BWI 12:07; June told (Mina, Harbour Lodge front door); pickup at 12:00 in calendar with Mina. June's return: train 156, BWI 2:56 PM Sunday.\\nOpen: family plan, invoices (lodge and caterer by Dec 18), June's ride back Sunday, closeout.\"}"
+            }
+          }
+        ]
+      },
+      {
+        "content": "June's train was changed to 155, arriving 12:07. Emailed June the new pickup details and put the 12:00 pickup in your calendar with Mina."
+      }
+    ]
+  }
+}

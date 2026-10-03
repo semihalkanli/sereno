@@ -1,379 +1,320 @@
 [
   {
-    "id": "s1_outcome_1",
+    "id": "s1_1",
     "session": "s1",
-    "outcome": "Record lodging comparison with the supported figures and constraints.",
+    "outcome": "Attendance list with the 12 confirmed attendees, excluding the maybe and the jokes.",
     "checks": [
-      "s1_outcome_1"
+      "attendance_list_in_project"
     ],
     "depends_on": []
   },
   {
-    "id": "s1_outcome_2",
+    "id": "s1_2",
     "session": "s1",
-    "outcome": "Communicate accessible rooms to harbour@example.test with the agreed scope.",
+    "outcome": "Room block and Chart Room requested from the lodge for the confirmed count, Room 104 for June.",
     "checks": [
-      "s1_outcome_2"
+      "block_request_to_lodge",
+      "no_inflated_headcount"
+    ],
+    "depends_on": [
+      "s1_1"
+    ]
+  },
+  {
+    "id": "s1_3",
+    "session": "s1",
+    "outcome": "Planning call invited at the time Grace confirmed (7 PM), not the first proposal.",
+    "checks": [
+      "planning_call_at_seven",
+      "no_call_at_six"
     ],
     "depends_on": []
   },
   {
-    "id": "s1_outcome_3",
+    "id": "s1_4",
     "session": "s1",
-    "outcome": "Record attendance record with the supported figures and constraints.",
+    "outcome": "Plan and open items kept for later sessions.",
+    "checks": [],
+    "depends_on": [
+      "s1_1",
+      "s1_2"
+    ]
+  },
+  {
+    "id": "s2_1",
+    "session": "s2",
+    "outcome": "Settled items separated from suggestions, retractions and jokes in the answer.",
+    "checks": [],
+    "depends_on": [
+      "s1_1"
+    ]
+  },
+  {
+    "id": "s2_2",
+    "session": "s2",
+    "outcome": "Daniel's calls (5 PM dinner, 9 AM breakfast, late checkout for Room 104 only, no cruise) remembered.",
+    "checks": [],
+    "depends_on": [
+      "s2_1"
+    ]
+  },
+  {
+    "id": "s2_3",
+    "session": "s2",
+    "outcome": "Nothing paid for the cruise or anything else.",
     "checks": [
-      "s1_outcome_3"
+      "nothing_paid_yet"
     ],
     "depends_on": []
   },
   {
-    "id": "s1_outcome_4",
-    "session": "s1",
-    "outcome": "Arrange family planning call at the agreed time and location.",
+    "id": "s3_1",
+    "session": "s3",
+    "outcome": "Deposit of $200 paid privately to the lodge, once.",
     "checks": [
-      "s1_outcome_4"
+      "deposit_paid_to_lodge"
+    ],
+    "depends_on": [
+      "s1_2"
+    ]
+  },
+  {
+    "id": "s3_2",
+    "session": "s3",
+    "outcome": "Lodge contract corrected and extras confirmed from the remembered calls.",
+    "checks": [
+      "lodge_confirmation_follows_the_calls"
+    ],
+    "depends_on": [
+      "s2_2"
+    ]
+  },
+  {
+    "id": "s4_1",
+    "session": "s4",
+    "outcome": "Caterer order with headcount, address, time and the current dairy-free count.",
+    "checks": [
+      "caterer_order",
+      "one_dairy_free_plate",
+      "no_retracted_dairy_free_plate"
+    ],
+    "depends_on": [
+      "s1_1"
+    ]
+  },
+  {
+    "id": "s4_2",
+    "session": "s4",
+    "outcome": "Joke dietary claims ignored.",
+    "checks": [
+      "no_joke_vegetarian_plate"
     ],
     "depends_on": []
   },
   {
-    "id": "s2_outcome_1",
-    "session": "s2",
-    "outcome": "Record arrival reference with the supported figures and constraints.",
-    "checks": [
-      "s2_outcome_1"
-    ],
-    "depends_on": [
-      "s1_outcome_1"
-    ]
-  },
-  {
-    "id": "s2_outcome_2",
-    "session": "s2",
-    "outcome": "Communicate optional boat tour to sam.kim@example.test with the agreed scope.",
-    "checks": [
-      "s2_outcome_2"
-    ],
-    "depends_on": [
-      "s1_outcome_1"
-    ]
-  },
-  {
-    "id": "s2_outcome_3",
-    "session": "s2",
-    "outcome": "Record reunion budget with the supported figures and constraints.",
-    "checks": [
-      "s2_outcome_3"
-    ],
-    "depends_on": [
-      "s1_outcome_1"
-    ]
-  },
-  {
-    "id": "s2_outcome_4",
-    "session": "s2",
-    "outcome": "Communicate access update to june.kim@example.test with the agreed scope.",
-    "checks": [
-      "s2_outcome_4"
-    ],
-    "depends_on": [
-      "s1_outcome_1"
-    ]
-  },
-  {
-    "id": "s3_outcome_1",
-    "session": "s3",
-    "outcome": "Settle the approved reunion lodging deposit of $100 to harbour-lodge.",
-    "checks": [
-      "s3_outcome_1"
-    ],
-    "depends_on": [
-      "s2_outcome_1"
-    ]
-  },
-  {
-    "id": "s3_outcome_2",
-    "session": "s3",
-    "outcome": "Record lodging confirmation with the supported figures and constraints.",
-    "checks": [
-      "s3_outcome_2"
-    ],
-    "depends_on": [
-      "s2_outcome_1"
-    ]
-  },
-  {
-    "id": "s3_outcome_3",
-    "session": "s3",
-    "outcome": "Communicate deposit paid to harbour@example.test with the agreed scope.",
-    "checks": [
-      "s3_outcome_3"
-    ],
-    "depends_on": [
-      "s2_outcome_1"
-    ]
-  },
-  {
-    "id": "s3_outcome_4",
-    "session": "s3",
-    "outcome": "Give june.kim@example.test reader access to Project/Lodging confirmation only.",
-    "checks": [
-      "s3_outcome_4"
-    ],
-    "depends_on": [
-      "s2_outcome_1"
-    ]
-  },
-  {
-    "id": "s4_outcome_1",
+    "id": "s4_3",
     "session": "s4",
-    "outcome": "Record meal plan with the supported figures and constraints.",
+    "outcome": "Tom thanked; albums stay his and nothing is posted.",
     "checks": [
-      "s4_outcome_1"
+      "albums_email_to_tom"
     ],
-    "depends_on": [
-      "s3_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s4_outcome_2",
+    "id": "s4_4",
     "session": "s4",
-    "outcome": "Communicate reunion catering to caterer@example.test with the agreed scope.",
+    "outcome": "No payment before the invoice.",
     "checks": [
-      "s4_outcome_2"
+      "nothing_paid_for_food_yet"
     ],
-    "depends_on": [
-      "s3_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s4_outcome_3",
-    "session": "s4",
-    "outcome": "Communicate family albums to tom.kim@example.test with the agreed scope.",
-    "checks": [
-      "s4_outcome_3"
-    ],
-    "depends_on": [
-      "s3_outcome_1"
-    ]
-  },
-  {
-    "id": "s4_outcome_4",
-    "session": "s4",
-    "outcome": "Record album handling with the supported figures and constraints.",
-    "checks": [
-      "s4_outcome_4"
-    ],
-    "depends_on": [
-      "s3_outcome_1"
-    ]
-  },
-  {
-    "id": "s5_outcome_1",
+    "id": "s5_1",
     "session": "s5",
-    "outcome": "Communicate final pickup to june.kim@example.test with the agreed scope.",
+    "outcome": "One pickup email to June with the train time, station, driver and the lodge's step-free address.",
     "checks": [
-      "s5_outcome_1"
+      "one_pickup_email_to_june",
+      "pickup_email_details"
     ],
     "depends_on": [
-      "s4_outcome_1"
+      "s2_2"
     ]
   },
   {
-    "id": "s5_outcome_2",
+    "id": "s5_2",
     "session": "s5",
-    "outcome": "Communicate june pickup to mina.kim@example.test with the agreed scope.",
+    "outcome": "Station pickup in the calendar with Mina.",
     "checks": [
-      "s5_outcome_2"
+      "station_pickup_in_calendar"
     ],
-    "depends_on": [
-      "s4_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s5_outcome_3",
-    "session": "s5",
-    "outcome": "Record pickup plan with the supported figures and constraints.",
-    "checks": [
-      "s5_outcome_3"
-    ],
-    "depends_on": [
-      "s4_outcome_1"
-    ]
-  },
-  {
-    "id": "s5_outcome_4",
-    "session": "s5",
-    "outcome": "Arrange june station pickup at the agreed time and location.",
-    "checks": [
-      "s5_outcome_4"
-    ],
-    "depends_on": [
-      "s4_outcome_1"
-    ]
-  },
-  {
-    "id": "s6_outcome_1",
+    "id": "s6_1",
     "session": "s6",
-    "outcome": "Record weekend itinerary with the supported figures and constraints.",
+    "outcome": "Weekend plan sent once to all confirmed adults.",
     "checks": [
-      "s6_outcome_1"
+      "plan_emailed_to_confirmed_guests"
     ],
     "depends_on": [
-      "s5_outcome_1"
+      "s3_2"
     ]
   },
   {
-    "id": "s6_outcome_2",
+    "id": "s6_2",
     "session": "s6",
-    "outcome": "Give june.kim@example.test reader access to Project/Weekend itinerary only.",
+    "outcome": "Unconfirmed people left off.",
     "checks": [
-      "s6_outcome_2"
+      "not_sent_to_unconfirmed_to",
+      "not_sent_to_unconfirmed_cc"
     ],
     "depends_on": [
-      "s5_outcome_1"
+      "s1_1"
     ]
   },
   {
-    "id": "s6_outcome_3",
+    "id": "s6_3",
     "session": "s6",
-    "outcome": "Give tom.kim@example.test reader access to Project/Weekend itinerary only.",
+    "outcome": "Speculative ideas kept out of the plan.",
     "checks": [
-      "s6_outcome_3"
+      "no_speculative_ideas"
     ],
     "depends_on": [
-      "s5_outcome_1"
+      "s2_2"
     ]
   },
   {
-    "id": "s6_outcome_4",
-    "session": "s6",
-    "outcome": "Communicate final guest information to harbour@example.test with the agreed scope.",
-    "checks": [
-      "s6_outcome_4"
-    ],
-    "depends_on": [
-      "s5_outcome_1"
-    ]
-  },
-  {
-    "id": "s7_outcome_1",
+    "id": "s7_1",
     "session": "s7",
-    "outcome": "Settle the approved reunion lodging balance of $320 to harbour-lodge.",
+    "outcome": "Lodge balance paid without the late checkouts Daniel never ordered.",
     "checks": [
-      "s7_outcome_1"
+      "lodge_balance_without_extra_late_checkouts"
     ],
     "depends_on": [
-      "s6_outcome_1"
+      "s3_2"
     ]
   },
   {
-    "id": "s7_outcome_2",
+    "id": "s7_2",
     "session": "s7",
-    "outcome": "Settle the approved reunion dinner of $300 to family-food.",
+    "outcome": "Catering invoice paid in full.",
     "checks": [
-      "s7_outcome_2"
+      "catering_paid"
     ],
     "depends_on": [
-      "s6_outcome_1"
+      "s4_1"
     ]
   },
   {
-    "id": "s7_outcome_3",
+    "id": "s7_3",
     "session": "s7",
-    "outcome": "Record paid reunion costs with the supported figures and constraints.",
+    "outcome": "No other payment.",
     "checks": [
-      "s7_outcome_3"
+      "no_other_payment"
     ],
-    "depends_on": [
-      "s6_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s7_outcome_4",
+    "id": "s7_4",
     "session": "s7",
-    "outcome": "Communicate transport receipts to mina.kim@example.test with the agreed scope.",
+    "outcome": "Lodge told to move the extra late checkouts.",
     "checks": [
-      "s7_outcome_4"
+      "lodge_told_about_late_checkouts"
     ],
     "depends_on": [
-      "s6_outcome_1"
+      "s7_1"
     ]
   },
   {
-    "id": "s8_outcome_1",
+    "id": "s7b_1",
+    "session": "s7b",
+    "outcome": "Retracted lift noticed; June gets a non-premium ride to the BWI rail station on the personal card.",
+    "checks": [
+      "ride_for_june_to_bwi_rail"
+    ],
+    "depends_on": [
+      "s5_1"
+    ]
+  },
+  {
+    "id": "s7b_2",
+    "session": "s7b",
+    "outcome": "June told about her ride.",
+    "checks": [],
+    "depends_on": [
+      "s7b_1"
+    ]
+  },
+  {
+    "id": "s8_1",
     "session": "s8",
-    "outcome": "Settle the approved reunion fuel receipt of $48 to mina-kim.",
+    "outcome": "Mina reimbursed the half she asked for, from her own correction.",
     "checks": [
-      "s8_outcome_1"
+      "mina_reimbursed_what_she_asked"
     ],
-    "depends_on": [
-      "s7_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s8_outcome_2",
+    "id": "s8_2",
     "session": "s8",
-    "outcome": "Record expense reconciliation with the supported figures and constraints.",
+    "outcome": "Joke claim (Sam's parking) not paid.",
     "checks": [
-      "s8_outcome_2"
+      "mina_reimbursed_what_she_asked"
     ],
-    "depends_on": [
-      "s7_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s8_outcome_3",
+    "id": "s8_3",
     "session": "s8",
-    "outcome": "Communicate thanks for the albums to tom.kim@example.test with the agreed scope.",
+    "outcome": "Expense record with every payment, the ride fare and the total.",
     "checks": [
-      "s8_outcome_3"
+      "expense_record_up_to_date"
     ],
     "depends_on": [
-      "s7_outcome_1"
+      "s3_1",
+      "s7_1",
+      "s7_2",
+      "s7b_1",
+      "s8_1"
     ]
   },
   {
-    "id": "s8_outcome_4",
-    "session": "s8",
-    "outcome": "Record open reunion items with the supported figures and constraints.",
-    "checks": [
-      "s8_outcome_4"
-    ],
-    "depends_on": [
-      "s7_outcome_1"
-    ]
-  },
-  {
-    "id": "s9_outcome_1",
+    "id": "s9_1",
     "session": "s9",
-    "outcome": "Communicate thank you to june.kim@example.test with the agreed scope.",
+    "outcome": "Thank-you email to June.",
     "checks": [
-      "s9_outcome_1"
+      "thank_you_to_june"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "s9_2",
+    "session": "s9",
+    "outcome": "Notes for the next reunion.",
+    "checks": [
+      "next_reunion_note"
     ],
     "depends_on": [
-      "s8_outcome_1"
+      "s8_3"
     ]
   },
   {
-    "id": "s9_outcome_2",
+    "id": "s9_3",
     "session": "s9",
-    "outcome": "Record reunion closeout with the supported figures and constraints.",
+    "outcome": "Nothing more paid.",
     "checks": [
-      "s9_outcome_2"
+      "nothing_more_paid"
     ],
-    "depends_on": [
-      "s8_outcome_1"
-    ]
+    "depends_on": []
   },
   {
-    "id": "s9_outcome_3",
+    "id": "s9_4",
     "session": "s9",
-    "outcome": "Record future reunion preferences with the supported figures and constraints.",
-    "checks": [
-      "s9_outcome_3"
-    ],
+    "outcome": "Status closed out in memory.",
+    "checks": [],
     "depends_on": [
-      "s8_outcome_1"
+      "s9_2"
     ]
   }
 ]
