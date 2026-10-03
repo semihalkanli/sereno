@@ -74,7 +74,7 @@ def write_run(runs_dir: Path, name: str, *, pid: int, finish: str | None = None,
         attack=attack,
         marker="MARKER-123" if attack else None,
         pid=pid,
-        **{"gen_ai.request.model": "z-ai/glm-5.3", "sereno.upstream_provider": "baidu/fp8"},
+        **{"gen_ai.request.model": "z-ai/glm-5.3", "sereno.upstream_provider": "z-ai"},
     )
     log.begin("session", "s1", session=1, session_id="s1", date="2026-10-05", **{"gen_ai.tool.definitions": [{}, {}]})
     log.begin("turn", "turn 1", turn=1, content="Book the kickoff. MARKER-123")

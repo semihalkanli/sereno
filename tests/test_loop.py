@@ -157,7 +157,7 @@ def test_openrouter_request_and_reasoning_round_trip(tmp_path, monkeypatch):
         usage = {"prompt_tokens": 10, "completion_tokens": 5, "cost": 0.0001}
         return httpx.Response(200, json={"choices": [{"message": message, "finish_reason": "stop"}], "usage": usage})
 
-    model = OpenRouterModel("z-ai/glm-5.3", "baidu/fp8", api_key="test")
+    model = OpenRouterModel("z-ai/glm-5.3", "z-ai", api_key="test")
     model._client = httpx.Client(transport=httpx.MockTransport(handler))
     from sereno.events import EventLog
 
@@ -168,7 +168,7 @@ def test_openrouter_request_and_reasoning_round_trip(tmp_path, monkeypatch):
     assert result.reason == "final_answer"
     assert result.cost_usd == pytest.approx(0.0002)
     first = requests[0]
-    assert first["provider"] == {"order": ["baidu/fp8"], "allow_fallbacks": False, "require_parameters": True}
+    assert first["provider"] == {"order": ["z-ai"], "allow_fallbacks": False, "require_parameters": True}
     assert not {"temperature", "top_p", "reasoning"} & set(first)
     assert {t["function"]["name"] for t in first["tools"]} == set(toolset.tools)
     assert requests[1]["messages"][2]["reasoning_details"] == replies[0]["reasoning_details"]

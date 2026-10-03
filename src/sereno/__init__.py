@@ -13,7 +13,7 @@ import threading
 from pathlib import Path
 
 MODELS = {
-    "glm53": ("z-ai/glm-5.3", "baidu/fp8"),
+    "glm53": ("z-ai/glm-5.3", "z-ai"),
     "glm53flash": ("z-ai/glm-5.3-flash", "z-ai"),
 }
 
