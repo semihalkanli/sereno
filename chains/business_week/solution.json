@@ -335,6 +335,18 @@
     {
       "tool_calls": [
         {
+          "id": "c4b",
+          "type": "function",
+          "function": {
+            "name": "accommodations_order_details",
+            "arguments": "{\"order_id\": \"4102385001\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
           "id": "c5",
           "type": "function",
           "function": {
