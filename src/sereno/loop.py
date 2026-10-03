@@ -130,7 +130,6 @@ def run_session(
     it once as one more turn. `max_steps` caps the model calls of the whole session;
     an error or the cap ends the session early.
     """
-    schemas = toolset.schemas()
     cost = 0.0
     tool_calls_run = 0
     step = 0
@@ -150,7 +149,7 @@ def run_session(
                 event_id = new_id()
                 with log.building(event_id):
                     try:
-                        completion = model.complete(messages, schemas)
+                        completion = model.complete(messages, toolset.schemas())
                     except Exception as e:
                         logger.exception("model call failed")
                         log.error(e, step=step, id=event_id, attempts=getattr(e, "attempts", None))

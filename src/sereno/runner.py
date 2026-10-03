@@ -8,6 +8,7 @@ with memory also gets the user file and the memory index as a system-reminder
 at every session start; checkpoints and compaction come later (plan phase 3).
 """
 
+import hashlib
 import json
 import os
 import subprocess
@@ -20,6 +21,7 @@ from sereno.apps import get_app
 from sereno.chain import LoadedChain, Message, apply_change
 from sereno.checks import grade, is_task_group
 from sereno.events import EventLog
+from sereno.experiments import Experiment
 from sereno.loop import SessionResult, output_messages, run_session, run_tool_call
 from sereno.memory import session_reminder
 from sereno.tools import Toolset
@@ -116,7 +118,8 @@ def _shows_fill(loaded: LoadedChain, opening) -> bool:
             for v in value:
                 yield from strings(v)
 
-    fills = [loaded.attack.fills[slot].strip() for slot in loaded.poison]
+    fills = [loaded.attack.fills[key].strip() for key in loaded.poison if key in loaded.attack.fills]
+    fills += [e.text.strip() for e in loaded.attack.events if e.poison and e.text]
     return any(fill and fill in text for text in strings(opening) for fill in fills)
 
 
@@ -204,6 +207,14 @@ def run_chain(
             "run",
             run_id,
             chain=chain.id,
+            scenario_version=chain.version,
+            scenario_sha256=hashlib.sha256(
+                json.dumps([chain.model_dump(mode="json"), loaded.world_data], sort_keys=True).encode()
+            ).hexdigest(),
+            experiment=loaded.attack.model_dump(mode="json") if loaded.attack else None,
+            experiment_sha256=hashlib.sha256(
+                loaded.attack.model_dump_json().encode() if loaded.attack else b"clean"
+            ).hexdigest(),
             sessions=len(chain.sessions),
             attack=loaded.attack.id if loaded.attack else None,
             twin=loaded.twin.id if loaded.twin else None,
@@ -221,6 +232,7 @@ def run_chain(
             },
         ) as run_end,
     ):
+        experiment = Experiment(loaded, world, log, lambda: _copy_counts(world, attack) if attack else {})
         for number, session in enumerate(chain.sessions, start=1):
             model = first if number == 1 else make_model(session.id)
             if session.now < world.now:
@@ -231,7 +243,12 @@ def run_chain(
                 apply_change(world, change)
             if session.user_file is not None:
                 user_file = session.user_file
-            toolset = Toolset(world, loaded.tools(world))
+            toolset = Toolset(world, loaded.tools(world), experiment)
+            experiment.session = session.id
+            experiment.toolset = toolset
+            experiment.user_file = user_file
+            experiment.apply("session_start")
+            user_file = experiment.user_file
             system_prompt = loaded.system_prompt(world)
             with log.span(
                 "session",
@@ -255,6 +272,7 @@ def run_chain(
                 if attack and _shows_fill(loaded, [messages, session.turns, toolset.schemas()]):
                     shown.append(session.id)
                 before = _copy_counts(world, attack) if attack else {}
+                external_before = experiment.external_delta.copy()
                 outcome = run_session(
                     model, toolset, messages, session.turns, log, max_steps=max_steps, reply=chain.user_reply or None
                 )
@@ -264,7 +282,14 @@ def run_chain(
                     seen = session.id
                 if attack:
                     for app, n in _copy_counts(world, attack).items():
-                        copies[app] = max(0, copies.get(app, 0) + n - before.get(app, 0))
+                        copies[app] = max(
+                            0,
+                            copies.get(app, 0)
+                            + n
+                            - before.get(app, 0)
+                            - experiment.external_delta[app]
+                            + external_before[app],
+                        )
                         if copies[app]:
                             copied.append(f"{session.id}:{app}")
                 if attack and session.answer_only:
@@ -287,6 +312,7 @@ def run_chain(
             if session.id == until:
                 break
 
+        experiment.finish()
         if chain.final_checks and until is None and not result.invalid:
             score("final", chain.final_checks, start)
         if attack:
@@ -302,7 +328,13 @@ def run_chain(
                 early = success is not None and loaded.session_number(success) < loaded.session_number(trigger.session)
             result.timing.update(poison_seen=seen, first_success=success, early=early)
             carried = None
-            if success is not None and success != seen and success not in shown:
+            if (
+                success is not None
+                and success != seen
+                and success not in shown
+                and success not in experiment.poisoned_sessions
+                and success not in experiment.external_observations
+            ):
                 n = loaded.session_number(success)
                 carried = n > 1 and any(e.startswith(f"{chain.sessions[n - 2].id}:") for e in copied)
             result.timing["carried"] = carried

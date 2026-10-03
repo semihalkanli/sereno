@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, TypeAdapter, model_validator
 
 from sereno.apps import get_app
 from sereno.checks import Check, collection, matches_all
+from sereno.experiments import AttackEvent, payloads, validate_events
 from sereno.memory import INSTRUCTIONS
 from sereno.tools import Tool
 from sereno.world import World
@@ -80,6 +81,7 @@ class Session(BaseModel, extra="forbid"):
 
 
 class Chain(BaseModel, extra="forbid"):
+    version: str = "1"
     id: str
     name: str
     summary: str
@@ -125,7 +127,8 @@ class Attack(BaseModel, extra="forbid"):
     id: str
     objective: str
     marker: str
-    fills: dict[str, str]
+    fills: dict[str, str] = {}
+    events: list[AttackEvent] = []
     one_of: list[str] = []
     """Filled slots of which the run's seed keeps one; the others keep their default. Empty keeps every fill."""
     trigger: Trigger | None = None
@@ -335,7 +338,7 @@ def baseline_checks(attack: Attack, clean_text: str, apps: list[str]) -> tuple[l
     clean chain and world (`clean_text`): an id only its fill places. `contains`
     and `regex` grade what the agent writes, which a clean run can write too.
     """
-    fills = list(attack.fills.values())
+    fills = payloads(attack)
     gradeable, skipped = [], []
     for check in attack.checks:
         values = [v for cond in check.where.values() for v in (cond.eq if isinstance(cond.eq, list) else [cond.eq])]
@@ -348,7 +351,12 @@ def baseline_checks(attack: Attack, clean_text: str, apps: list[str]) -> tuple[l
 
 
 def load_chain(
-    chain_id: str, attack_id: str | None = None, root: Path = CHAINS_DIR, seed: int = 0, twin_id: str | None = None
+    chain_id: str,
+    attack_id: str | None = None,
+    root: Path = CHAINS_DIR,
+    seed: int = 0,
+    twin_id: str | None = None,
+    attack_file: Path | None = None,
 ) -> LoadedChain:
     """Load a chain with its slots filled. `seed` picks the attack's placement when it lists `one_of`."""
     directory = root / chain_id
@@ -361,12 +369,15 @@ def load_chain(
     fills = {sid: s.default for sid, s in slots.items()}
     attack = None
     poison: dict[str, int] = {}
-    if attack_id is not None:
-        attack = Attack.model_validate_json((directory / "attacks" / f"{attack_id}.json").read_text(encoding="utf-8"))
+    if attack_id is not None and attack_file is not None:
+        raise ValueError("choose attack_id or attack_file, not both")
+    if attack_id is not None or attack_file is not None:
+        path = attack_file if attack_file is not None else directory / "attacks" / f"{attack_id}.json"
+        attack = Attack.model_validate_json(path.read_text(encoding="utf-8"))
         unknown = [s for s in attack.fills if s not in slots]
         if unknown:
             raise ValueError(f"attack {attack_id} fills undeclared slots: {', '.join(unknown)}")
-        if not any(attack.marker in text for text in attack.fills.values()):
+        if not attack.marker or not any(attack.marker in text for text in payloads(attack)):
             raise ValueError(f"attack {attack_id}: no fill carries the marker {attack.marker!r}")
         chosen = dict(attack.fills)
         if attack.one_of:
@@ -381,6 +392,13 @@ def load_chain(
         fills.update(chosen)
         sessions = slot_sessions(raw_chain, raw_world, fills)
         poison = {s: sessions[s] for s in chosen if s in sessions}
+        session_numbers = {s["id"]: i for i, s in enumerate(raw_chain["sessions"], 1)}
+        for event in attack.events:
+            if event.poison:
+                try:
+                    poison[f"event:{event.id}"] = min(session_numbers[s] for s in event.sessions)
+                except KeyError as exc:
+                    raise ValueError(f"unknown event session {exc}") from exc
 
     used: set[str] = set()
     chain = Chain.model_validate(_fill_slots(raw_chain, fills, used))
@@ -416,6 +434,7 @@ def load_chain(
     unknown_tools = sorted(set(chain.tool_descriptions) - known)
     if unknown_tools:
         raise ValueError(f"tool_descriptions names tools no linked app has: {', '.join(unknown_tools)}")
+    validate_events(loaded)
     return loaded
 
 

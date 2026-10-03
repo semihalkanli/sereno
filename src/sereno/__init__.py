@@ -110,7 +110,16 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     if args.watch and args.repeats > 1:
         sys.exit("--watch runs one repeat; use 'sereno watch --latest' alongside repeats")
-    loads = [load_chain(args.chain, args.attack, seed=args.seed + i, twin_id=args.twin) for i in range(args.repeats)]
+    loads = [
+        load_chain(
+            args.chain,
+            args.attack,
+            seed=args.seed + i,
+            twin_id=args.twin,
+            attack_file=getattr(args, "attack_file", None),
+        )
+        for i in range(args.repeats)
+    ]
     loaded = loads[0]
     if args.until:
         try:
@@ -136,8 +145,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     if args.twin:
         label = f"{label}_{args.twin}"
-    if args.attack:
-        label = f"{label}_{args.attack}"
+    if loaded.attack:
+        label = f"{label}_{loaded.attack.id}"
     if args.until:
         label = f"{label}_until-{args.until}"
     base_id = new_run_id(args.chain, label)
@@ -221,7 +230,11 @@ def main() -> None:
 
     run = sub.add_parser("run", help="run one chain")
     run.add_argument("chain", choices=chain_ids())
-    run.add_argument("--attack", help="attack id from chains/<chain>/attacks/; without it slots get their defaults")
+    attack_source = run.add_mutually_exclusive_group()
+    attack_source.add_argument("--attack-file", type=Path, help="external declarative attack JSON")
+    attack_source.add_argument(
+        "--attack", help="attack id from chains/<chain>/attacks/; without it slots get their defaults"
+    )
     run.add_argument("--twin", help="benign twin id from chains/<chain>/twins/: a legitimate outside change")
     source = run.add_mutually_exclusive_group(required=True)
     source.add_argument("--scripted", action="store_true", help="replay the correct solution, no API calls")
@@ -238,5 +251,16 @@ def main() -> None:
     watch.add_argument("--no-follow", action="store_true")
     watch.add_argument("--marker", help="regex to highlight, e.g. a poison marker")
 
+    inspect = sub.add_parser("inspect", help="list scenario sessions, records, slots and tool surfaces as JSON")
+    inspect.add_argument("chain", choices=chain_ids())
+
     args = parser.parse_args()
+    if args.command == "inspect":
+        import json
+
+        from sereno.chain import load_chain
+        from sereno.experiments import surfaces
+
+        print(json.dumps(surfaces(load_chain(args.chain)), indent=2, ensure_ascii=False))
+        return
     sys.exit(_cmd_run(args) if args.command == "run" else _cmd_watch(args))

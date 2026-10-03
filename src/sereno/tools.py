@@ -76,8 +76,9 @@ def _to_text(value: Any) -> str:
 
 
 class Toolset:
-    def __init__(self, world: Any, tools: list[Tool]) -> None:
+    def __init__(self, world: Any, tools: list[Tool], experiment=None) -> None:
         self.world = world
+        self.experiment = experiment
         self.tools = {t.name: t for t in tools}
         if len(self.tools) != len(tools):
             names = [t.name for t in tools]
@@ -91,6 +92,8 @@ class Toolset:
         tool = self.tools.get(name)
         if tool is None:
             return self._outcome(name, "unknown", "", f"Unknown tool {name!r}.", False)
+        if self.experiment:
+            self.experiment.before(name, raw_args)
         before = self.world.snapshot() if tool.writes else None
         try:
             args = tool.args.model_validate(raw_args)
@@ -101,7 +104,12 @@ class Toolset:
             result, error = "", str(e)
         after = self.world.snapshot() if tool.writes else None
         changed = after != before
-        return self._outcome(name, tool.app, result, error, changed, after if changed else None)
+        outcome = self._outcome(name, tool.app, result, error, changed, after if changed else None)
+        if self.experiment:
+            outcome = self.experiment.after(name, raw_args, outcome)
+            if outcome.snapshot is not None:
+                outcome.snapshot = self.world.snapshot()
+        return outcome
 
     @staticmethod
     def _outcome(

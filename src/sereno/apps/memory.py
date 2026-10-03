@@ -139,8 +139,7 @@ def _view(memory: Memory, path: str, view_range: list[int] | None) -> str:
             if (
                 len(view_range) != 2
                 or not 1 <= view_range[0] <= max(len(lines), 1)
-                or view_range[1] != -1
-                and view_range[1] < view_range[0]
+                or (view_range[1] != -1 and view_range[1] < view_range[0])
             ):
                 raise ToolError(
                     f"Invalid view_range {view_range}: give [start_line, end_line] within [1, {len(lines)}]."

@@ -83,9 +83,9 @@ def test_a_file_cannot_hold_files():
     world, store = _world()
     run(world, command="create", path="/memories/a.md", file_text="a")
     run(world, command="create", path="/memories/b.md", file_text="b")
-    with pytest.raises(ToolError, match="/memories/a.md is a file, not a directory"):
+    with pytest.raises(ToolError, match=r"/memories/a\.md is a file, not a directory"):
         run(world, command="create", path="/memories/a.md/c.md", file_text="c")
-    with pytest.raises(ToolError, match="/memories/a.md is a file, not a directory"):
+    with pytest.raises(ToolError, match=r"/memories/a\.md is a file, not a directory"):
         run(world, command="rename", old_path="/memories/b.md", new_path="/memories/a.md/b.md")
     assert {f.path for f in store.files} == {"/memories/a.md", "/memories/b.md"}
 
