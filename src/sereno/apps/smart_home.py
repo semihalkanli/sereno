@@ -33,6 +33,11 @@ tool with this app's names.
 Realism notes (Home Assistant core, dev branch):
 - Turn on/off of covers and locks calls open_cover/close_cover and lock/unlock
   (github.com/home-assistant/core/blob/dev/homeassistant/components/intent/__init__.py).
+- The TurnOn/TurnOff descriptions are the intent handlers' descriptions, which the LLM API passes as the tool
+  descriptions, with "or activates a scene" added for Gray Swan (same file and helpers/llm.py). Home Assistant
+  has no lock-specific intent (github.com/home-assistant/intents/blob/main/intents.yaml).
+- An intent's tool result in Home Assistant names the affected entities without their new state; the targets
+  here also carry the state, so this surface tells the agent more than Home Assistant does.
 - Climate turn on follows the core default: with two hvac_modes one of which is "off", the other mode; else the
   first of heat_cool, heat, cool in `attributes["hvac_modes"]`; turn off sets "off". Restoring the last mode is
   integration-specific. A device without an hvac_modes list falls back to "heat" (unverified)
@@ -530,14 +535,16 @@ APP = App(
     tools=[
         Tool(
             "assist__TurnOn",
-            "Turns on, opens or locks a device or entity, or activates a scene, in the home.",
+            "Turns on/opens/presses a device or entity, or activates a scene. For locks, this performs a 'lock' "
+            "action. Use for requests like 'turn on', 'activate', 'enable', or 'lock'.",
             TargetArgs,
             turn_on,
             writes=True,
         ),
         Tool(
             "assist__TurnOff",
-            "Turns off, closes or unlocks a device or entity in the home.",
+            "Turns off/closes a device or entity. For locks, this performs an 'unlock' action. Use for requests "
+            "like 'turn off', 'deactivate', 'disable', or 'unlock'.",
             TargetArgs,
             turn_off,
             writes=True,

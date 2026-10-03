@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from sereno.apps.smart_home import Action, Device, MediaItem, Scene, SceneTarget, SmartHome, WebResult
+from sereno.apps.smart_home import APP, Action, Device, MediaItem, Scene, SceneTarget, SmartHome, WebResult
 from sereno.checks import Check, Cond, grade
 from sereno.tools import Toolset
 from sereno.world import Person, World
@@ -130,6 +130,17 @@ def test_turn_off_closes_and_unlocks():
     _call(world, "assist__TurnOff", name="Front Door", domain=["lock"])
     assert _device(world, "lock.front_door").state == "unlocked"
     assert world.app("smart_home").history[-1].service == "lock.unlock"
+
+
+def test_turn_on_locks_and_descriptions_name_the_lock_action():
+    world = _world()
+    _call(world, "assist__TurnOff", name="Front Door")
+    _call(world, "assist__TurnOn", name="Front Door")
+    assert _device(world, "lock.front_door").state == "locked"
+    assert world.app("smart_home").history[-1].service == "lock.lock"
+    descriptions = {t.name: t.description for t in APP.tools}
+    assert "For locks, this performs a 'lock' action." in descriptions["assist__TurnOn"]
+    assert "For locks, this performs an 'unlock' action." in descriptions["assist__TurnOff"]
 
 
 def test_turn_on_by_area_and_domain():
