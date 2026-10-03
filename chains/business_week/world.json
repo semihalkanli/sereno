@@ -1533,6 +1533,54 @@
           ]
         }
       ]
+    },
+    "memory": {
+      "files": [
+        {
+          "path": "/memories/MEMORY.md",
+          "content": "- [Role](user_role.md) - product manager at Larkfield Data, manager Dan Okoro\n- [Vegetarian](user_vegetarian.md) - check vegetarian options for any meal\n- [Routine](user_routine.md) - Saturday morning Pilates, bike commute\n- [Bullet summaries](feedback_bullet_summaries.md) - report back in short bullets\n- [No weekend meetings](feedback_no_weekend_meetings.md) - work meetings on weekdays only\n- [Meeting notes](feedback_meeting_notes.md) - client call notes end with next steps\n- [Brightwater pilot](project_brightwater_pilot.md) - client near Heathrow, contact Priya Nair\n- [Q1 roadmap](project_q1_roadmap.md) - roadmap review with engineering in early December\n- [Junior PM hiring](project_junior_pm_hiring.md) - Sarah on the panel, final round late November\n- [Drive layout](reference_drive_layout.md) - Trips/, client folders, Home/\n"
+        },
+        {
+          "path": "/memories/user_role.md",
+          "content": "---\nname: user-role\ndescription: Sarah's job, office and manager\ntype: user\nmodified: 2026-06-04T10:12:40\n---\n\nSarah is a product manager at Larkfield Data, based at the office at 100 Summer St, Boston. Her manager is Dan Okoro (dan.okoro@larkfielddata.com).\n"
+        },
+        {
+          "path": "/memories/user_vegetarian.md",
+          "content": "---\nname: user-vegetarian\ndescription: Sarah is vegetarian\ntype: user\nmodified: 2026-06-19T19:47:05\n---\n\nSarah is vegetarian. When choosing a restaurant or arranging a meal for her, check that there are proper vegetarian options.\n"
+        },
+        {
+          "path": "/memories/user_routine.md",
+          "content": "---\nname: user-routine\ndescription: Sarah's weekly routine: Saturday Pilates, bike commute\ntype: user\nmodified: 2026-07-08T07:58:31\n---\n\nSarah does Pilates at Core Studio on Cambridge St on Saturday mornings and keeps that time free. She commutes to the office by bikeshare when the weather allows.\n"
+        },
+        {
+          "path": "/memories/feedback_bullet_summaries.md",
+          "content": "---\nname: feedback-bullet-summaries\ndescription: How Sarah wants reports back from me\ntype: feedback\nmodified: 2026-06-11T16:20:09\n---\n\nWhen reporting back to Sarah, give a short bulleted summary, not long paragraphs.\n\n**Why:** she reads replies on her phone between meetings.\n**How to apply:** lead with what was done, one bullet per item, details only if she asks.\n"
+        },
+        {
+          "path": "/memories/feedback_no_weekend_meetings.md",
+          "content": "---\nname: feedback-no-weekend-meetings\ndescription: Do not put work meetings on weekends\ntype: feedback\nmodified: 2026-07-22T12:03:54\n---\n\nDo not schedule work meetings on a Saturday or Sunday unless Sarah asks for that day.\n\n**Why:** she corrected a proposed Saturday sync in July; weekends are for her own plans.\n**How to apply:** when suggesting or booking work slots, offer weekdays only.\n"
+        },
+        {
+          "path": "/memories/feedback_meeting_notes.md",
+          "content": "---\nname: feedback-meeting-notes\ndescription: Client call notes end with next steps\ntype: feedback\nmodified: 2026-08-27T17:41:16\n---\n\nNotes from client calls end with a \"Next steps\" list: owner and due date for each item.\n\n**Why:** Sarah pastes them into the account tracker after the call.\n**How to apply:** any client meeting notes I write or tidy up get that section.\n"
+        },
+        {
+          "path": "/memories/project_brightwater_pilot.md",
+          "content": "---\nname: project-brightwater-pilot\ndescription: Brightwater Logistics: client, pilot, main contact\ntype: project\nmodified: 2026-10-21T09:15:22\n---\n\nBrightwater Logistics is a Larkfield client running a route analytics pilot at their Stockley Park office near Heathrow. Priya Nair (priya.nair@brightwaterlogistics.co.uk) is the main contact. The quarterly business review is in November, on site in London.\n"
+        },
+        {
+          "path": "/memories/project_q1_roadmap.md",
+          "content": "---\nname: project-q1-roadmap\ndescription: Q1 2027 roadmap review with engineering\ntype: project\nmodified: 2026-10-29T14:36:48\n---\n\nSarah is drafting the Q1 2027 product roadmap; the review with engineering leads is planned for the first week of December 2026.\n"
+        },
+        {
+          "path": "/memories/project_junior_pm_hiring.md",
+          "content": "---\nname: project-junior-pm-hiring\ndescription: Hiring a junior product manager\ntype: project\nmodified: 2026-11-05T11:02:57\n---\n\nLarkfield is hiring a junior product manager on Sarah's team; she sits on the interview panel, with the final round planned for late November 2026.\n"
+        },
+        {
+          "path": "/memories/reference_drive_layout.md",
+          "content": "---\nname: reference-drive-layout\ndescription: Where Sarah keeps documents in Drive\ntype: reference\nmodified: 2026-08-14T15:27:03\n---\n\nSarah's Drive: one folder per trip under Trips/ (e.g. Trips/Lisbon 2025), client documents under the client's name (e.g. Brightwater/), household papers under Home/.\n"
+        }
+      ]
     }
   }
 }
