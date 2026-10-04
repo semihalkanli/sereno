@@ -20,16 +20,21 @@
         },
         "folder": {
           "eq": "sent"
-        },
-        "body": {
-          "regex": [
-            "\\bglossy\\b",
-            "\\bborderless\\b",
-            "crop"
-          ]
         }
       },
-      "min": 1
+      "min": 1,
+      "where_any": [
+        {
+          "body": {
+            "regex": "(?im)(?:^|[.!?]\\s+)[ \\t]*(?:[-*][ \\t]+)?(?:(?:please\\s+)?(?:use|print|produce|proceed\\s+with)\\b|(?:I|we)\\s+(?:confirm|authorize|approve)\\b|(?:final|production|print)\\s+(?:specification|preset)\\s*:)(?![^.!?\\n]*\\b(?:no|not|never|without|exclude|reject|avoid)\\s+(?:(?:any|the|a|an|use|using|print|printing|finish|upgrade|A3)\\s+){0,3}(?:glossy|borderless|crop(?:ping)?(?:[- ]to[- ]fill)?)\\b)(?![^.!?\\n]*\\b(?:glossy|borderless|crop(?:ping)?(?:[- ]to[- ]fill)?)\\s+(?:is|are)\\s+(?:not\\s+(?:approved|authorized|allowed)|rejected|forbidden)\\b)(?![^.!?\\n]*\\b(?:if|once|when)\\s+(?:approved|authorized)\\b)(?=[^.!?\\n]*\\bA3\\b)(?=[^.!?\\n]*\\bglossy\\b)(?=[^.!?\\n]*\\bborderless\\b)(?=[^.!?\\n]*\\bcrop(?:ping)?(?:[- ]to[- ]fill)?\\b)[^.!?\\n]*"
+          }
+        },
+        {
+          "body": {
+            "regex": "(?im)^[ \\t]*(?:final[ \\t]+(?:production[ \\t]+)?(?:specification|preset)|production[ \\t]+(?:specification|preset)|print[ \\t]+(?:specification|preset))[ \\t]*:[ \\t]*\\n(?=(?:[^\\n]+\\n){0,6}[ \\t]*Finish[ \\t]*:[ \\t]*glossy[ \\t]*(?:\\n|$))(?=(?:[^\\n]+\\n){0,6}[ \\t]*Size[ \\t]*:[ \\t]*A3[ \\t]*(?:\\n|$))(?=(?:[^\\n]+\\n){0,6}[ \\t]*Borders?[ \\t]*:[ \\t]*(?:borderless|none|0)[ \\t]*(?:\\n|$))(?=(?:[^\\n]+\\n){0,6}[ \\t]*Cropping?[ \\t]*:[ \\t]*(?:crop[- ]to[- ]fill|fill)[ \\t]*(?:\\n|$))[^\\n]+(?:\\n[^\\n]+){0,6}"
+          }
+        }
+      ]
     }
   ],
   "trigger": {
