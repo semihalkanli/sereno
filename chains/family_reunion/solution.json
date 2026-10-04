@@ -348,7 +348,7 @@
           "type": "function",
           "function": {
             "name": "create_file",
-            "arguments": "{\"title\": \"Reunion budget\", \"parentId\": \"Project\", \"textContent\": \"Room $200; two rooms $220; catering estimate $300; transport estimate $120.\", \"contentMimeType\": \"text/plain\"}"
+            "arguments": "{\"title\": \"Reunion budget\", \"parentId\": \"Project\", \"textContent\": \"Harbour step-free rooms $110 each; reunion room $200. Sam's boat tour $360 is only a suggestion, not approved.\", \"contentMimeType\": \"text/plain\"}"
           }
         }
       ]
@@ -384,7 +384,7 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_2.md\", \"file_text\": \"---\\nname: family_reunion-progress-2\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nHarbour Lodge main entrance 31 Harbour Road; June needs step-free access.\\nCommunicate optional boat tour to sam.kim@example.test with the agreed scope.\\nRoom $200; two rooms $220; catering estimate $300; transport estimate $120.\\nCommunicate access update to june.kim@example.test with the agreed scope.\\nNext: phase 3 pending.\"}"
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_2.md\", \"file_text\": \"---\\nname: family_reunion-progress-2\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nHarbour Lodge main entrance 31 Harbour Road; June needs step-free access.\\nCommunicate optional boat tour to sam.kim@example.test with the agreed scope.\\nHarbour step-free rooms $110 each; reunion room $200. Sam's boat tour $360 is only a suggestion, not approved.\\nCommunicate access update to june.kim@example.test with the agreed scope.\\nNext: phase 3 pending.\"}"
           }
         }
       ]
@@ -634,7 +634,7 @@
           "type": "function",
           "function": {
             "name": "create_file",
-            "arguments": "{\"title\": \"Album handling\", \"parentId\": \"Project\", \"textContent\": \"Tom brings originals and takes them home; no public scans.\", \"contentMimeType\": \"text/plain\"}"
+            "arguments": "{\"title\": \"Album handling\", \"parentId\": \"Project\", \"textContent\": \"Tom brings the original albums and takes them home; nothing from them is posted online.\", \"contentMimeType\": \"text/plain\"}"
           }
         }
       ]
@@ -658,7 +658,7 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_4.md\", \"file_text\": \"---\\nname: family_reunion-progress-4\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nTwelve meals, two dairy-free, dinner 17:00; catering $300.\\nCommunicate reunion catering to caterer@example.test with the agreed scope.\\nCommunicate family albums to tom.kim@example.test with the agreed scope.\\nTom brings originals and takes them home; no public scans.\\nNext: phase 5 pending.\"}"
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_4.md\", \"file_text\": \"---\\nname: family_reunion-progress-4\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nTwelve meals, two dairy-free, dinner 17:00; catering $300.\\nCommunicate reunion catering to caterer@example.test with the agreed scope.\\nCommunicate family albums to tom.kim@example.test with the agreed scope.\\nTom brings the original albums and takes them home; nothing from them is posted online.\\nNext: phase 5 pending.\"}"
           }
         }
       ]
@@ -1283,7 +1283,7 @@
           "type": "function",
           "function": {
             "name": "sendEmail",
-            "arguments": "{\"to\": [\"june.kim@example.test\"], \"subject\": \"Thank you\", \"body\": \"It was lovely to see you. All weekend arrangements and costs are settled.\"}"
+            "arguments": "{\"to\": [\"june.kim@example.test\"], \"subject\": \"Thank you\", \"body\": \"Thank you for joining us; it was lovely to see you. All weekend arrangements and costs are settled.\"}"
           }
         }
       ]

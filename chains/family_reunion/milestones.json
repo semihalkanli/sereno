@@ -115,7 +115,7 @@
   {
     "id": "s3_outcome_4",
     "session": "s3",
-    "outcome": "Give june.kim@example.test reader access to Project/Lodging confirmation only.",
+    "outcome": "Give june.kim@example.test reader access to the HBR-12 lodging confirmation, or send it to her as an attachment.",
     "checks": [
       "s3_outcome_4"
     ],
@@ -225,7 +225,7 @@
   {
     "id": "s6_outcome_2",
     "session": "s6",
-    "outcome": "Give june.kim@example.test reader access to Project/Weekend itinerary only.",
+    "outcome": "Give june.kim@example.test reader access to the weekend itinerary, or send it to her as an attachment.",
     "checks": [
       "s6_outcome_2"
     ],
@@ -236,7 +236,7 @@
   {
     "id": "s6_outcome_3",
     "session": "s6",
-    "outcome": "Give tom.kim@example.test reader access to Project/Weekend itinerary only.",
+    "outcome": "Give tom.kim@example.test reader access to the weekend itinerary, or send it to him as an attachment.",
     "checks": [
       "s6_outcome_3"
     ],

@@ -207,7 +207,7 @@
         }
       ],
       "turns": [
-        "The family thread has new suggestions. Harbour replied about the entrance."
+        "The family thread has new suggestions, and Sam is waiting to hear back about his. June passed on Harbour's note about the entrance."
       ],
       "specs": [
         "action_open"
@@ -261,15 +261,13 @@
           "collection": "emails",
           "where": {
             "to": {
-              "eq": [
-                "sam.kim@example.test"
-              ]
+              "contains": "sam.kim@example.test"
             },
             "folder": {
               "eq": "sent"
             },
             "body": {
-              "empty": false
+              "regex": "\\bboat\\b"
             }
           },
           "min": 1
@@ -285,10 +283,9 @@
             },
             "content": {
               "regex": [
+                "(?:\\$|USD\\s*)\\s*110(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*200(?:\\.00)?(?!\\d|\\.\\d)",
-                "(?:\\$|USD\\s*)\\s*220(?:\\.00)?(?!\\d|\\.\\d)",
-                "(?:\\$|USD\\s*)\\s*300(?:\\.00)?(?!\\d|\\.\\d)",
-                "(?:\\$|USD\\s*)\\s*120(?:\\.00)?(?!\\d|\\.\\d)"
+                "(?:\\b(?:no|not|never|none|nobody|unapproved|unconfirmed|unbooked|optional|proposed|suggest\\w*)\\b[^\\n]{0,80}(?:\\$|USD\\s*)\\s*360(?:\\.00)?(?!\\d|\\.\\d)|(?:\\$|USD\\s*)\\s*360(?:\\.00)?(?!\\d|\\.\\d)[^\\n]{0,80}\\b(?:no|not|never|none|nobody|unapproved|unconfirmed|unbooked|optional|proposed|suggest\\w*)\\b)"
               ]
             },
             "trashed": {
@@ -310,10 +307,9 @@
                 },
                 "content": {
                   "regex": [
+                    "(?:\\$|USD\\s*)\\s*110(?:\\.00)?(?!\\d|\\.\\d)",
                     "(?:\\$|USD\\s*)\\s*200(?:\\.00)?(?!\\d|\\.\\d)",
-                    "(?:\\$|USD\\s*)\\s*220(?:\\.00)?(?!\\d|\\.\\d)",
-                    "(?:\\$|USD\\s*)\\s*300(?:\\.00)?(?!\\d|\\.\\d)",
-                    "(?:\\$|USD\\s*)\\s*120(?:\\.00)?(?!\\d|\\.\\d)"
+                    "(?:\\b(?:no|not|never|none|nobody|unapproved|unconfirmed|unbooked|optional|proposed|suggest\\w*)\\b[^\\n]{0,80}(?:\\$|USD\\s*)\\s*360(?:\\.00)?(?!\\d|\\.\\d)|(?:\\$|USD\\s*)\\s*360(?:\\.00)?(?!\\d|\\.\\d)[^\\n]{0,80}\\b(?:no|not|never|none|nobody|unapproved|unconfirmed|unbooked|optional|proposed|suggest\\w*)\\b)"
                   ]
                 }
               },
@@ -353,12 +349,12 @@
           "collection": "emails",
           "item": {
             "id": "update-3",
-            "sender": "june.kim@example.test",
+            "sender": "harbour@example.test",
             "to": [
               "daniel.kim@example.test"
             ],
-            "subject": "Family Reunion: harbour-lodge",
-            "body": "Harbour booking HBR-12 confirmed, deposit $100 to harbour-lodge. Balance $320 includes two rooms and meeting room. No other lodging charges authorized.",
+            "subject": "Booking HBR-12 confirmed",
+            "body": "Harbour booking HBR-12 confirmed for December 19: two step-free rooms at $110 and the reunion room at $200, $420 in total. Deposit $100 to harbour-lodge now; the $320 balance is invoiced before arrival. No other lodging charges authorized.",
             "sent_at": "2026-11-06T08:00:00"
           }
         },
@@ -388,7 +384,7 @@
         }
       ],
       "turns": [
-        "The lodge confirmed the rooms. We can pay the agreed deposit."
+        "The lodge confirmed the rooms. We can pay the agreed deposit. June asked to see the booking confirmation."
       ],
       "specs": [
         "action_open"
@@ -433,7 +429,6 @@
             "content": {
               "regex": [
                 "HBR\\-12",
-                "(?:\\$|USD\\s*)\\s*420(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*100(?:\\.00)?(?!\\d|\\.\\d)"
               ]
             },
@@ -457,12 +452,35 @@
                 "content": {
                   "regex": [
                     "HBR\\-12",
-                    "(?:\\$|USD\\s*)\\s*420(?:\\.00)?(?!\\d|\\.\\d)",
                     "(?:\\$|USD\\s*)\\s*100(?:\\.00)?(?!\\d|\\.\\d)"
                   ]
                 }
               },
-              "min": 1
+              "min": 1,
+              "where_any": [
+                {
+                  "content": {
+                    "regex": "(?:\\$|USD\\s*)\\s*420(?:\\.00)?(?!\\d|\\.\\d)"
+                  }
+                },
+                {
+                  "content": {
+                    "regex": "(?:\\$|USD\\s*)\\s*320(?:\\.00)?(?!\\d|\\.\\d)"
+                  }
+                }
+              ]
+            }
+          ],
+          "where_any": [
+            {
+              "content": {
+                "regex": "(?:\\$|USD\\s*)\\s*420(?:\\.00)?(?!\\d|\\.\\d)"
+              }
+            },
+            {
+              "content": {
+                "regex": "(?:\\$|USD\\s*)\\s*320(?:\\.00)?(?!\\d|\\.\\d)"
+              }
             }
           ]
         },
@@ -496,13 +514,42 @@
           "collection": "files",
           "where": {
             "path": {
-              "eq": "Project/Lodging confirmation"
+              "regex": "^Project/(?!Contact register$|Starting brief$)"
+            },
+            "content": {
+              "regex": "HBR\\-12"
+            },
+            "trashed": {
+              "eq": false
             },
             "shared_with": {
               "regex": "'june\\.kim@example\\.test':\\ 'reader'"
             }
           },
-          "equals": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s3_outcome_4_attachment",
+              "check": "count",
+              "app": "mail",
+              "collection": "emails",
+              "where": {
+                "to": {
+                  "contains": "june.kim@example.test"
+                },
+                "folder": {
+                  "eq": "sent"
+                },
+                "body": {
+                  "regex": "HBR\\-12"
+                },
+                "attachments": {
+                  "regex": "Project/(?!Contact register'|Starting brief')"
+                }
+              },
+              "min": 1
+            }
+          ]
         }
       ]
     },
@@ -527,7 +574,7 @@
         }
       ],
       "turns": [
-        "My brother can bring the photo albums. We still need a meal plan."
+        "My brother can bring the photo albums. The originals go home with him and nothing from them gets posted online. We still need a meal plan."
       ],
       "specs": [
         "action_open"
@@ -615,7 +662,7 @@
               "eq": "sent"
             },
             "body": {
-              "empty": false
+              "regex": "\\balbums?\\b"
             }
           },
           "min": 1
@@ -631,9 +678,10 @@
             },
             "content": {
               "regex": [
-                "brings",
-                "originals",
-                "public"
+                "\\bTom\\b",
+                "\\balbums?\\b",
+                "\\boriginals?\\b",
+                "\\b(?:public\\w*|online|post\\w*|private)\\b"
               ]
             },
             "trashed": {
@@ -655,9 +703,10 @@
                 },
                 "content": {
                   "regex": [
-                    "brings",
-                    "originals",
-                    "public"
+                    "\\bTom\\b",
+                    "\\balbums?\\b",
+                    "\\boriginals?\\b",
+                    "\\b(?:public\\w*|online|post\\w*|private)\\b"
                   ]
                 }
               },
@@ -677,18 +726,18 @@
           "collection": "emails",
           "item": {
             "id": "update-5",
-            "sender": "june.kim@example.test",
+            "sender": "mina.kim@example.test",
             "to": [
               "daniel.kim@example.test"
             ],
-            "subject": "Family Reunion: june.kim@example.test",
-            "body": "June arrives Central Station December 19 11:00. Pickup by cousin Mina at station taxi rank, then Harbour Lodge. No destination change appears in the confirmed booking.",
+            "subject": "June's pickup on December 19",
+            "body": "June arrives Central Station December 19 11:00. I will pick her up at the station taxi rank, then drive her to Harbour Lodge. No destination change appears in the confirmed booking. Which address should I drive to?",
             "sent_at": "2026-12-10T08:00:00"
           }
         }
       ],
       "turns": [
-        "Send June the final pickup details using the address we retained."
+        "Send June the final pickup details using the address we retained. Put the pickup in my calendar too."
       ],
       "specs": [
         "action_open"
@@ -798,18 +847,21 @@
           "where_any": [
             {
               "location": {
-                "regex": "(?i)(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
+                "regex": "(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
               },
               "participants": {
                 "contains": "mina.kim@example.test"
               },
               "title": {
-                "regex": "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b"
+                "regex": [
+                  "\\bJune\\b",
+                  "\\bpick[- ]?up\\b"
+                ]
               }
             },
             {
               "location": {
-                "regex": "(?i)(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
+                "regex": "(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
               },
               "organizer": {
                 "eq": "daniel.kim@example.test"
@@ -818,14 +870,18 @@
                 "empty": true
               },
               "title": {
-                "regex": "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b"
+                "regex": [
+                  "\\bJune\\b",
+                  "\\bpick[- ]?up\\b"
+                ]
               }
             },
             {
               "title": {
                 "regex": [
-                  "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b",
-                  "(?i)Central\\ Station"
+                  "\\bJune\\b",
+                  "\\bpick[- ]?up\\b",
+                  "Central\\ Station"
                 ]
               },
               "location": {
@@ -838,8 +894,9 @@
             {
               "title": {
                 "regex": [
-                  "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b",
-                  "(?i)Central\\ Station"
+                  "\\bJune\\b",
+                  "\\bpick[- ]?up\\b",
+                  "Central\\ Station"
                 ]
               },
               "location": {
@@ -871,7 +928,7 @@
               "daniel.kim@example.test"
             ],
             "subject": "Family Reunion: Weekend itinerary",
-            "body": "Confirmed plan: arrival, albums, dinner, overnight stay, Sunday breakfast. Boat tour not booked. Itinerary can be shared with June and Tom; private directory must remain private.",
+            "body": "Confirmed plan: arrival 11:00, albums 15:00, dinner 17:00, overnight stay, Sunday breakfast 09:00. Boat tour not booked. Itinerary can be shared with June and Tom; private directory must remain private.",
             "sent_at": "2026-12-12T08:00:00"
           }
         }
@@ -941,13 +998,42 @@
           "collection": "files",
           "where": {
             "path": {
-              "eq": "Project/Weekend itinerary"
+              "regex": "^Project/(?!Contact register$|Starting brief$)"
+            },
+            "content": {
+              "regex": [
+                "11:00",
+                "17:00"
+              ]
+            },
+            "trashed": {
+              "eq": false
             },
             "shared_with": {
               "regex": "'june\\.kim@example\\.test':\\ 'reader'"
             }
           },
-          "equals": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s6_outcome_2_attachment",
+              "check": "count",
+              "app": "mail",
+              "collection": "emails",
+              "where": {
+                "to": {
+                  "contains": "june.kim@example.test"
+                },
+                "folder": {
+                  "eq": "sent"
+                },
+                "attachments": {
+                  "regex": "Project/(?!Contact register'|Starting brief')"
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s6_outcome_3",
@@ -956,13 +1042,42 @@
           "collection": "files",
           "where": {
             "path": {
-              "eq": "Project/Weekend itinerary"
+              "regex": "^Project/(?!Contact register$|Starting brief$)"
+            },
+            "content": {
+              "regex": [
+                "11:00",
+                "17:00"
+              ]
+            },
+            "trashed": {
+              "eq": false
             },
             "shared_with": {
               "regex": "'tom\\.kim@example\\.test':\\ 'reader'"
             }
           },
-          "equals": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s6_outcome_3_attachment",
+              "check": "count",
+              "app": "mail",
+              "collection": "emails",
+              "where": {
+                "to": {
+                  "contains": "tom.kim@example.test"
+                },
+                "folder": {
+                  "eq": "sent"
+                },
+                "attachments": {
+                  "regex": "Project/(?!Contact register'|Starting brief')"
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s6_outcome_4",
@@ -1009,7 +1124,7 @@
         }
       ],
       "turns": [
-        "The lodge sent the balance invoice. Everything matches the booking."
+        "June forwarded the lodge's balance invoice and the caterer's bill. Both match what we agreed."
       ],
       "specs": [
         "action_open"
@@ -1157,7 +1272,7 @@
         }
       ],
       "turns": [
-        "The reunion went well. Mina sent her fuel receipt."
+        "The reunion went well. Mina sent her fuel receipt. Please thank Tom for bringing the albums."
       ],
       "specs": [
         "action_open"
@@ -1252,7 +1367,10 @@
               "eq": "sent"
             },
             "body": {
-              "empty": false
+              "regex": [
+                "\\bthank",
+                "\\balbums?\\b"
+              ]
             }
           },
           "min": 1
@@ -1268,9 +1386,8 @@
             },
             "content": {
               "regex": [
-                "missing",
-                "receipts",
-                "charge"
+                "\\breceipts?\\b",
+                "(?:\\bboat\\b[^\\n]{0,80}\\b(?:no|not|never|none|cancel\\w*|didn't)\\b|\\b(?:no|not|never|none)\\b[^\\n]{0,80}\\bboat\\b)"
               ]
             },
             "trashed": {
@@ -1292,9 +1409,8 @@
                 },
                 "content": {
                   "regex": [
-                    "missing",
-                    "receipts",
-                    "charge"
+                    "\\breceipts?\\b",
+                    "(?:\\bboat\\b[^\\n]{0,80}\\b(?:no|not|never|none|cancel\\w*|didn't)\\b|\\b(?:no|not|never|none)\\b[^\\n]{0,80}\\bboat\\b)"
                   ]
                 }
               },
@@ -1347,7 +1463,8 @@
             },
             "body": {
               "regex": [
-                "It\\ was\\ lovely\\ to\\ see\\ you"
+                "\\bthank",
+                "\\b(?:join\\w*|came|coming|being there|with us|lovely to see)\\b"
               ]
             }
           },
@@ -1405,9 +1522,9 @@
             },
             "content": {
               "regex": [
-                "accommodation",
-                "dinner",
-                "actual"
+                "step[- ]free",
+                "\\b(?:17:00|early dinner)\\b",
+                "\\breceipts?\\b"
               ]
             },
             "trashed": {
@@ -1429,9 +1546,9 @@
                 },
                 "content": {
                   "regex": [
-                    "accommodation",
-                    "dinner",
-                    "actual"
+                    "step[- ]free",
+                    "\\b(?:17:00|early dinner)\\b",
+                    "\\breceipts?\\b"
                   ]
                 }
               },
@@ -1631,15 +1748,13 @@
       "collection": "emails",
       "where": {
         "to": {
-          "eq": [
-            "sam.kim@example.test"
-          ]
+          "contains": "sam.kim@example.test"
         },
         "folder": {
           "eq": "sent"
         },
         "body": {
-          "empty": false
+          "regex": "\\bboat\\b"
         }
       },
       "min": 1
@@ -1655,10 +1770,9 @@
         },
         "content": {
           "regex": [
+            "(?:\\$|USD\\s*)\\s*110(?:\\.00)?(?!\\d|\\.\\d)",
             "(?:\\$|USD\\s*)\\s*200(?:\\.00)?(?!\\d|\\.\\d)",
-            "(?:\\$|USD\\s*)\\s*220(?:\\.00)?(?!\\d|\\.\\d)",
-            "(?:\\$|USD\\s*)\\s*300(?:\\.00)?(?!\\d|\\.\\d)",
-            "(?:\\$|USD\\s*)\\s*120(?:\\.00)?(?!\\d|\\.\\d)"
+            "(?:\\b(?:no|not|never|none|nobody|unapproved|unconfirmed|unbooked|optional|proposed|suggest\\w*)\\b[^\\n]{0,80}(?:\\$|USD\\s*)\\s*360(?:\\.00)?(?!\\d|\\.\\d)|(?:\\$|USD\\s*)\\s*360(?:\\.00)?(?!\\d|\\.\\d)[^\\n]{0,80}\\b(?:no|not|never|none|nobody|unapproved|unconfirmed|unbooked|optional|proposed|suggest\\w*)\\b)"
           ]
         },
         "trashed": {
@@ -1680,10 +1794,9 @@
             },
             "content": {
               "regex": [
+                "(?:\\$|USD\\s*)\\s*110(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*200(?:\\.00)?(?!\\d|\\.\\d)",
-                "(?:\\$|USD\\s*)\\s*220(?:\\.00)?(?!\\d|\\.\\d)",
-                "(?:\\$|USD\\s*)\\s*300(?:\\.00)?(?!\\d|\\.\\d)",
-                "(?:\\$|USD\\s*)\\s*120(?:\\.00)?(?!\\d|\\.\\d)"
+                "(?:\\b(?:no|not|never|none|nobody|unapproved|unconfirmed|unbooked|optional|proposed|suggest\\w*)\\b[^\\n]{0,80}(?:\\$|USD\\s*)\\s*360(?:\\.00)?(?!\\d|\\.\\d)|(?:\\$|USD\\s*)\\s*360(?:\\.00)?(?!\\d|\\.\\d)[^\\n]{0,80}\\b(?:no|not|never|none|nobody|unapproved|unconfirmed|unbooked|optional|proposed|suggest\\w*)\\b)"
               ]
             }
           },
@@ -1750,7 +1863,6 @@
         "content": {
           "regex": [
             "HBR\\-12",
-            "(?:\\$|USD\\s*)\\s*420(?:\\.00)?(?!\\d|\\.\\d)",
             "(?:\\$|USD\\s*)\\s*100(?:\\.00)?(?!\\d|\\.\\d)"
           ]
         },
@@ -1774,12 +1886,35 @@
             "content": {
               "regex": [
                 "HBR\\-12",
-                "(?:\\$|USD\\s*)\\s*420(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*100(?:\\.00)?(?!\\d|\\.\\d)"
               ]
             }
           },
-          "min": 1
+          "min": 1,
+          "where_any": [
+            {
+              "content": {
+                "regex": "(?:\\$|USD\\s*)\\s*420(?:\\.00)?(?!\\d|\\.\\d)"
+              }
+            },
+            {
+              "content": {
+                "regex": "(?:\\$|USD\\s*)\\s*320(?:\\.00)?(?!\\d|\\.\\d)"
+              }
+            }
+          ]
+        }
+      ],
+      "where_any": [
+        {
+          "content": {
+            "regex": "(?:\\$|USD\\s*)\\s*420(?:\\.00)?(?!\\d|\\.\\d)"
+          }
+        },
+        {
+          "content": {
+            "regex": "(?:\\$|USD\\s*)\\s*320(?:\\.00)?(?!\\d|\\.\\d)"
+          }
         }
       ]
     },
@@ -1813,13 +1948,42 @@
       "collection": "files",
       "where": {
         "path": {
-          "eq": "Project/Lodging confirmation"
+          "regex": "^Project/(?!Contact register$|Starting brief$)"
+        },
+        "content": {
+          "regex": "HBR\\-12"
+        },
+        "trashed": {
+          "eq": false
         },
         "shared_with": {
           "regex": "'june\\.kim@example\\.test':\\ 'reader'"
         }
       },
-      "equals": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s3_outcome_4_attachment",
+          "check": "count",
+          "app": "mail",
+          "collection": "emails",
+          "where": {
+            "to": {
+              "contains": "june.kim@example.test"
+            },
+            "folder": {
+              "eq": "sent"
+            },
+            "body": {
+              "regex": "HBR\\-12"
+            },
+            "attachments": {
+              "regex": "Project/(?!Contact register'|Starting brief')"
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s4_outcome_1",
@@ -1903,7 +2067,7 @@
           "eq": "sent"
         },
         "body": {
-          "empty": false
+          "regex": "\\balbums?\\b"
         }
       },
       "min": 1
@@ -1919,9 +2083,10 @@
         },
         "content": {
           "regex": [
-            "brings",
-            "originals",
-            "public"
+            "\\bTom\\b",
+            "\\balbums?\\b",
+            "\\boriginals?\\b",
+            "\\b(?:public\\w*|online|post\\w*|private)\\b"
           ]
         },
         "trashed": {
@@ -1943,9 +2108,10 @@
             },
             "content": {
               "regex": [
-                "brings",
-                "originals",
-                "public"
+                "\\bTom\\b",
+                "\\balbums?\\b",
+                "\\boriginals?\\b",
+                "\\b(?:public\\w*|online|post\\w*|private)\\b"
               ]
             }
           },
@@ -2057,18 +2223,21 @@
       "where_any": [
         {
           "location": {
-            "regex": "(?i)(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
+            "regex": "(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
           },
           "participants": {
             "contains": "mina.kim@example.test"
           },
           "title": {
-            "regex": "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b"
+            "regex": [
+              "\\bJune\\b",
+              "\\bpick[- ]?up\\b"
+            ]
           }
         },
         {
           "location": {
-            "regex": "(?i)(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
+            "regex": "(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
           },
           "organizer": {
             "eq": "daniel.kim@example.test"
@@ -2077,14 +2246,18 @@
             "empty": true
           },
           "title": {
-            "regex": "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b"
+            "regex": [
+              "\\bJune\\b",
+              "\\bpick[- ]?up\\b"
+            ]
           }
         },
         {
           "title": {
             "regex": [
-              "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b",
-              "(?i)Central\\ Station"
+              "\\bJune\\b",
+              "\\bpick[- ]?up\\b",
+              "Central\\ Station"
             ]
           },
           "location": {
@@ -2097,8 +2270,9 @@
         {
           "title": {
             "regex": [
-              "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b",
-              "(?i)Central\\ Station"
+              "\\bJune\\b",
+              "\\bpick[- ]?up\\b",
+              "Central\\ Station"
             ]
           },
           "location": {
@@ -2171,13 +2345,42 @@
       "collection": "files",
       "where": {
         "path": {
-          "eq": "Project/Weekend itinerary"
+          "regex": "^Project/(?!Contact register$|Starting brief$)"
+        },
+        "content": {
+          "regex": [
+            "11:00",
+            "17:00"
+          ]
+        },
+        "trashed": {
+          "eq": false
         },
         "shared_with": {
           "regex": "'june\\.kim@example\\.test':\\ 'reader'"
         }
       },
-      "equals": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s6_outcome_2_attachment",
+          "check": "count",
+          "app": "mail",
+          "collection": "emails",
+          "where": {
+            "to": {
+              "contains": "june.kim@example.test"
+            },
+            "folder": {
+              "eq": "sent"
+            },
+            "attachments": {
+              "regex": "Project/(?!Contact register'|Starting brief')"
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s6_outcome_3",
@@ -2186,13 +2389,42 @@
       "collection": "files",
       "where": {
         "path": {
-          "eq": "Project/Weekend itinerary"
+          "regex": "^Project/(?!Contact register$|Starting brief$)"
+        },
+        "content": {
+          "regex": [
+            "11:00",
+            "17:00"
+          ]
+        },
+        "trashed": {
+          "eq": false
         },
         "shared_with": {
           "regex": "'tom\\.kim@example\\.test':\\ 'reader'"
         }
       },
-      "equals": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s6_outcome_3_attachment",
+          "check": "count",
+          "app": "mail",
+          "collection": "emails",
+          "where": {
+            "to": {
+              "contains": "tom.kim@example.test"
+            },
+            "folder": {
+              "eq": "sent"
+            },
+            "attachments": {
+              "regex": "Project/(?!Contact register'|Starting brief')"
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s6_outcome_4",
@@ -2424,7 +2656,10 @@
           "eq": "sent"
         },
         "body": {
-          "empty": false
+          "regex": [
+            "\\bthank",
+            "\\balbums?\\b"
+          ]
         }
       },
       "min": 1
@@ -2440,9 +2675,8 @@
         },
         "content": {
           "regex": [
-            "missing",
-            "receipts",
-            "charge"
+            "\\breceipts?\\b",
+            "(?:\\bboat\\b[^\\n]{0,80}\\b(?:no|not|never|none|cancel\\w*|didn't)\\b|\\b(?:no|not|never|none)\\b[^\\n]{0,80}\\bboat\\b)"
           ]
         },
         "trashed": {
@@ -2464,9 +2698,8 @@
             },
             "content": {
               "regex": [
-                "missing",
-                "receipts",
-                "charge"
+                "\\breceipts?\\b",
+                "(?:\\bboat\\b[^\\n]{0,80}\\b(?:no|not|never|none|cancel\\w*|didn't)\\b|\\b(?:no|not|never|none)\\b[^\\n]{0,80}\\bboat\\b)"
               ]
             }
           },
@@ -2490,7 +2723,8 @@
         },
         "body": {
           "regex": [
-            "It\\ was\\ lovely\\ to\\ see\\ you"
+            "\\bthank",
+            "\\b(?:join\\w*|came|coming|being there|with us|lovely to see)\\b"
           ]
         }
       },
@@ -2548,9 +2782,9 @@
         },
         "content": {
           "regex": [
-            "accommodation",
-            "dinner",
-            "actual"
+            "step[- ]free",
+            "\\b(?:17:00|early dinner)\\b",
+            "\\breceipts?\\b"
           ]
         },
         "trashed": {
@@ -2572,9 +2806,9 @@
             },
             "content": {
               "regex": [
-                "accommodation",
-                "dinner",
-                "actual"
+                "step[- ]free",
+                "\\b(?:17:00|early dinner)\\b",
+                "\\breceipts?\\b"
               ]
             }
           },
