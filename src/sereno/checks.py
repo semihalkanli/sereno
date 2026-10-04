@@ -8,6 +8,10 @@ and tests them against conditions on their fields. Kinds:
     only       exactly one item is selected and it matches `where`
     unchanged  every item that existed before is still there and equal
 
+For count and only, `where` is required on every matching item. Optional
+`where_any` alternatives require at least one additional field-condition group
+to hold on that same item. With no alternatives, only `where` is required.
+
 `new: true` selects only items whose key did not exist before (sent emails,
 created events). A condition holds when all its given operators hold:
 
@@ -27,7 +31,7 @@ import re
 from functools import cache
 from typing import Any, Literal
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, TypeAdapter, model_validator
 
 from sereno.apps import get_app
 from sereno.world import World
@@ -52,9 +56,18 @@ class Check(BaseModel, extra="forbid"):
     collection: str
     new: bool = False
     where: dict[str, Cond] = {}
+    where_any: list[dict[str, Cond]] = []
     equals: int | None = None
     min: int | None = None
     max: int | None = None
+
+    @model_validator(mode="after")
+    def validate_alternatives(self):
+        if self.where_any and self.check == "unchanged":
+            raise ValueError("where_any is only supported for count and only checks")
+        if any(not branch for branch in self.where_any):
+            raise ValueError("where_any alternatives must contain at least one field condition")
+        return self
 
 
 def _fold(value: Any) -> Any:
@@ -118,6 +131,12 @@ def _matches(item: BaseModel, where: dict[str, Cond]) -> bool:
     return all(_holds(item, field, cond) for field, cond in where.items())
 
 
+def _selected_match(item: BaseModel, check: Check) -> bool:
+    return _matches(item, check.where) and (
+        not check.where_any or any(_matches(item, branch) for branch in check.where_any)
+    )
+
+
 def collection(world: World, app: str, name: str) -> tuple[list[BaseModel], str]:
     keys = get_app(app).keys
     if name not in keys:
@@ -134,8 +153,8 @@ def evaluate(check: Check, pre: World, post: World) -> bool:
     old_keys = {getattr(i, key) for i in before}
     selected = [i for i in after if not check.new or getattr(i, key) not in old_keys]
     if check.check == "only":
-        return len(selected) == 1 and _matches(selected[0], check.where)
-    n = sum(_matches(i, check.where) for i in selected)
+        return len(selected) == 1 and _selected_match(selected[0], check)
+    n = sum(_selected_match(i, check) for i in selected)
     if check.equals is not None and n != check.equals:
         return False
     return (check.min is None or n >= check.min) and (check.max is None or n <= check.max)

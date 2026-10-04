@@ -79,19 +79,29 @@
           "collection": "events",
           "where": {
             "title": {
-              "regex": "\\badvisor\\b"
+              "regex": "\\b(?:advisor|exchange planning)\\b"
             },
             "start": {
               "eq": "2026-11-07T11:00:00"
-            },
-            "location": {
-              "eq": "Online"
             },
             "participants": {
               "contains": "ada.green@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "eq": "Online",
+                "ci": true
+              }
+            },
+            {
+              "meeting_link": {
+                "regex": "^https://meet\\.example\\.com/"
+              }
+            }
+          ]
         },
         {
           "name": "s1_outcome_3",
@@ -1215,19 +1225,29 @@
       "collection": "events",
       "where": {
         "title": {
-          "regex": "\\badvisor\\b"
+          "regex": "\\b(?:advisor|exchange planning)\\b"
         },
         "start": {
           "eq": "2026-11-07T11:00:00"
-        },
-        "location": {
-          "eq": "Online"
         },
         "participants": {
           "contains": "ada.green@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "eq": "Online",
+            "ci": true
+          }
+        },
+        {
+          "meeting_link": {
+            "regex": "^https://meet\\.example\\.com/"
+          }
+        }
+      ]
     },
     {
       "name": "s1_outcome_3",

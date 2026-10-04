@@ -32,9 +32,7 @@ def test_corpus_size_and_reference_decompositions():
         assert 8 <= len(loaded.chain.sessions) <= 10
         assert 30 <= len(milestones) <= 50
         assert loaded.chain.memory
-        expected_version = (
-            "3" if cid in {"moving_home", "family_archive", "first_exhibition", "semester_abroad"} else "2"
-        )
+        expected_version = "2" if cid == "business_week" else "3"
         assert loaded.chain.version == expected_version
         assert set(m["session"] for m in milestones) == {s.id for s in loaded.chain.sessions}
         if cid in WORLDS:

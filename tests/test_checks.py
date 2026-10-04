@@ -54,3 +54,64 @@ def test_advance_to_moves_the_clock_forward_only(world):
     assert world.now == datetime(2025, 11, 9, 8, 0)
     with pytest.raises(ValueError, match="cannot go back"):
         world.advance_to(datetime(2025, 11, 1))
+
+
+def test_alternative_conditions_match_the_same_item_as_the_required_conditions(world):
+    check = Check(
+        name="a-with-date",
+        check="count",
+        app="tasks",
+        collection="tasks",
+        where={"title": Cond(eq="a")},
+        where_any=[{"created_at": Cond(gt="2025-11-05")}],
+        equals=1,
+    )
+    # Task b supplies the date, but it cannot satisfy task a's alternative.
+    assert not evaluate(check, world, world)
+    check.where_any.append({"created_at": Cond(eq="2025-11-01T08:00")})
+    assert evaluate(check, world, world)
+
+
+def test_only_keeps_single_item_requirement_when_using_alternatives(world):
+    check = Check(
+        name="one-task",
+        check="only",
+        app="tasks",
+        collection="tasks",
+        where={"title": Cond(eq="a")},
+        where_any=[{"created_at": Cond(eq="2025-11-01T08:00")}],
+    )
+    assert not evaluate(check, world, world)
+    post = world.copy()
+    post.app("tasks").tasks = post.app("tasks").tasks[:1]
+    assert evaluate(check, world, post)
+    post.app("tasks").tasks[0].title = "b"
+    assert not evaluate(check, world, post)
+
+
+def test_new_filters_old_matches_before_evaluating_alternatives(world):
+    check = Check(
+        name="new-task",
+        check="count",
+        app="tasks",
+        collection="tasks",
+        new=True,
+        where_any=[{"title": Cond(eq="a")}],
+        min=1,
+    )
+    assert not evaluate(check, world, world)
+    post = world.copy()
+    post.app("tasks").tasks.append(Task(id="task_004", title="a"))
+    assert evaluate(check, world, post)
+
+
+@pytest.mark.parametrize(
+    ("kind", "alternatives", "message"),
+    [
+        ("unchanged", [{"title": {"eq": "a"}}], "only supported"),
+        ("count", [{}], "at least one field"),
+    ],
+)
+def test_invalid_alternatives_fail_during_check_parsing(kind, alternatives, message):
+    with pytest.raises(ValueError, match=message):
+        Check(name="invalid", check=kind, app="tasks", collection="tasks", where_any=alternatives)

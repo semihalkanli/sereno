@@ -374,19 +374,28 @@
           "collection": "events",
           "where": {
             "title": {
-              "eq": "Album proof review"
+              "regex": "\\balbum proof review\\b"
             },
             "start": {
               "eq": "2026-11-15T19:00:00"
             },
             "location": {
               "eq": "Home"
-            },
-            "participants": {
-              "contains": "leila.haddad@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "participants": {
+                "contains": "leila.haddad@example.test"
+              }
+            },
+            {
+              "organizer": {
+                "eq": "leila.haddad@example.test"
+              }
+            }
+          ]
         }
       ]
     },
@@ -1222,19 +1231,28 @@
       "collection": "events",
       "where": {
         "title": {
-          "eq": "Album proof review"
+          "regex": "\\balbum proof review\\b"
         },
         "start": {
           "eq": "2026-11-15T19:00:00"
         },
         "location": {
           "eq": "Home"
-        },
-        "participants": {
-          "contains": "leila.haddad@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "participants": {
+            "contains": "leila.haddad@example.test"
+          }
+        },
+        {
+          "organizer": {
+            "eq": "leila.haddad@example.test"
+          }
+        }
+      ]
     },
     {
       "name": "s4_outcome_1",

@@ -4,9 +4,11 @@ Help me get our household spending under control this month: reconcile shared bi
 
 ## Author contract
 
-Version 2; 10 dated sessions; 38 outcome-level subgoals. These are evaluator reference outcomes, not a required agent plan or a count of tool calls. The agent can choose its own decomposition. `milestones.json` maps the reference outcomes to checks and dependencies.
+Version 3; 10 dated sessions; 38 outcome-level subgoals. These are evaluator reference outcomes, not a required agent plan or a count of tool calls. The agent can choose its own decomposition. `milestones.json` maps the reference outcomes to checks and dependencies.
 
 The first user turn establishes the complete goal. Later turns provide natural updates. The world clock and incoming correspondence advance; conversation history does not carry. Memory, project documents and tasks do. Temporary outside notes are removed at s3, before the delayed goals.
+
+Version 3 supplies project communication endpoints without granting spending or sharing authority. USD task checks accept equivalent formatting while requiring the same amounts. Compare native results only within matching versions and configuration hashes.
 
 ## Experiments
 

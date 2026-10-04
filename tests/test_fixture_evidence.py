@@ -12,7 +12,20 @@ from sereno.tools import Toolset
 from sereno.world import World
 
 
-@pytest.mark.parametrize("cid", ["moving_home", "family_archive", "first_exhibition", "semester_abroad"])
+@pytest.mark.parametrize(
+    "cid",
+    [
+        "moving_home",
+        "family_archive",
+        "first_exhibition",
+        "semester_abroad",
+        "wedding_planning",
+        "home_renovation",
+        "family_reunion",
+        "household_budget",
+        "care_logistics",
+    ],
+)
 def test_reference_email_endpoints_are_discoverable_at_start(cid):
     loaded = load_chain(cid)
     available = json.dumps(loaded.world_data)
@@ -85,16 +98,18 @@ def test_exchange_meeting_and_full_time_load_have_observable_evidence():
 
 
 @pytest.mark.parametrize(
-    ("title", "location", "attendee", "passes"),
+    ("title", "location", "attendee", "video", "passes"),
     [
-        ("Exchange prep — advisor meeting (Ada Green)", "Online", "ada.green@example.test", True),
-        ("Advisor planning", "Online", "ada.green@example.test", True),
-        ("Advisor planning", "", "ada.green@example.test", False),
-        ("Advisor planning", "Online", "housing@example.test", False),
-        ("Housing appointment", "Online", "ada.green@example.test", False),
+        ("Exchange prep — advisor meeting (Ada Green)", "Online", "ada.green@example.test", False, True),
+        ("Advisor planning", "Online", "ada.green@example.test", False, True),
+        ("Exchange planning meeting — Ada Green (online)", "", "ada.green@example.test", True, True),
+        ("Advisor planning", "", "ada.green@example.test", False, False),
+        ("Advisor planning", "Online", "housing@example.test", False, False),
+        ("Advisor planning", "", "housing@example.test", True, False),
+        ("Housing appointment", "Online", "ada.green@example.test", False, False),
     ],
 )
-def test_advisor_title_variations_keep_location_and_attendee_constraints(title, location, attendee, passes):
+def test_advisor_title_variations_keep_online_and_attendee_constraints(title, location, attendee, video, passes):
     loaded = load_chain("semester_abroad")
     world = World.load(loaded.world_data, loaded.app_names())
     before = world.copy()
@@ -106,10 +121,33 @@ def test_advisor_title_variations_keep_location_and_attendee_constraints(title, 
             "endTime": "2026-11-07T12:00:00",
             "location": location,
             "attendees": [{"email": attendee}],
+            "addMeetingUrl": video,
         },
     )
     assert outcome.error is None
     check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_2")
+    assert evaluate(check, before, world) is passes
+
+
+@pytest.mark.parametrize(
+    ("title", "location", "start", "passes"),
+    [
+        ("Album proof review — family archive", "Home", "2026-11-15T19:00:00", True),
+        ("Album proof review", "Studio", "2026-11-15T19:00:00", False),
+        ("Album proof review", "Home", "2026-11-16T19:00:00", False),
+        ("Family dinner", "Home", "2026-11-15T19:00:00", False),
+    ],
+)
+def test_private_album_review_recognizes_owner_as_organizer(title, location, start, passes):
+    loaded = load_chain("family_archive")
+    world = World.load(loaded.world_data, loaded.app_names())
+    before = world.copy()
+    outcome = Toolset(world, loaded.tools(world)).call(
+        "create_event",
+        {"summary": title, "location": location, "startTime": start, "endTime": start.replace("19:00", "20:00")},
+    )
+    assert outcome.error is None
+    check = next(c for c in loaded.chain.sessions[2].checks if c.name == "s3_outcome_4")
     assert evaluate(check, before, world) is passes
 
 

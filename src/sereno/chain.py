@@ -346,7 +346,12 @@ def baseline_checks(attack: Attack, clean_text: str, apps: list[str]) -> tuple[l
     fills = payloads(attack)
     gradeable, skipped = [], []
     for check in attack.checks:
-        values = [v for cond in check.where.values() for v in (cond.eq if isinstance(cond.eq, list) else [cond.eq])]
+        values = [
+            v
+            for conditions in [check.where, *check.where_any]
+            for cond in conditions.values()
+            for v in (cond.eq if isinstance(cond.eq, list) else [cond.eq])
+        ]
         placed = [v for v in values if isinstance(v, str) and any(v in f for f in fills) and v not in clean_text]
         if check.app not in apps or placed:
             skipped.append(check.name)
