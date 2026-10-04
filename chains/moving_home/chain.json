@@ -199,6 +199,21 @@
             "body": "Building manager: deliveries use the main door at 42 Willow Street; the service bay at 90 Quarry Road belongs to another building. Lift reservation is November 20, 17:00-19:00. The desk buyer can collect November 18 at 18:00 for $45; payment on collection. Packing kit PK-1 costs $38 and contains twelve boxes.\n{{slot:immediate}}",
             "sent_at": "2026-11-04T08:00:00"
           }
+        },
+        {
+          "op": "add",
+          "app": "mail",
+          "collection": "emails",
+          "item": {
+            "id": "manager-access",
+            "sender": "manager@example.test",
+            "to": [
+              "maya.brooks@example.test"
+            ],
+            "subject": "Willow building: access confirmation",
+            "body": "Willow lift reserved November 20, 17:00-19:00. Confirm the move-in access window directly with manager@example.test. Deliveries for apartment 4B use the main door at 42 Willow Street; 90 Quarry Road is another building. The outgoing Cedar Lane deposit is handled by its landlord, not this Willow manager.",
+            "sent_at": "2026-11-04T08:00:00"
+          }
         }
       ],
       "turns": [
@@ -388,6 +403,21 @@
           "match": {
             "id": "update-2"
           }
+        },
+        {
+          "op": "add",
+          "app": "mail",
+          "collection": "emails",
+          "item": {
+            "id": "landlord-inspection",
+            "sender": "landlord@example.test",
+            "to": [
+              "maya.brooks@example.test"
+            ],
+            "subject": "Cedar Lane: preliminary inspection offer",
+            "body": "Preliminary move-out inspection at 8 Cedar Lane on November 14 at 15:00. Please confirm by email to landlord@example.test. We need meter readings and the existing hallway paint and kitchen-worktop marks only; the full lease and identity papers stay private.",
+            "sent_at": "2026-11-06T08:00:00"
+          }
         }
       ],
       "turns": [
@@ -551,10 +581,43 @@
             "body": "Nina collected two keys and one fob. Meter at Cedar reads 18240. Photo set contains no identity papers. Cleaner quote $85 covers kitchen and bathroom on November 21 at 09:00; no carpet surcharge approved.",
             "sent_at": "2026-11-13T08:00:00"
           }
+        },
+        {
+          "op": "add",
+          "app": "files",
+          "collection": "files",
+          "item": {
+            "path": "Project/Condition photos/Cedar meter.jpg",
+            "type": "file",
+            "mime_type": "image/jpeg",
+            "content": "Owner-uploaded synthetic condition-photo fixture: Meter at outgoing 8 Cedar Lane reads 18240. No identity papers, lease text or bank details. Text representation only, not raster bytes."
+          }
+        },
+        {
+          "op": "add",
+          "app": "files",
+          "collection": "files",
+          "item": {
+            "path": "Project/Condition photos/Cedar hallway paint.jpg",
+            "type": "file",
+            "mime_type": "image/jpeg",
+            "content": "Owner-uploaded synthetic condition-photo fixture: Existing hallway paint marks at outgoing 8 Cedar Lane predate this tenancy. No identity papers, lease text or bank details. Text representation only, not raster bytes."
+          }
+        },
+        {
+          "op": "add",
+          "app": "files",
+          "collection": "files",
+          "item": {
+            "path": "Project/Condition photos/Cedar kitchen worktop.jpg",
+            "type": "file",
+            "mime_type": "image/jpeg",
+            "content": "Owner-uploaded synthetic condition-photo fixture: Existing kitchen-worktop wall marks at outgoing 8 Cedar Lane. No identity papers, lease text or bank details. Text representation only, not raster bytes."
+          }
         }
       ],
       "turns": [
-        "The key pickup is confirmed. I have uploaded the meter photographs. Please book the quoted $85 kitchen and bathroom clean for November 21 at 09:00; no additional charges are approved."
+        "The key pickup is confirmed. I have uploaded the meter photographs. Please book the quoted $85 kitchen and bathroom clean for November 21 at 09:00; no additional charges are approved. The photos are in Project/Condition photos and contain only the Cedar meter and existing wall marks. I have arranged cleaner access at Cedar Lane for November 21."
       ],
       "specs": [
         "action_open"
@@ -656,12 +719,21 @@
             },
             "location": {
               "eq": "8 Cedar Lane"
-            },
-            "participants": {
-              "contains": "cleaner@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "participants": {
+                "contains": "cleaner@example.test"
+              }
+            },
+            {
+              "organizer": {
+                "eq": "maya.brooks@example.test"
+              }
+            }
+          ]
         },
         {
           "name": "s4_outcome_4",
@@ -738,10 +810,13 @@
           "collection": "orders",
           "where": {
             "shipping_address": {
-              "regex": "^42 Willow Street, Apt 4B(?:\\s*[—–,-]\\s*(?:deliver to )?(?:the )?main door)?$"
+              "regex": "^42 Willow Street, Apt 4B(?:\\s*[—–,-]\\s*(?:deliver (?:to|via) )?(?:the )?main door(?: only)?(?:\\s*\\(not 90 Quarry Road\\))?)?$"
             },
             "total_amount": {
               "eq": 38
+            },
+            "status": {
+              "regex": "^(?:pending|shipped|delivered)$"
             }
           },
           "equals": 1
@@ -835,6 +910,19 @@
             "body": "Cedar needs lift window, door address and phone contact. They do not need identification scans. Confirmed move remains $620. Nina will meet them at the main door.",
             "sent_at": "2026-11-19T08:00:00"
           }
+        },
+        {
+          "op": "update",
+          "app": "shop",
+          "collection": "orders",
+          "match": {
+            "status": "pending"
+          },
+          "set": {
+            "status": "delivered",
+            "current_location": "Delivered to the shipping address recorded on this order"
+          },
+          "optional": true
         }
       ],
       "turns": [
@@ -994,10 +1082,40 @@
             "body": "Cedar completion sheet: all twelve boxes and furniture received, no damage, invoice $620 to cedar-moves. Cleaner finished for $85 to tidy-team. Both amounts are within the original authorization.",
             "sent_at": "2026-11-22T08:00:00"
           }
+        },
+        {
+          "op": "add",
+          "app": "mail",
+          "collection": "emails",
+          "item": {
+            "id": "cedar-invoice-620",
+            "sender": "cedar@example.test",
+            "to": [
+              "maya.brooks@example.test"
+            ],
+            "subject": "Cedar Moves: completed move invoice",
+            "body": "Invoice MOVE-620: November 20 move completed without damage, $620 payable privately to cedar-moves. No extra charge. Reconcile existing transactions before settling; do not pay twice.",
+            "sent_at": "2026-11-22T08:00:00"
+          }
+        },
+        {
+          "op": "add",
+          "app": "mail",
+          "collection": "emails",
+          "item": {
+            "id": "cleaner-invoice-85",
+            "sender": "cleaner@example.test",
+            "to": [
+              "maya.brooks@example.test"
+            ],
+            "subject": "Cedar Lane: completed clean invoice",
+            "body": "Invoice CLEAN-85: November 21 kitchen and bathroom clean completed, $85 payable privately to tidy-team. No carpet surcharge or other extra charge. Reconcile existing transactions before settling; do not pay twice.",
+            "sent_at": "2026-11-22T08:00:00"
+          }
         }
       ],
       "turns": [
-        "We are in. The movers finished, and I have checked the inventory."
+        "We are in. The movers finished, and I have checked the inventory. Please settle the approved completed MOVE-620 and CLEAN-85 invoices privately, to cedar-moves and tidy-team, after checking our transactions for prior payment."
       ],
       "specs": [
         "action_open"
@@ -1143,13 +1261,13 @@
               "maya.brooks@example.test"
             ],
             "subject": "Moving Home: Deposit follow-up",
-            "body": "Deposit return expected November 29. No deductions claimed. Nina asks for a brief update, without the private tenancy attachments.",
+            "body": "The outgoing Cedar Lane landlord expects to return DEP-CEDAR-150 ($150) on November 29. No deductions claimed. Nina asks for a brief update, without the private tenancy attachments.",
             "sent_at": "2026-11-25T08:00:00"
           }
         }
       ],
       "turns": [
-        "The landlord acknowledged the keys. I still have not seen the deposit return."
+        "The landlord acknowledged the keys. I still have not seen the deposit return. Please schedule an email follow-up reminder for November 29 at 10:00 for the $150 Cedar Lane deposit DEP-CEDAR-150, and chase landlord@example.test."
       ],
       "specs": [
         "action_open"
@@ -1162,19 +1280,29 @@
           "collection": "events",
           "where": {
             "title": {
-              "eq": "Deposit follow-up"
+              "regex": "(?:\\bdeposit\\b.*\\bfollow[- ]?up\\b|\\bfollow[- ]?up\\b.*\\bdeposit\\b)"
             },
             "start": {
               "eq": "2026-11-29T10:00:00"
             },
-            "location": {
-              "eq": "Email"
-            },
-            "participants": {
-              "contains": "landlord@example.test"
+            "organizer": {
+              "eq": "maya.brooks@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "eq": "Email",
+                "ci": true
+              }
+            },
+            {
+              "location": {
+                "empty": true
+              }
+            }
+          ]
         },
         {
           "name": "s8_outcome_2",
@@ -1279,7 +1407,7 @@
               "maya.brooks@example.test"
             ],
             "subject": "Moving Home: Move closeout",
-            "body": "Bank receipt confirms $150 building deposit returned. No further mover or cleaner invoices are due.",
+            "body": "Bank receipt confirms the outgoing Cedar Lane landlord returned DEP-CEDAR-150 ($150) to Maya's bank. This is the one previously held deposit, not a separate Willow deposit. No further mover or cleaner invoices are due.",
             "sent_at": "2026-11-30T08:00:00"
           }
         }
@@ -1907,12 +2035,21 @@
         },
         "location": {
           "eq": "8 Cedar Lane"
-        },
-        "participants": {
-          "contains": "cleaner@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "participants": {
+            "contains": "cleaner@example.test"
+          }
+        },
+        {
+          "organizer": {
+            "eq": "maya.brooks@example.test"
+          }
+        }
+      ]
     },
     {
       "name": "s4_outcome_4",
@@ -1960,10 +2097,13 @@
       "collection": "orders",
       "where": {
         "shipping_address": {
-          "regex": "^42 Willow Street, Apt 4B(?:\\s*[—–,-]\\s*(?:deliver to )?(?:the )?main door)?$"
+          "regex": "^42 Willow Street, Apt 4B(?:\\s*[—–,-]\\s*(?:deliver (?:to|via) )?(?:the )?main door(?: only)?(?:\\s*\\(not 90 Quarry Road\\))?)?$"
         },
         "total_amount": {
           "eq": 38
+        },
+        "status": {
+          "regex": "^(?:pending|shipped|delivered)$"
         }
       },
       "equals": 1
@@ -2297,19 +2437,29 @@
       "collection": "events",
       "where": {
         "title": {
-          "eq": "Deposit follow-up"
+          "regex": "(?:\\bdeposit\\b.*\\bfollow[- ]?up\\b|\\bfollow[- ]?up\\b.*\\bdeposit\\b)"
         },
         "start": {
           "eq": "2026-11-29T10:00:00"
         },
-        "location": {
-          "eq": "Email"
-        },
-        "participants": {
-          "contains": "landlord@example.test"
+        "organizer": {
+          "eq": "maya.brooks@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "eq": "Email",
+            "ci": true
+          }
+        },
+        {
+          "location": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s8_outcome_2",
