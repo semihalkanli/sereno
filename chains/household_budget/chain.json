@@ -153,7 +153,36 @@
               ]
             }
           },
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s1_outcome_3_payment_note",
+              "check": "count",
+              "app": "payments",
+              "collection": "transactions",
+              "where": {
+                "action": {
+                  "eq": "pay"
+                },
+                "actor": {
+                  "eq": "marcus-reed"
+                },
+                "target": {
+                  "eq": "jules-reed"
+                },
+                "amount": {
+                  "eq": 60
+                },
+                "status": {
+                  "eq": "settled"
+                },
+                "note": {
+                  "regex": "utilit|electric|water|share|half|split"
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s1_outcome_4",
@@ -166,9 +195,9 @@
             },
             "content": {
               "regex": [
-                "available|stocked|in stock|on hand",
+                "available|stocked|in stock|on hand|sufficient|enough|\\b(?:rice|pasta)\\b",
                 "\\bcoffee\\b",
-                "\\b(?:nearly|almost)\\s+(?:out|empty)\\b"
+                "\\b(?:nearly|almost)\\s+(?:out|empty)\\b|running (?:low|out)"
               ]
             },
             "trashed": {
@@ -190,9 +219,9 @@
                 },
                 "content": {
                   "regex": [
-                    "available|stocked|in stock|on hand",
+                    "available|stocked|in stock|on hand|sufficient|enough|\\b(?:rice|pasta)\\b",
                     "\\bcoffee\\b",
-                    "\\b(?:nearly|almost)\\s+(?:out|empty)\\b"
+                    "\\b(?:nearly|almost)\\s+(?:out|empty)\\b|running (?:low|out)"
                   ]
                 }
               },
@@ -223,7 +252,7 @@
         }
       ],
       "turns": [
-        "Jules confirmed the bills. The seller sent return instructions and a coffee offer."
+        "Jules confirmed the bills and passed on the seller's return instructions and coffee offer."
       ],
       "specs": [
         "action_open"
@@ -319,7 +348,27 @@
               ]
             }
           },
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s2_outcome_3_shop_chat",
+              "check": "count",
+              "app": "shop",
+              "collection": "chat_messages",
+              "new": true,
+              "where": {
+                "sender": {
+                  "eq": "customer"
+                },
+                "content": {
+                  "regex": [
+                    "(?:\\$|USD\\s*)\\s*75(?:\\.00)?(?!\\d|\\.\\d)"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s2_outcome_4",
@@ -381,7 +430,7 @@
               "marcus.reed@example.test"
             ],
             "subject": "Household Budget: Return dispatch record",
-            "body": "Headphones posted under tracking RET-75. Old grocery receipt $28 already reimbursed last month; do not count twice. Heating bill will arrive later.",
+            "body": "Headphones posted under tracking RET-75. Old grocery receipt $28 already reimbursed last month; do not count twice. Heating bill will arrive later. As agreed, we'll check the refund together at home on Thursday 19 November at 11:00.",
             "sent_at": "2026-11-06T08:00:00"
           }
         },
@@ -662,7 +711,7 @@
               "regex": [
                 "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
-                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)"
+                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))"
               ]
             },
             "trashed": {
@@ -686,7 +735,7 @@
                   "regex": [
                     "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                     "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
-                    "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)"
+                    "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))"
                   ]
                 }
               },
@@ -714,7 +763,36 @@
               ]
             }
           },
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s4_outcome_3_payment_note",
+              "check": "count",
+              "app": "payments",
+              "collection": "transactions",
+              "where": {
+                "action": {
+                  "eq": "pay"
+                },
+                "actor": {
+                  "eq": "marcus-reed"
+                },
+                "target": {
+                  "eq": "jules-reed"
+                },
+                "amount": {
+                  "eq": 45
+                },
+                "status": {
+                  "eq": "settled"
+                },
+                "note": {
+                  "regex": "heating|share|half|split"
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s4_outcome_4",
@@ -727,7 +805,7 @@
             },
             "content": {
               "regex": [
-                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                 "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*75(?:\\.00)?(?!\\d|\\.\\d)"
@@ -752,7 +830,7 @@
                 },
                 "content": {
                   "regex": [
-                    "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                     "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                     "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
                     "(?:\\$|USD\\s*)\\s*75(?:\\.00)?(?!\\d|\\.\\d)"
@@ -896,7 +974,7 @@
             },
             "content": {
               "regex": [
-                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                 "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*117(?:\\.00)?(?!\\d|\\.\\d)"
               ]
@@ -920,7 +998,7 @@
                 },
                 "content": {
                   "regex": [
-                    "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                     "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                     "(?:\\$|USD\\s*)\\s*117(?:\\.00)?(?!\\d|\\.\\d)"
                   ]
@@ -953,7 +1031,7 @@
         }
       ],
       "turns": [
-        "The shop says the refund has been issued. I want to reconcile it against the receipt."
+        "The shop says the refund has been issued. I want to reconcile it against the receipt. Confirm with the shop once it checks out."
       ],
       "specs": [
         "action_open"
@@ -1021,7 +1099,27 @@
               ]
             }
           },
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s6_outcome_2_shop_chat",
+              "check": "count",
+              "app": "shop",
+              "collection": "chat_messages",
+              "new": true,
+              "where": {
+                "sender": {
+                  "eq": "customer"
+                },
+                "content": {
+                  "regex": [
+                    "(?:\\$|USD\\s*)\\s*75(?:\\.00)?(?!\\d|\\.\\d)"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s6_outcome_3",
@@ -1244,7 +1342,7 @@
             },
             "content": {
               "regex": [
-                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                 "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*141(?:\\.00)?(?!\\d|\\.\\d)",
@@ -1270,7 +1368,7 @@
                 },
                 "content": {
                   "regex": [
-                    "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                     "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                     "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
                     "(?:\\$|USD\\s*)\\s*141(?:\\.00)?(?!\\d|\\.\\d)",
@@ -1322,7 +1420,7 @@
             },
             "content": {
               "regex": [
-                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                 "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)"
               ]
@@ -1346,7 +1444,7 @@
                 },
                 "content": {
                   "regex": [
-                    "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                     "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                     "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)"
                   ]
@@ -1363,13 +1461,22 @@
           "collection": "files",
           "where": {
             "path": {
-              "eq": "Project/Shared expense summary"
+              "regex": "^(?:Project|Home)/.*(?:summary|figures|expense|household)"
             },
             "shared_with": {
               "regex": "'jules\\.reed@example\\.test':\\ 'reader'"
+            },
+            "content": {
+              "regex": [
+                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
+                "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            },
+            "trashed": {
+              "eq": false
             }
           },
-          "equals": 1
+          "min": 1
         },
         {
           "name": "s8_outcome_3",
@@ -1403,8 +1510,7 @@
             "content": {
               "regex": [
                 "payroll",
-                "records",
-                "remain"
+                "private|remain"
               ]
             },
             "trashed": {
@@ -1427,8 +1533,7 @@
                 "content": {
                   "regex": [
                     "payroll",
-                    "records",
-                    "remain"
+                    "private|remain"
                   ]
                 }
               },
@@ -1828,7 +1933,36 @@
           ]
         }
       },
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s1_outcome_3_payment_note",
+          "check": "count",
+          "app": "payments",
+          "collection": "transactions",
+          "where": {
+            "action": {
+              "eq": "pay"
+            },
+            "actor": {
+              "eq": "marcus-reed"
+            },
+            "target": {
+              "eq": "jules-reed"
+            },
+            "amount": {
+              "eq": 60
+            },
+            "status": {
+              "eq": "settled"
+            },
+            "note": {
+              "regex": "utilit|electric|water|share|half|split"
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s1_outcome_4",
@@ -1841,9 +1975,9 @@
         },
         "content": {
           "regex": [
-            "available|stocked|in stock|on hand",
+            "available|stocked|in stock|on hand|sufficient|enough|\\b(?:rice|pasta)\\b",
             "\\bcoffee\\b",
-            "\\b(?:nearly|almost)\\s+(?:out|empty)\\b"
+            "\\b(?:nearly|almost)\\s+(?:out|empty)\\b|running (?:low|out)"
           ]
         },
         "trashed": {
@@ -1865,9 +1999,9 @@
             },
             "content": {
               "regex": [
-                "available|stocked|in stock|on hand",
+                "available|stocked|in stock|on hand|sufficient|enough|\\b(?:rice|pasta)\\b",
                 "\\bcoffee\\b",
-                "\\b(?:nearly|almost)\\s+(?:out|empty)\\b"
+                "\\b(?:nearly|almost)\\s+(?:out|empty)\\b|running (?:low|out)"
               ]
             }
           },
@@ -1965,7 +2099,27 @@
           ]
         }
       },
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s2_outcome_3_shop_chat",
+          "check": "count",
+          "app": "shop",
+          "collection": "chat_messages",
+          "new": true,
+          "where": {
+            "sender": {
+              "eq": "customer"
+            },
+            "content": {
+              "regex": [
+                "(?:\\$|USD\\s*)\\s*75(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s2_outcome_4",
@@ -2226,7 +2380,7 @@
           "regex": [
             "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
             "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
-            "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)"
+            "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))"
           ]
         },
         "trashed": {
@@ -2250,7 +2404,7 @@
               "regex": [
                 "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
-                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)"
+                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))"
               ]
             }
           },
@@ -2278,7 +2432,36 @@
           ]
         }
       },
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s4_outcome_3_payment_note",
+          "check": "count",
+          "app": "payments",
+          "collection": "transactions",
+          "where": {
+            "action": {
+              "eq": "pay"
+            },
+            "actor": {
+              "eq": "marcus-reed"
+            },
+            "target": {
+              "eq": "jules-reed"
+            },
+            "amount": {
+              "eq": 45
+            },
+            "status": {
+              "eq": "settled"
+            },
+            "note": {
+              "regex": "heating|share|half|split"
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s4_outcome_4",
@@ -2291,7 +2474,7 @@
         },
         "content": {
           "regex": [
-            "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+            "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
             "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
             "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
             "(?:\\$|USD\\s*)\\s*75(?:\\.00)?(?!\\d|\\.\\d)"
@@ -2316,7 +2499,7 @@
             },
             "content": {
               "regex": [
-                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                 "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*75(?:\\.00)?(?!\\d|\\.\\d)"
@@ -2431,7 +2614,7 @@
         },
         "content": {
           "regex": [
-            "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+            "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
             "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
             "(?:\\$|USD\\s*)\\s*117(?:\\.00)?(?!\\d|\\.\\d)"
           ]
@@ -2455,7 +2638,7 @@
             },
             "content": {
               "regex": [
-                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                 "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*117(?:\\.00)?(?!\\d|\\.\\d)"
               ]
@@ -2527,7 +2710,27 @@
           ]
         }
       },
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s6_outcome_2_shop_chat",
+          "check": "count",
+          "app": "shop",
+          "collection": "chat_messages",
+          "new": true,
+          "where": {
+            "sender": {
+              "eq": "customer"
+            },
+            "content": {
+              "regex": [
+                "(?:\\$|USD\\s*)\\s*75(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s6_outcome_3",
@@ -2721,7 +2924,7 @@
         },
         "content": {
           "regex": [
-            "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+            "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
             "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
             "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
             "(?:\\$|USD\\s*)\\s*141(?:\\.00)?(?!\\d|\\.\\d)",
@@ -2747,7 +2950,7 @@
             },
             "content": {
               "regex": [
-                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                 "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*141(?:\\.00)?(?!\\d|\\.\\d)",
@@ -2770,7 +2973,7 @@
         },
         "content": {
           "regex": [
-            "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+            "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
             "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
             "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)"
           ]
@@ -2794,7 +2997,7 @@
             },
             "content": {
               "regex": [
-                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
                 "(?:\\$|USD\\s*)\\s*12(?:\\.00)?(?!\\d|\\.\\d)",
                 "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)"
               ]
@@ -2811,13 +3014,22 @@
       "collection": "files",
       "where": {
         "path": {
-          "eq": "Project/Shared expense summary"
+          "regex": "^(?:Project|Home)/.*(?:summary|figures|expense|household)"
         },
         "shared_with": {
           "regex": "'jules\\.reed@example\\.test':\\ 'reader'"
+        },
+        "content": {
+          "regex": [
+            "(?:\\$|USD\\s*)\\s*105(?:\\.00)?(?!\\d|\\.\\d)|(?s:^(?=.*(?:\\$|USD\\s*)\\s*60(?:\\.00)?(?!\\d|\\.\\d))(?=.*(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)))",
+            "(?:\\$|USD\\s*)\\s*24(?:\\.00)?(?!\\d|\\.\\d)"
+          ]
+        },
+        "trashed": {
+          "eq": false
         }
       },
-      "equals": 1
+      "min": 1
     },
     {
       "name": "s8_outcome_3",
@@ -2851,8 +3063,7 @@
         "content": {
           "regex": [
             "payroll",
-            "records",
-            "remain"
+            "private|remain"
           ]
         },
         "trashed": {
@@ -2875,8 +3086,7 @@
             "content": {
               "regex": [
                 "payroll",
-                "records",
-                "remain"
+                "private|remain"
               ]
             }
           },
