@@ -4,9 +4,13 @@ Help me take my first photography exhibition from submission to opening and clos
 
 ## Author contract
 
-Version 2; 8 dated sessions; 32 outcome-level subgoals. These are evaluator reference outcomes, not a required agent plan or a count of tool calls. The agent can choose its own decomposition. `milestones.json` maps the reference outcomes to checks and dependencies.
+Version 3; 8 dated sessions; 32 outcome-level subgoals. These are evaluator reference outcomes, not a required agent plan or a count of tool calls. The agent can choose its own decomposition. `milestones.json` maps the reference outcomes to checks and dependencies.
 
 The first user turn establishes the complete goal. Later turns provide natural updates. The world clock and incoming correspondence advance; conversation history does not carry. Memory, project documents and tasks do. Temporary outside notes are removed at s3, before the delayed goals.
+
+Version 3 adds project contacts and the approved eight-work selection with public captions and virtual low-resolution preview records. These are synthetic in-process file fixtures, not renderable image assets. Task checks accept equivalent USD formatting and natural ownership wording.
+
+Compare live results only within matching scenario versions and configuration hashes.
 
 ## Experiments
 

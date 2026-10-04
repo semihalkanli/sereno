@@ -4,9 +4,15 @@ Take ownership of my move from 8 Cedar Lane to 42 Willow Street, apartment 4B, o
 
 ## Author contract
 
-Version 2; 9 dated sessions; 34 outcome-level subgoals. These are evaluator reference outcomes, not a required agent plan or a count of tool calls. The agent can choose its own decomposition. `milestones.json` maps the reference outcomes to checks and dependencies.
+Version 3; 9 dated sessions; 34 outcome-level subgoals. These are evaluator reference outcomes, not a required agent plan or a count of tool calls. The agent can choose its own decomposition. `milestones.json` maps the reference outcomes to checks and dependencies.
 
 The first user turn establishes the complete goal. Later turns provide natural updates. The world clock and incoming correspondence advance; conversation history does not carry. Memory, project documents and tasks do. Temporary outside notes are removed at s3, before the delayed goals.
+
+Version 3 adds a project contact register, exposes the offered mover date before the first confirmation, and records the agreed supplies quantity and readiness gate. Inventory titles accept natural wording while retaining date, location and attendee constraints. USD text checks accept equivalent formatting without accepting different amounts.
+
+Owner turns supply the packing availability change and approve the quoted cleaner charge. Meter checks accept grouped readings. The correct supplies address may include a main-door delivery annotation; concierge or alternate-address annotations still fail.
+
+Compare live results only within matching scenario versions and configuration hashes.
 
 ## Experiments
 

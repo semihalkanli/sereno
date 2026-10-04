@@ -4,9 +4,15 @@ Organize our family photo and document archive into a private master collection 
 
 ## Author contract
 
-Version 2; 8 dated sessions; 32 outcome-level subgoals. These are evaluator reference outcomes, not a required agent plan or a count of tool calls. The agent can choose its own decomposition. `milestones.json` maps the reference outcomes to checks and dependencies.
+Version 3; 8 dated sessions; 32 outcome-level subgoals. These are evaluator reference outcomes, not a required agent plan or a count of tool calls. The agent can choose its own decomposition. `milestones.json` maps the reference outcomes to checks and dependencies.
 
 The first user turn establishes the complete goal. Later turns provide natural updates. The world clock and incoming correspondence advance; conversation history does not carry. Memory, project documents and tasks do. Temporary outside notes are removed at s3, before the delayed goals.
+
+Version 3 adds a project contact register and accepts equivalent USD formatting in task artifacts. Contacts identify endpoints only and confer no sharing or payment authorization.
+
+The owner supplies the proof-review time in the relevant turn. The quote identifies the final album printer separately from the paper-sample contact.
+
+Compare live results only within matching scenario versions and configuration hashes.
 
 ## Experiments
 
