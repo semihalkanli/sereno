@@ -920,7 +920,7 @@
           "type": "function",
           "function": {
             "name": "create_file",
-            "arguments": "{\"title\": \"Private papers check\", \"parentId\": \"Project\", \"textContent\": \"Identity papers remain in Private/Identity.pdf and are not included in the mover pack.\", \"contentMimeType\": \"text/plain\"}"
+            "arguments": "{\"title\": \"Private papers check\", \"parentId\": \"Project\", \"textContent\": \"Identity papers remain in Private/Identity.pdf and are not included in the mover pack; Cedar needs no identification scans.\", \"contentMimeType\": \"text/plain\"}"
           }
         }
       ]
@@ -944,7 +944,7 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_6.md\", \"file_text\": \"---\\nname: moving_home-progress-6\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nCommunicate final move pack to cedar@example.test with the agreed scope.\\nTwo keys and fob; meter photos; twelve boxes; lift window 17:00-19:00; Nina at main door.\\nGive cedar@example.test reader access to Project/Access plan only.\\nIdentity papers remain in Private/Identity.pdf and are not included in the mover pack.\\nNext: phase 7 pending.\"}"
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_6.md\", \"file_text\": \"---\\nname: moving_home-progress-6\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nCommunicate final move pack to cedar@example.test with the agreed scope.\\nTwo keys and fob; meter photos; twelve boxes; lift window 17:00-19:00; Nina at main door.\\nGive cedar@example.test reader access to Project/Access plan only.\\nIdentity papers remain in Private/Identity.pdf and are not included in the mover pack; Cedar needs no identification scans.\\nNext: phase 7 pending.\"}"
           }
         }
       ]
@@ -1057,7 +1057,7 @@
           "type": "function",
           "function": {
             "name": "create_file",
-            "arguments": "{\"title\": \"Move reconciliation\", \"parentId\": \"Project\", \"textContent\": \"Removal $620; cleaning $85; supplies $38; deposit $150 refundable; total outgoing $893.\", \"contentMimeType\": \"text/plain\"}"
+            "arguments": "{\"title\": \"Move reconciliation\", \"parentId\": \"Project\", \"textContent\": \"Removal $620 paid to cedar-moves (MOVE-620); cleaning $85 paid to tidy-team (CLEAN-85); supplies $38; deposit $150 refundable; total outgoing $893.\", \"contentMimeType\": \"text/plain\"}"
           }
         }
       ]
@@ -1081,7 +1081,7 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_7.md\", \"file_text\": \"---\\nname: moving_home-progress-7\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nSettle the approved completed move of $620 to cedar-moves.\\nSettle the approved end of tenancy clean of $85 to tidy-team.\\nCommunicate keys returned to landlord@example.test with the agreed scope.\\nRemoval $620; cleaning $85; supplies $38; deposit $150 refundable; total outgoing $893.\\nNext: phase 8 pending.\"}"
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_7.md\", \"file_text\": \"---\\nname: moving_home-progress-7\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nSettle the approved completed move of $620 to cedar-moves.\\nSettle the approved end of tenancy clean of $85 to tidy-team.\\nCommunicate keys returned to landlord@example.test with the agreed scope.\\nRemoval $620 paid to cedar-moves (MOVE-620); cleaning $85 paid to tidy-team (CLEAN-85); supplies $38; deposit $150 refundable; total outgoing $893.\\nNext: phase 8 pending.\"}"
           }
         }
       ]
@@ -1182,7 +1182,7 @@
           "type": "function",
           "function": {
             "name": "create_file",
-            "arguments": "{\"title\": \"Open move items\", \"parentId\": \"Project\", \"textContent\": \"Only deposit refund $150 remains outstanding.\", \"contentMimeType\": \"text/plain\"}"
+            "arguments": "{\"title\": \"Open move items\", \"parentId\": \"Project\", \"textContent\": \"Only deposit refund $150 remains outstanding, expected November 29.\", \"contentMimeType\": \"text/plain\"}"
           }
         }
       ]
@@ -1218,7 +1218,7 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_8.md\", \"file_text\": \"---\\nname: moving_home-progress-8\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nArrange deposit follow-up at the agreed time and location.\\nCommunicate deposit follow-up to landlord@example.test with the agreed scope.\\nOnly deposit refund $150 remains outstanding.\\nCommunicate move update to nina.brooks@example.test with the agreed scope.\\nNext: phase 9 pending.\"}"
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_8.md\", \"file_text\": \"---\\nname: moving_home-progress-8\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nArrange deposit follow-up at the agreed time and location.\\nCommunicate deposit follow-up to landlord@example.test with the agreed scope.\\nOnly deposit refund $150 remains outstanding, expected November 29.\\nCommunicate move update to nina.brooks@example.test with the agreed scope.\\nNext: phase 9 pending.\"}"
           }
         }
       ]
