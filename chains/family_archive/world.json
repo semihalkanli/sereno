@@ -381,7 +381,7 @@
             "leila.haddad@example.test"
           ],
           "subject": "Reading group next week",
-          "body": "We are still meeting at seven next Wednesday. Bring the paperback if you have it; no need to buy another copy.",
+          "body": "We are still meeting at seven next Thursday. Bring the paperback if you have it; no need to buy another copy.",
           "sent_at": "2026-11-01T10:00:00"
         },
         {
@@ -401,7 +401,7 @@
             "leila.haddad@example.test"
           ],
           "subject": "Family Archive: Archive inventory",
-          "body": "Twenty-four photos selected for a reunion album. Original scans are the master source. Amal can identify dates in six images; printing contact Amal Studio handles production only. Album budget $180.",
+          "body": "Leila, here is where the archive stands. Twenty-four photos are selected for the reunion album, and the original scans are the master source. I can identify the dates in six of the images. The printing contact, Amal Studio, handles production only. Album budget $180, as we agreed.",
           "sent_at": "2026-11-02T08:00:00"
         }
       ]
@@ -411,8 +411,8 @@
         {
           "id": "personal-1",
           "title": "Library reading group",
-          "start": "2026-11-11T19:00:00",
-          "end": "2026-11-11T20:00:00",
+          "start": "2026-11-12T19:00:00",
+          "end": "2026-11-12T20:00:00",
           "organizer": "leila.haddad@example.test",
           "participants": [
             "leila.haddad@example.test"
@@ -428,7 +428,7 @@
       "files": [
         {
           "path": "/memories/MEMORY.md",
-          "content": "- [Personal context](person.md) \u2014 household preferences and trusted contacts\n"
+          "content": "- [Personal context](person.md) — household preferences and trusted contacts\n"
         },
         {
           "path": "/memories/person.md",

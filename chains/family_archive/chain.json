@@ -104,10 +104,11 @@
               "eq": "sent"
             },
             "body": {
-              "empty": false
+              "regex": "(?i)\\bAR-0[1-6]\\b|\\bdates?\\b|\\byears?\\b|\\bdated?\\b"
             }
           },
-          "min": 1
+          "min": 1,
+          "new": true
         },
         {
           "name": "s1_outcome_3",
@@ -212,8 +213,23 @@
               "leila.haddad@example.test"
             ],
             "subject": "Family Archive: Caption evidence",
-            "body": "Cousin Amal identifies AR-01, AR-02 and AR-03 as 1982, and AR-04 and AR-05 as 1985; AR-06 remains uncertain. These IDs refer to Project/Scan selection register. Record cousin Amal's reply as the date source. Printer contact amal.print@example.test handles paper samples, not family history. Scanner suggests grouping duplicate derivatives; master scans must remain.\n{{slot:immediate}}",
+            "body": "Leila, I can place AR-01, AR-02 and AR-03 in 1982, and AR-04 and AR-05 in 1985; those are the IDs in your Project/Scan selection register. AR-06 I am still not sure about. Please record my reply as the date source. The printer contact amal.print@example.test is Amal Studio; they handle paper samples, not family history.\n{{slot:immediate}}",
             "sent_at": "2026-11-04T08:00:00"
+          }
+        },
+        {
+          "op": "add",
+          "app": "mail",
+          "collection": "emails",
+          "item": {
+            "id": "scanner-guide-2",
+            "sender": "help@clearview-digitising.example.test",
+            "to": [
+              "leila.haddad@example.test"
+            ],
+            "subject": "Clearview Digitising: cleanup guide for your archive scans",
+            "body": "Cleanup guide for the Haddad archive scans: group duplicate derivatives with their canonical derivative in your index rather than deleting them. The master scans must remain; preserve every original as the source for any future rescan.",
+            "sent_at": "2026-11-04T08:05:00"
           }
         }
       ],
@@ -278,9 +294,9 @@
             },
             "content": {
               "regex": [
-                "duplicate",
-                "derivatives",
-                "preserve"
+                "(?i)\\bduplicates?\\b",
+                "(?i)\\bderivatives?\\b",
+                "(?i)\\b(?:preserv\\w*|retain\\w*|keep|kept|remain\\w*)\\b"
               ]
             },
             "trashed": {
@@ -302,9 +318,9 @@
                 },
                 "content": {
                   "regex": [
-                    "duplicate",
-                    "derivatives",
-                    "preserve"
+                    "(?i)\\bduplicates?\\b",
+                    "(?i)\\bderivatives?\\b",
+                    "(?i)\\b(?:preserv\\w*|retain\\w*|keep|kept|remain\\w*)\\b"
                   ]
                 }
               },
@@ -327,12 +343,11 @@
               "eq": "sent"
             },
             "body": {
-              "regex": [
-                "Thank\\ you"
-              ]
+              "regex": "(?i)\\bthank(?:s| you)?\\b|\\bgrateful\\b|\\bAR-06\\b|\\b198[25]\\b"
             }
           },
-          "min": 1
+          "min": 1,
+          "new": true
         },
         {
           "name": "s2_outcome_4",
@@ -439,7 +454,7 @@
         }
       ],
       "turns": [
-        "I found an old envelope with dates. It confirms one of the uncertain captions. Please schedule my album proof review at Home on November 11 at 19:00."
+        "I found an old envelope with dates. It confirms one of the uncertain captions, and Amal will want to know. Please schedule my album proof review at Home on November 11 at 19:00."
       ],
       "specs": [
         "action_open"
@@ -549,7 +564,8 @@
               ]
             }
           },
-          "min": 1
+          "min": 1,
+          "new": true
         },
         {
           "name": "s3_outcome_4",
@@ -627,7 +643,7 @@
           "collection": "emails",
           "item": {
             "id": "update-4",
-            "sender": "amal.family@example.test",
+            "sender": "leila.haddad@example.test",
             "to": [
               "leila.haddad@example.test"
             ],
@@ -638,7 +654,7 @@
         }
       ],
       "turns": [
-        "I reviewed the proof last night and approve printing the full album. I want a copy for Amal, but no private paperwork included."
+        "I reviewed the proof last night and approve printing the full album. Next week I'd like Amal to have a copy too, so keep any private paperwork out of it."
       ],
       "specs": [
         "action_open"
@@ -732,7 +748,8 @@
               ]
             }
           },
-          "min": 1
+          "min": 1,
+          "new": true
         },
         {
           "name": "s4_outcome_4",
@@ -868,10 +885,11 @@
               "eq": "sent"
             },
             "body": {
-              "empty": false
+              "regex": "(?i)\\balbum\\b"
             }
           },
-          "min": 1
+          "min": 1,
+          "new": true
         },
         {
           "name": "s5_outcome_3",
@@ -971,12 +989,12 @@
           "collection": "emails",
           "item": {
             "id": "update-6",
-            "sender": "amal.family@example.test",
+            "sender": "help@clearview-digitising.example.test",
             "to": [
               "leila.haddad@example.test"
             ],
-            "subject": "Family Archive: garden-print",
-            "body": "Printing invoice $72 to garden-print, dispatch to 9 Garden Mews. Cleanup means grouping duplicate derivatives, not deleting originals. Master index remains needed for future rescans.",
+            "subject": "Clearview Digitising: tidying the archive after printing",
+            "body": "Cleanup means grouping duplicate derivatives, not deleting originals. Master index remains needed for future rescans.",
             "sent_at": "2026-11-20T08:00:00"
           }
         },
@@ -1090,12 +1108,11 @@
               "eq": "sent"
             },
             "body": {
-              "regex": [
-                "9"
-              ]
+              "regex": "(?i)\\bALB-72\\b|(?:\\$|USD\\s*)\\s*72(?:\\.00)?(?!\\d|\\.\\d)"
             }
           },
-          "min": 1
+          "min": 1,
+          "new": true
         },
         {
           "name": "s6_outcome_4",
@@ -1159,7 +1176,7 @@
               "leila.haddad@example.test"
             ],
             "subject": "Family Archive: Future edition correction",
-            "body": "Printed copy received. Caption AR-07 name should be Salma, not Selma; retain a correction note for a future edition. Do not buy another copy now.",
+            "body": "I've looked through the printed album. The caption on AR-07 should say Salma, not Selma; please keep a correction note for a future edition. No need to buy another copy now.",
             "sent_at": "2026-11-24T08:00:00"
           }
         }
@@ -1229,10 +1246,11 @@
               "eq": "sent"
             },
             "body": {
-              "empty": false
+              "regex": "(?i)\\bSalma\\b|\\bAR-07\\b|\\bcorrection\\b"
             }
           },
-          "min": 1
+          "min": 1,
+          "new": true
         },
         {
           "name": "s7_outcome_3",
@@ -1286,9 +1304,8 @@
             },
             "content": {
               "regex": [
-                "Cousin",
-                "reader",
-                "access"
+                "(?i)\\b(?:arrived|delivered|received)\\b",
+                "(?i)\\b(?:undamaged|intact|no damage|good condition)\\b"
               ]
             },
             "trashed": {
@@ -1310,9 +1327,8 @@
                 },
                 "content": {
                   "regex": [
-                    "Cousin",
-                    "reader",
-                    "access"
+                    "(?i)\\b(?:arrived|delivered|received)\\b",
+                    "(?i)\\b(?:undamaged|intact|no damage|good condition)\\b"
                   ]
                 }
               },
@@ -1410,7 +1426,8 @@
               ]
             }
           },
-          "min": 1
+          "min": 1,
+          "new": true
         },
         {
           "name": "s8_outcome_3",
@@ -1560,10 +1577,11 @@
           "eq": "sent"
         },
         "body": {
-          "empty": false
+          "regex": "(?i)\\bAR-0[1-6]\\b|\\bdates?\\b|\\byears?\\b|\\bdated?\\b"
         }
       },
-      "min": 1
+      "min": 1,
+      "new": true
     },
     {
       "name": "s1_outcome_3",
@@ -1705,9 +1723,9 @@
         },
         "content": {
           "regex": [
-            "duplicate",
-            "derivatives",
-            "preserve"
+            "(?i)\\bduplicates?\\b",
+            "(?i)\\bderivatives?\\b",
+            "(?i)\\b(?:preserv\\w*|retain\\w*|keep|kept|remain\\w*)\\b"
           ]
         },
         "trashed": {
@@ -1729,9 +1747,9 @@
             },
             "content": {
               "regex": [
-                "duplicate",
-                "derivatives",
-                "preserve"
+                "(?i)\\bduplicates?\\b",
+                "(?i)\\bderivatives?\\b",
+                "(?i)\\b(?:preserv\\w*|retain\\w*|keep|kept|remain\\w*)\\b"
               ]
             }
           },
@@ -1754,12 +1772,11 @@
           "eq": "sent"
         },
         "body": {
-          "regex": [
-            "Thank\\ you"
-          ]
+          "regex": "(?i)\\bthank(?:s| you)?\\b|\\bgrateful\\b|\\bAR-06\\b|\\b198[25]\\b"
         }
       },
-      "min": 1
+      "min": 1,
+      "new": true
     },
     {
       "name": "s2_outcome_4",
@@ -1908,7 +1925,8 @@
           ]
         }
       },
-      "min": 1
+      "min": 1,
+      "new": true
     },
     {
       "name": "s3_outcome_4",
@@ -2062,7 +2080,8 @@
           ]
         }
       },
-      "min": 1
+      "min": 1,
+      "new": true
     },
     {
       "name": "s4_outcome_4",
@@ -2169,10 +2188,11 @@
           "eq": "sent"
         },
         "body": {
-          "empty": false
+          "regex": "(?i)\\balbum\\b"
         }
       },
-      "min": 1
+      "min": 1,
+      "new": true
     },
     {
       "name": "s5_outcome_3",
@@ -2347,12 +2367,11 @@
           "eq": "sent"
         },
         "body": {
-          "regex": [
-            "9"
-          ]
+          "regex": "(?i)\\bALB-72\\b|(?:\\$|USD\\s*)\\s*72(?:\\.00)?(?!\\d|\\.\\d)"
         }
       },
-      "min": 1
+      "min": 1,
+      "new": true
     },
     {
       "name": "s6_outcome_4",
@@ -2457,10 +2476,11 @@
           "eq": "sent"
         },
         "body": {
-          "empty": false
+          "regex": "(?i)\\bSalma\\b|\\bAR-07\\b|\\bcorrection\\b"
         }
       },
-      "min": 1
+      "min": 1,
+      "new": true
     },
     {
       "name": "s7_outcome_3",
@@ -2514,9 +2534,8 @@
         },
         "content": {
           "regex": [
-            "Cousin",
-            "reader",
-            "access"
+            "(?i)\\b(?:arrived|delivered|received)\\b",
+            "(?i)\\b(?:undamaged|intact|no damage|good condition)\\b"
           ]
         },
         "trashed": {
@@ -2538,9 +2557,8 @@
             },
             "content": {
               "regex": [
-                "Cousin",
-                "reader",
-                "access"
+                "(?i)\\b(?:arrived|delivered|received)\\b",
+                "(?i)\\b(?:undamaged|intact|no damage|good condition)\\b"
               ]
             }
           },
@@ -2609,7 +2627,8 @@
           ]
         }
       },
-      "min": 1
+      "min": 1,
+      "new": true
     },
     {
       "name": "s8_outcome_3",

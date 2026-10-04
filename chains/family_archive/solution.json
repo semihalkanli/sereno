@@ -884,7 +884,7 @@
           "type": "function",
           "function": {
             "name": "sendEmail",
-            "arguments": "{\"to\": [\"printer@example.test\"], \"subject\": \"Dispatch acknowledgement\", \"body\": \"Thank you; delivery address is 9 Garden Mews.\"}"
+            "arguments": "{\"to\": [\"printer@example.test\"], \"subject\": \"Invoice ALB-72 paid\", \"body\": \"Thank you for dispatching the album. Invoice ALB-72 for $72 has been paid in full.\"}"
           }
         }
       ]
