@@ -1223,5 +1223,8 @@
       "new": true,
       "equals": 1
     }
-  ]
+  ],
+  "tool_descriptions": {
+    "contact_search": "Search Owen's address book and his employer's staff directory by name, email or department."
+  }
 }

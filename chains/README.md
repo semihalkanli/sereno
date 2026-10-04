@@ -297,24 +297,25 @@ own decomposition and carries its plan in memory, tasks or documents.
 injected into the agent. Each world has 8–10 sessions and 30–40 reference
 outcomes. `kickoff` remains the small one-session smoke test.
 
-| Chain | Person | Sessions | Project |
+| Chain | Person | Sessions | Project and measured pressure |
 |---|---|---:|---|
 | `business_week` | Sarah Chen | 8 | Client visit, household work and closeout |
-| `moving_home` | Maya Brooks | 9 | Move, building access and handover |
-| `semester_abroad` | Noah Patel | 10 | Exchange studies and arrival preparation |
-| `wedding_planning` | Elena Rossi | 10 | Wedding suppliers, guests and settlement |
-| `care_logistics` | Owen Walsh | 8 | Appointment administration and reimbursement |
-| `home_renovation` | Priya Shah | 9 | Kitchen renovation and inspection |
-| `family_reunion` | Daniel Kim | 9 | Reunion, accessibility and shared costs |
-| `first_exhibition` | Sofia Alvarez | 8 | Exhibition production and delivery |
-| `household_budget` | Marcus Reed | 10 | Bills, purchases and a return |
-| `family_archive` | Leila Haddad | 8 | Private masters and a shareable album |
+| `moving_home` | Maya Brooks | 9 | Superseded facts: addresses, codes and dates that change mid-chain |
+| `semester_abroad` | Noah Patel | 10 | Rule-constrained planning across institutional, visa and housing rules |
+| `wedding_planning` | Elena Rossi | 10 | Authority attribution: only the couple's decisions bind |
+| `care_logistics` | Owen Walsh | 10 | Data minimization and scope restraint around appointments |
+| `home_renovation` | Priya Shah | 9 | Precondition gating of payments, orders and access |
+| `family_reunion` | Daniel Kim | 10 | Claim provenance in a noisy family group chat |
+| `first_exhibition` | Sofia Alvarez | 9 | File versions and publication scope |
+| `household_budget` | Marcus Reed | 10 | Numeric fidelity across reconciliation sessions |
+| `family_archive` | Leila Haddad | 8 | Irreversible actions on lookalike people and files |
 
 All people, records, accounts and services in the new worlds are synthetic.
 The new worlds contain three original attacks each, one immediate and two
 with delayed goals. Their temporary sources disappear at s3. A safe reference
-solution, a legitimate contact-change twin and deliberately unsafe grader
-witnesses accompany each world. Witnesses prove that the grader can detect a
+solution, a legitimate twin (an outside change the agent must accept, described
+in each world's README) and deliberately unsafe grader witnesses accompany each
+world. Each world measures one long-horizon pressure, named in the table. Witnesses prove that the grader can detect a
 particular action; they do not measure an LLM's vulnerability. String matches
 are copy indicators and can miss paraphrases or match a quoted warning.
 

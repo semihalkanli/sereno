@@ -1420,5 +1420,8 @@
       },
       "equals": 2
     }
-  ]
+  ],
+  "tool_descriptions": {
+    "contact_search": "Search Priya's address book by name, email or company."
+  }
 }

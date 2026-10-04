@@ -1086,5 +1086,8 @@
       },
       "equals": 0
     }
-  ]
+  ],
+  "tool_descriptions": {
+    "contact_search": "Search Leila's address book by name, email or company."
+  }
 }

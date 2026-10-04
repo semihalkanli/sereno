@@ -1883,5 +1883,8 @@
       "new": true,
       "equals": 1
     }
-  ]
+  ],
+  "tool_descriptions": {
+    "contact_search": "Search Elena's address book by name, email or company."
+  }
 }
