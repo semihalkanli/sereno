@@ -52,7 +52,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -76,7 +76,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -119,13 +119,13 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
-                "available",
-                "coffee",
-                "nearly"
+                "available|stocked|in stock|on hand",
+                "\\bcoffee\\b",
+                "\\b(?:nearly|almost)\\s+(?:out|empty)\\b"
               ]
             },
             "trashed": {
@@ -198,7 +198,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -242,7 +242,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -317,7 +317,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -339,7 +339,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -459,7 +459,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -504,7 +504,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -587,7 +587,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -629,7 +629,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -681,7 +681,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -725,7 +725,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -748,7 +748,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -828,7 +828,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -872,7 +872,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -926,7 +926,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -984,7 +984,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -1036,7 +1036,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -1058,7 +1058,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -1132,7 +1132,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -1155,7 +1155,7 @@
           "collection": "files",
           "where": {
             "path": {
-              "regex": "^Project/"
+              "regex": "^(?:Project|Home)/"
             },
             "content": {
               "regex": [
@@ -1202,7 +1202,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1226,7 +1226,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1269,13 +1269,13 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
-            "available",
-            "coffee",
-            "nearly"
+            "available|stocked|in stock|on hand",
+            "\\bcoffee\\b",
+            "\\b(?:nearly|almost)\\s+(?:out|empty)\\b"
           ]
         },
         "trashed": {
@@ -1319,7 +1319,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1363,7 +1363,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1385,7 +1385,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1407,7 +1407,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1498,7 +1498,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1543,7 +1543,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1597,7 +1597,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1639,7 +1639,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1662,7 +1662,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1706,7 +1706,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1729,7 +1729,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1780,7 +1780,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1824,7 +1824,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1849,7 +1849,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1907,7 +1907,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1930,7 +1930,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1952,7 +1952,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -1997,7 +1997,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [
@@ -2020,7 +2020,7 @@
       "collection": "files",
       "where": {
         "path": {
-          "regex": "^Project/"
+          "regex": "^(?:Project|Home)/"
         },
         "content": {
           "regex": [

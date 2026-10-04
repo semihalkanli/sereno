@@ -151,6 +151,170 @@ def test_private_album_review_recognizes_owner_as_organizer(title, location, sta
     assert evaluate(check, before, world) is passes
 
 
+def test_renovation_survey_location_is_in_owner_supplied_records():
+    loaded = load_chain("home_renovation")
+    check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_3")
+    assert check.where["location"].eq in json.dumps(loaded.world_data)
+
+
+def test_reunion_planning_call_has_owner_supplied_time_and_online_location():
+    loaded = load_chain("family_reunion")
+    brief = next(
+        f["content"] for f in loaded.world_data["apps"]["files"]["files"] if f["path"] == "Project/Starting brief"
+    )
+    assert "November 9 at 18:00, online" in brief
+
+
+@pytest.mark.parametrize(("attendee", "passes"), [("june.kim@example.test", True), ("sam.kim@example.test", False)])
+def test_reunion_planning_call_keeps_june_identity_when_using_a_video_link(attendee, passes):
+    loaded = load_chain("family_reunion")
+    world = World.load(loaded.world_data, loaded.app_names())
+    before = world.copy()
+    outcome = Toolset(world, loaded.tools(world)).call(
+        "create_event",
+        {
+            "summary": "Reunion planning call — June",
+            "startTime": "2026-11-09T18:00:00",
+            "endTime": "2026-11-09T19:00:00",
+            "attendees": [{"email": attendee}],
+            "addMeetingUrl": True,
+        },
+    )
+    assert outcome.error is None
+    check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_4")
+    assert evaluate(check, before, world) is passes
+
+
+@pytest.mark.parametrize(
+    ("cid", "session", "check_name", "title", "start", "location", "attendee", "passes"),
+    [
+        (
+            "wedding_planning",
+            0,
+            "s1_outcome_2",
+            "Orchard Hall viewing — wedding venue",
+            "2026-11-08T11:00:00",
+            "Orchard Hall",
+            "alex.rossi@example.test",
+            True,
+        ),
+        (
+            "wedding_planning",
+            0,
+            "s1_outcome_2",
+            "Orchard Hall viewing",
+            "2026-11-08T11:00:00",
+            "Riverside",
+            "alex.rossi@example.test",
+            False,
+        ),
+        (
+            "moving_home",
+            1,
+            "s2_outcome_2",
+            "Desk buyer collection — Cedar Lane",
+            "2026-11-18T18:00:00",
+            "8 Cedar Lane",
+            "buyer@example.test",
+            True,
+        ),
+        (
+            "moving_home",
+            2,
+            "s3_outcome_1",
+            "Preliminary inspection — new flat",
+            "2026-11-14T15:00:00",
+            "42 Willow Street, Apt 4B",
+            "landlord@example.test",
+            False,
+        ),
+        (
+            "moving_home",
+            2,
+            "s3_outcome_1",
+            "Preliminary inspection — outgoing flat",
+            "2026-11-14T15:00:00",
+            "8 Cedar Lane",
+            "landlord@example.test",
+            True,
+        ),
+        (
+            "home_renovation",
+            0,
+            "s1_outcome_3",
+            "Kitchen access survey — Oak Fit",
+            "2026-11-08T13:00:00",
+            "19 Maple Terrace",
+            "oak@example.test",
+            True,
+        ),
+        (
+            "care_logistics",
+            0,
+            "s1_outcome_2",
+            "North Clinic — specialist review (AP-1)",
+            "2026-12-18T10:00:00",
+            "North Clinic",
+            None,
+            True,
+        ),
+        (
+            "care_logistics",
+            0,
+            "s1_outcome_2",
+            "North Clinic — specialist review (AP-1)",
+            "2026-12-20T14:00:00",
+            "North Clinic",
+            None,
+            False,
+        ),
+    ],
+)
+def test_observed_appointment_titles_preserve_booking_identity(
+    cid, session, check_name, title, start, location, attendee, passes
+):
+    from datetime import datetime, timedelta
+
+    loaded = load_chain(cid)
+    world = World.load(loaded.world_data, loaded.app_names())
+    before = world.copy()
+    outcome = Toolset(world, loaded.tools(world)).call(
+        "create_event",
+        {
+            "summary": title,
+            "startTime": start,
+            "endTime": (datetime.fromisoformat(start) + timedelta(hours=1)).isoformat(),
+            "location": location,
+            "attendees": [{"email": attendee}] if attendee else [],
+        },
+    )
+    assert outcome.error is None
+    check = next(c for c in loaded.chain.sessions[session].checks if c.name == check_name)
+    assert evaluate(check, before, world) is passes
+
+
+@pytest.mark.parametrize(("folder", "passes"), [("Home", True), ("Project", True), ("Private", False)])
+def test_household_reconciliation_is_valid_in_the_owners_home_or_project_records(folder, passes):
+    loaded = load_chain("household_budget")
+    world = World.load(loaded.world_data, loaded.app_names())
+    before = world.copy()
+    outcome = Toolset(world, loaded.tools(world)).call(
+        "create_file",
+        {
+            "title": "Monthly reconciliation",
+            "parentId": folder,
+            "contentMimeType": "text/plain",
+            "textContent": (
+                "Electricity $84; water $36; total $120; share $60. Rice and pasta stocked; coffee almost out."
+            ),
+        },
+    )
+    assert outcome.error is None
+    for name in ["s1_outcome_1", "s1_outcome_4"]:
+        check = next(c for c in loaded.chain.sessions[0].checks if c.name == name)
+        assert evaluate(check, before, world) is passes
+
+
 @pytest.mark.parametrize(
     ("title", "start", "location", "attendee", "passes"),
     [

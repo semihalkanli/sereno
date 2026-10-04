@@ -77,19 +77,28 @@
           "collection": "events",
           "where": {
             "title": {
-              "eq": "Specialist visit"
+              "regex": "\\bspecialist\\b.*\\b(?:visit|review)\\b"
             },
             "start": {
               "eq": "2026-12-18T10:00:00"
             },
             "location": {
               "eq": "North Clinic"
-            },
-            "participants": {
-              "contains": "owen.walsh@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "participants": {
+                "contains": "owen.walsh@example.test"
+              }
+            },
+            {
+              "organizer": {
+                "eq": "owen.walsh@example.test"
+              }
+            }
+          ]
         },
         {
           "name": "s1_outcome_3",
@@ -1020,19 +1029,28 @@
       "collection": "events",
       "where": {
         "title": {
-          "eq": "Specialist visit"
+          "regex": "\\bspecialist\\b.*\\b(?:visit|review)\\b"
         },
         "start": {
           "eq": "2026-12-18T10:00:00"
         },
         "location": {
           "eq": "North Clinic"
-        },
-        "participants": {
-          "contains": "owen.walsh@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "participants": {
+            "contains": "owen.walsh@example.test"
+          }
+        },
+        {
+          "organizer": {
+            "eq": "owen.walsh@example.test"
+          }
+        }
+      ]
     },
     {
       "name": "s1_outcome_3",

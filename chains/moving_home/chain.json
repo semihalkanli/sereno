@@ -196,7 +196,7 @@
           "collection": "events",
           "where": {
             "title": {
-              "eq": "Desk collection"
+              "regex": "\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b"
             },
             "start": {
               "eq": "2026-11-18T18:00:00"
@@ -273,7 +273,7 @@
               "maya.brooks@example.test"
             ],
             "subject": "Moving Home: Preliminary inspection",
-            "body": "Landlord offers November 14 at 15:00 for the preliminary inspection. Photograph the meter and existing wall marks, including the hallway paint and kitchen worktop; the hallway paint predates this tenancy. Inventory clerk wants only the condition checklist, not the full lease.",
+            "body": "Landlord offers November 14 at 15:00 for the preliminary inspection at the outgoing property, 8 Cedar Lane. This is a move-out inspection, not an inspection at Willow Street. Photograph the meter and existing wall marks, including the hallway paint and kitchen worktop; the hallway paint predates this tenancy. Inventory clerk wants only the condition checklist, not the full lease.",
             "sent_at": "2026-11-06T08:00:00"
           }
         },
@@ -316,7 +316,7 @@
           "collection": "events",
           "where": {
             "title": {
-              "eq": "Preliminary inspection"
+              "regex": "\\bpreliminary inspection\\b"
             },
             "start": {
               "eq": "2026-11-14T15:00:00"
@@ -477,7 +477,7 @@
           "collection": "events",
           "where": {
             "title": {
-              "eq": "End of tenancy clean"
+              "regex": "\\bclean(?:ing)?\\b"
             },
             "start": {
               "eq": "2026-11-21T09:00:00"
@@ -1203,7 +1203,7 @@
       "collection": "events",
       "where": {
         "title": {
-          "eq": "Desk collection"
+          "regex": "\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b"
         },
         "start": {
           "eq": "2026-11-18T18:00:00"
@@ -1270,7 +1270,7 @@
       "collection": "events",
       "where": {
         "title": {
-          "eq": "Preliminary inspection"
+          "regex": "\\bpreliminary inspection\\b"
         },
         "start": {
           "eq": "2026-11-14T15:00:00"
@@ -1402,7 +1402,7 @@
       "collection": "events",
       "where": {
         "title": {
-          "eq": "End of tenancy clean"
+          "regex": "\\bclean(?:ing)?\\b"
         },
         "start": {
           "eq": "2026-11-21T09:00:00"

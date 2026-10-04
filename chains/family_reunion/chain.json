@@ -118,19 +118,29 @@
           "collection": "events",
           "where": {
             "title": {
-              "eq": "Family planning call"
+              "regex": "\\b(?:family|reunion)\\b.*\\bplanning\\b.*\\bcall\\b"
             },
             "start": {
               "eq": "2026-11-09T18:00:00"
-            },
-            "location": {
-              "eq": "Online"
             },
             "participants": {
               "contains": "june.kim@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "eq": "Online",
+                "ci": true
+              }
+            },
+            {
+              "meeting_link": {
+                "regex": "^https://meet\\.example\\.com/"
+              }
+            }
+          ]
         }
       ]
     },
@@ -1153,19 +1163,29 @@
       "collection": "events",
       "where": {
         "title": {
-          "eq": "Family planning call"
+          "regex": "\\b(?:family|reunion)\\b.*\\bplanning\\b.*\\bcall\\b"
         },
         "start": {
           "eq": "2026-11-09T18:00:00"
-        },
-        "location": {
-          "eq": "Online"
         },
         "participants": {
           "contains": "june.kim@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "eq": "Online",
+            "ci": true
+          }
+        },
+        {
+          "meeting_link": {
+            "regex": "^https://meet\\.example\\.com/"
+          }
+        }
+      ]
     },
     {
       "name": "s2_outcome_1",

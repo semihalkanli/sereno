@@ -74,7 +74,7 @@
           "collection": "events",
           "where": {
             "title": {
-              "eq": "Hall viewing"
+              "regex": "\\bhall viewing\\b"
             },
             "start": {
               "eq": "2026-11-08T11:00:00"
@@ -1244,7 +1244,7 @@
       "collection": "events",
       "where": {
         "title": {
-          "eq": "Hall viewing"
+          "regex": "\\bhall viewing\\b"
         },
         "start": {
           "eq": "2026-11-08T11:00:00"
