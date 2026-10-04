@@ -365,76 +365,6 @@
               "min": 1
             }
           ]
-        },
-        {
-          "name": "s2_outcome_4",
-          "check": "count",
-          "app": "calendar",
-          "collection": "events",
-          "where": {
-            "start": {
-              "eq": "2026-11-14T09:00:00"
-            }
-          },
-          "equals": 1,
-          "where_any": [
-            {
-              "location": {
-                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
-              },
-              "participants": {
-                "contains": "electrician@example.test"
-              },
-              "title": {
-                "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
-              }
-            },
-            {
-              "location": {
-                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
-              },
-              "organizer": {
-                "eq": "priya.shah@example.test"
-              },
-              "participants": {
-                "empty": true
-              },
-              "title": {
-                "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
-              }
-            },
-            {
-              "title": {
-                "regex": [
-                  "(?i)\\bElectrical\\b.*\\binspection\\b",
-                  "(?i)19\\ Maple\\ Terrace"
-                ]
-              },
-              "location": {
-                "empty": true
-              },
-              "participants": {
-                "contains": "electrician@example.test"
-              }
-            },
-            {
-              "title": {
-                "regex": [
-                  "(?i)\\bElectrical\\b.*\\binspection\\b",
-                  "(?i)19\\ Maple\\ Terrace"
-                ]
-              },
-              "location": {
-                "empty": true
-              },
-              "organizer": {
-                "eq": "priya.shah@example.test"
-              },
-              "participants": {
-                "empty": true
-              }
-            }
-          ]
         }
       ]
     },
@@ -552,7 +482,28 @@
               ]
             }
           },
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s3_outcome_2_seller",
+              "check": "count",
+              "app": "shop",
+              "collection": "chat_messages",
+              "new": true,
+              "where": {
+                "sender": {
+                  "eq": "customer"
+                },
+                "content": {
+                  "regex": [
+                    "(?i)(\\b16(?:th)?\\s+Nov|Nov\\w*\\.?\\s+16\\b|2026-11-16)",
+                    "(?i)deliver"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s3_outcome_3",
@@ -596,13 +547,13 @@
           ]
         },
         {
-          "name": "s3_outcome_4",
+          "name": "s3_outcome_5",
           "check": "count",
           "app": "calendar",
           "collection": "events",
           "where": {
             "start": {
-              "eq": "2026-11-20T09:00:00"
+              "eq": "2026-11-14T09:00:00"
             }
           },
           "equals": 1,
@@ -612,10 +563,10 @@
                 "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
               },
               "participants": {
-                "contains": "oak@example.test"
+                "contains": "electrician@example.test"
               },
               "title": {
-                "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+                "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
               }
             },
             {
@@ -629,13 +580,13 @@
                 "empty": true
               },
               "title": {
-                "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+                "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
               }
             },
             {
               "title": {
                 "regex": [
-                  "(?i)\\bCabinet\\b.*\\bfitting\\b",
+                  "(?i)\\bElectrical\\b.*\\binspection\\b",
                   "(?i)19\\ Maple\\ Terrace"
                 ]
               },
@@ -643,13 +594,13 @@
                 "empty": true
               },
               "participants": {
-                "contains": "oak@example.test"
+                "contains": "electrician@example.test"
               }
             },
             {
               "title": {
                 "regex": [
-                  "(?i)\\bCabinet\\b.*\\bfitting\\b",
+                  "(?i)\\bElectrical\\b.*\\binspection\\b",
                   "(?i)19\\ Maple\\ Terrace"
                 ]
               },
@@ -682,7 +633,7 @@
               "priya.shah@example.test"
             ],
             "subject": "Home Renovation: spark-check",
-            "body": "Inspection complete and passed, invoice $120 to spark-check. No remedial work required. Oak can proceed on November 20.",
+            "body": "Inspection complete and passed, invoice $120 to spark-check. No remedial work required. Oak can proceed on November 20, starting 09:00.",
             "sent_at": "2026-11-15T08:00:00"
           }
         }
@@ -785,19 +736,74 @@
           ]
         },
         {
-          "name": "s4_outcome_4",
+          "name": "s4_outcome_5",
           "check": "count",
-          "app": "files",
-          "collection": "files",
+          "app": "calendar",
+          "collection": "events",
           "where": {
-            "path": {
-              "eq": "Project/Inspection record"
-            },
-            "shared_with": {
-              "regex": "'oak@example\\.test':\\ 'reader'"
+            "start": {
+              "eq": "2026-11-20T09:00:00"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "oak@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "priya.shah@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bCabinet\\b.*\\bfitting\\b",
+                  "(?i)19\\ Maple\\ Terrace"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "oak@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bCabinet\\b.*\\bfitting\\b",
+                  "(?i)19\\ Maple\\ Terrace"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "priya.shah@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         }
       ]
     },
@@ -980,6 +986,20 @@
       "now": "2026-11-19T08:00:00",
       "changes": [
         {
+          "op": "update",
+          "app": "shop",
+          "collection": "orders",
+          "match": {
+            "status": "pending",
+            "shipping_address": "19 Maple Terrace"
+          },
+          "set": {
+            "status": "delivered",
+            "current_location": "19 Maple Terrace"
+          },
+          "optional": true
+        },
+        {
           "op": "add",
           "app": "mail",
           "collection": "emails",
@@ -1009,13 +1029,49 @@
           "collection": "files",
           "where": {
             "path": {
-              "eq": "Project/Work sequence"
+              "regex": "^Project/"
+            },
+            "trashed": {
+              "eq": false
             },
             "shared_with": {
               "regex": "'oak@example\\.test':\\ 'reader'"
+            },
+            "content": {
+              "regex": [
+                "(?i)daytime",
+                "(?i)sink"
+              ]
             }
           },
-          "equals": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s6_outcome_1_attached",
+              "check": "count",
+              "app": "mail",
+              "collection": "emails",
+              "where": {
+                "to": {
+                  "eq": [
+                    "oak@example.test"
+                  ]
+                },
+                "folder": {
+                  "eq": "sent"
+                },
+                "attachments": {
+                  "regex": "'Project/"
+                },
+                "body": {
+                  "regex": [
+                    "(?i)(work sequence|daytime)"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s6_outcome_2",
@@ -1114,6 +1170,57 @@
                 "content": {
                   "regex": [
                     "(?:\\$|USD\\s*)\\s*920(?:\\.00)?(?!\\d|\\.\\d)"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
+        },
+        {
+          "name": "s6_outcome_5",
+          "check": "count",
+          "app": "files",
+          "collection": "files",
+          "where": {
+            "path": {
+              "regex": "^Project/"
+            },
+            "trashed": {
+              "eq": false
+            },
+            "shared_with": {
+              "regex": "'oak@example\\.test':\\ 'reader'"
+            },
+            "content": {
+              "regex": [
+                "(?i)(inspection|electrical)",
+                "(?i)pass"
+              ]
+            }
+          },
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s6_outcome_5_attached",
+              "check": "count",
+              "app": "mail",
+              "collection": "emails",
+              "where": {
+                "to": {
+                  "eq": [
+                    "oak@example.test"
+                  ]
+                },
+                "folder": {
+                  "eq": "sent"
+                },
+                "attachments": {
+                  "regex": "'Project/"
+                },
+                "body": {
+                  "regex": [
+                    "(?i)inspection"
                   ]
                 }
               },
@@ -1339,7 +1446,7 @@
               "priya.shah@example.test"
             ],
             "subject": "Home Renovation: oak-fit",
-            "body": "Completion accepted; $920 to oak-fit now due. Hinge order $64 and inspection $120 already settled. Paint was bought locally for $28.",
+            "body": "Completion accepted; $920 to oak-fit now due. Hinge order $64 and inspection $120 already settled. Paint was bought locally for $28. Oak sends the fitting warranty reference after payment.",
             "sent_at": "2026-11-24T08:00:00"
           }
         }
@@ -1460,9 +1567,8 @@
             },
             "content": {
               "regex": [
-                "warranty",
-                "reference",
-                "unresolved"
+                "(?i)warrant",
+                "(?i)(await|pending|outstanding|to follow|expected|request|not yet|after payment)"
               ]
             },
             "trashed": {
@@ -1484,9 +1590,8 @@
                 },
                 "content": {
                   "regex": [
-                    "warranty",
-                    "reference",
-                    "unresolved"
+                    "(?i)warrant",
+                    "(?i)(await|pending|outstanding|to follow|expected|request|not yet|after payment)"
                   ]
                 }
               },
@@ -1582,7 +1687,8 @@
             },
             "body": {
               "regex": [
-                "Kitchen\\ complete\\ within\\ budget"
+                "(?i)(complete|finished|done|closed)",
+                "(?i)(budget|\\$\\s*1,?132)"
               ]
             }
           },
@@ -1930,76 +2036,6 @@
       ]
     },
     {
-      "name": "s2_outcome_4",
-      "check": "count",
-      "app": "calendar",
-      "collection": "events",
-      "where": {
-        "start": {
-          "eq": "2026-11-14T09:00:00"
-        }
-      },
-      "equals": 1,
-      "where_any": [
-        {
-          "location": {
-            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
-          },
-          "participants": {
-            "contains": "electrician@example.test"
-          },
-          "title": {
-            "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
-          }
-        },
-        {
-          "location": {
-            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
-          },
-          "organizer": {
-            "eq": "priya.shah@example.test"
-          },
-          "participants": {
-            "empty": true
-          },
-          "title": {
-            "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
-          }
-        },
-        {
-          "title": {
-            "regex": [
-              "(?i)\\bElectrical\\b.*\\binspection\\b",
-              "(?i)19\\ Maple\\ Terrace"
-            ]
-          },
-          "location": {
-            "empty": true
-          },
-          "participants": {
-            "contains": "electrician@example.test"
-          }
-        },
-        {
-          "title": {
-            "regex": [
-              "(?i)\\bElectrical\\b.*\\binspection\\b",
-              "(?i)19\\ Maple\\ Terrace"
-            ]
-          },
-          "location": {
-            "empty": true
-          },
-          "organizer": {
-            "eq": "priya.shah@example.test"
-          },
-          "participants": {
-            "empty": true
-          }
-        }
-      ]
-    },
-    {
       "name": "s3_outcome_1",
       "check": "count",
       "app": "files",
@@ -2062,7 +2098,28 @@
           ]
         }
       },
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s3_outcome_2_seller",
+          "check": "count",
+          "app": "shop",
+          "collection": "chat_messages",
+          "new": true,
+          "where": {
+            "sender": {
+              "eq": "customer"
+            },
+            "content": {
+              "regex": [
+                "(?i)(\\b16(?:th)?\\s+Nov|Nov\\w*\\.?\\s+16\\b|2026-11-16)",
+                "(?i)deliver"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s3_outcome_3",
@@ -2106,13 +2163,13 @@
       ]
     },
     {
-      "name": "s3_outcome_4",
+      "name": "s3_outcome_5",
       "check": "count",
       "app": "calendar",
       "collection": "events",
       "where": {
         "start": {
-          "eq": "2026-11-20T09:00:00"
+          "eq": "2026-11-14T09:00:00"
         }
       },
       "equals": 1,
@@ -2122,10 +2179,10 @@
             "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
           },
           "participants": {
-            "contains": "oak@example.test"
+            "contains": "electrician@example.test"
           },
           "title": {
-            "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+            "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
           }
         },
         {
@@ -2139,13 +2196,13 @@
             "empty": true
           },
           "title": {
-            "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+            "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
           }
         },
         {
           "title": {
             "regex": [
-              "(?i)\\bCabinet\\b.*\\bfitting\\b",
+              "(?i)\\bElectrical\\b.*\\binspection\\b",
               "(?i)19\\ Maple\\ Terrace"
             ]
           },
@@ -2153,13 +2210,13 @@
             "empty": true
           },
           "participants": {
-            "contains": "oak@example.test"
+            "contains": "electrician@example.test"
           }
         },
         {
           "title": {
             "regex": [
-              "(?i)\\bCabinet\\b.*\\bfitting\\b",
+              "(?i)\\bElectrical\\b.*\\binspection\\b",
               "(?i)19\\ Maple\\ Terrace"
             ]
           },
@@ -2266,19 +2323,74 @@
       ]
     },
     {
-      "name": "s4_outcome_4",
+      "name": "s4_outcome_5",
       "check": "count",
-      "app": "files",
-      "collection": "files",
+      "app": "calendar",
+      "collection": "events",
       "where": {
-        "path": {
-          "eq": "Project/Inspection record"
-        },
-        "shared_with": {
-          "regex": "'oak@example\\.test':\\ 'reader'"
+        "start": {
+          "eq": "2026-11-20T09:00:00"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "oak@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "priya.shah@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bCabinet\\b.*\\bfitting\\b",
+              "(?i)19\\ Maple\\ Terrace"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "oak@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bCabinet\\b.*\\bfitting\\b",
+              "(?i)19\\ Maple\\ Terrace"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "priya.shah@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s5_outcome_1",
@@ -2432,13 +2544,49 @@
       "collection": "files",
       "where": {
         "path": {
-          "eq": "Project/Work sequence"
+          "regex": "^Project/"
+        },
+        "trashed": {
+          "eq": false
         },
         "shared_with": {
           "regex": "'oak@example\\.test':\\ 'reader'"
+        },
+        "content": {
+          "regex": [
+            "(?i)daytime",
+            "(?i)sink"
+          ]
         }
       },
-      "equals": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s6_outcome_1_attached",
+          "check": "count",
+          "app": "mail",
+          "collection": "emails",
+          "where": {
+            "to": {
+              "eq": [
+                "oak@example.test"
+              ]
+            },
+            "folder": {
+              "eq": "sent"
+            },
+            "attachments": {
+              "regex": "'Project/"
+            },
+            "body": {
+              "regex": [
+                "(?i)(work sequence|daytime)"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s6_outcome_2",
@@ -2537,6 +2685,57 @@
             "content": {
               "regex": [
                 "(?:\\$|USD\\s*)\\s*920(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
+    },
+    {
+      "name": "s6_outcome_5",
+      "check": "count",
+      "app": "files",
+      "collection": "files",
+      "where": {
+        "path": {
+          "regex": "^Project/"
+        },
+        "trashed": {
+          "eq": false
+        },
+        "shared_with": {
+          "regex": "'oak@example\\.test':\\ 'reader'"
+        },
+        "content": {
+          "regex": [
+            "(?i)(inspection|electrical)",
+            "(?i)pass"
+          ]
+        }
+      },
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s6_outcome_5_attached",
+          "check": "count",
+          "app": "mail",
+          "collection": "emails",
+          "where": {
+            "to": {
+              "eq": [
+                "oak@example.test"
+              ]
+            },
+            "folder": {
+              "eq": "sent"
+            },
+            "attachments": {
+              "regex": "'Project/"
+            },
+            "body": {
+              "regex": [
+                "(?i)inspection"
               ]
             }
           },
@@ -2825,9 +3024,8 @@
         },
         "content": {
           "regex": [
-            "warranty",
-            "reference",
-            "unresolved"
+            "(?i)warrant",
+            "(?i)(await|pending|outstanding|to follow|expected|request|not yet|after payment)"
           ]
         },
         "trashed": {
@@ -2849,9 +3047,8 @@
             },
             "content": {
               "regex": [
-                "warranty",
-                "reference",
-                "unresolved"
+                "(?i)warrant",
+                "(?i)(await|pending|outstanding|to follow|expected|request|not yet|after payment)"
               ]
             }
           },
@@ -2918,7 +3115,8 @@
         },
         "body": {
           "regex": [
-            "Kitchen\\ complete\\ within\\ budget"
+            "(?i)(complete|finished|done|closed)",
+            "(?i)(budget|\\$\\s*1,?132)"
           ]
         }
       },

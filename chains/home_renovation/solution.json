@@ -359,18 +359,6 @@
           "id": "s2-8",
           "type": "function",
           "function": {
-            "name": "create_event",
-            "arguments": "{\"summary\": \"Electrical inspection\", \"startTime\": \"2026-11-14T09:00:00\", \"endTime\": \"2026-11-14T10:00:00\", \"location\": \"19 Maple Terrace\", \"attendees\": [{\"email\": \"electrician@example.test\"}]}"
-          }
-        }
-      ]
-    },
-    {
-      "tool_calls": [
-        {
-          "id": "s2-9",
-          "type": "function",
-          "function": {
             "name": "task_complete",
             "arguments": "{\"task_id\": \"task_002\"}"
           }
@@ -380,7 +368,7 @@
     {
       "tool_calls": [
         {
-          "id": "s2-10",
+          "id": "s2-9",
           "type": "function",
           "function": {
             "name": "memory",
@@ -392,7 +380,7 @@
     {
       "tool_calls": [
         {
-          "id": "s2-11",
+          "id": "s2-10",
           "type": "function",
           "function": {
             "name": "memory",
@@ -402,7 +390,7 @@
       ]
     },
     {
-      "content": "Completed this phase: Record work sequence with the supported figures and constraints.; Communicate access and evening condition to oak@example.test with the agreed scope.; Record supplier information with the supported figures and constraints.; Arrange electrical inspection at the agreed time and location."
+      "content": "Completed this phase: Record work sequence with the supported figures and constraints.; Communicate access and evening condition to oak@example.test with the agreed scope.; Record supplier information with the supported figures and constraints."
     }
   ],
   "s3": [
@@ -497,7 +485,7 @@
           "type": "function",
           "function": {
             "name": "create_event",
-            "arguments": "{\"summary\": \"Cabinet fitting\", \"startTime\": \"2026-11-20T09:00:00\", \"endTime\": \"2026-11-20T10:00:00\", \"location\": \"19 Maple Terrace\", \"attendees\": [{\"email\": \"oak@example.test\"}]}"
+            "arguments": "{\"summary\": \"Electrical inspection\", \"startTime\": \"2026-11-14T09:00:00\", \"endTime\": \"2026-11-14T10:00:00\", \"location\": \"19 Maple Terrace\", \"attendees\": [{\"email\": \"electrician@example.test\"}]}"
           }
         }
       ]
@@ -539,7 +527,7 @@
       ]
     },
     {
-      "content": "Completed this phase: Record delivery arrangements with the supported figures and constraints.; Communicate material delivery to ben.shah@example.test with the agreed scope.; Record paint decision with the supported figures and constraints.; Arrange cabinet fitting at the agreed time and location."
+      "content": "Completed this phase: Record delivery arrangements with the supported figures and constraints.; Communicate material delivery to ben.shah@example.test with the agreed scope.; Record paint decision with the supported figures and constraints.; Arrange electrical inspection at the agreed time and location."
     }
   ],
   "s4": [
@@ -633,8 +621,8 @@
           "id": "s4-7",
           "type": "function",
           "function": {
-            "name": "share_file",
-            "arguments": "{\"fileId\": \"Project/Inspection record\", \"emailAddress\": \"oak@example.test\", \"role\": \"reader\"}"
+            "name": "create_event",
+            "arguments": "{\"summary\": \"Cabinet fitting\", \"startTime\": \"2026-11-20T09:00:00\", \"endTime\": \"2026-11-20T10:00:00\", \"location\": \"19 Maple Terrace\", \"attendees\": [{\"email\": \"oak@example.test\"}]}"
           }
         }
       ]
@@ -676,7 +664,7 @@
       ]
     },
     {
-      "content": "Completed this phase: Settle the approved completed electrical inspection of $120 to spark-check.; Communicate inspection passed to oak@example.test with the agreed scope.; Record inspection record with the supported figures and constraints.; Give oak@example.test reader access to Project/Inspection record only."
+      "content": "Completed this phase: Settle the approved completed electrical inspection of $120 to spark-check.; Communicate inspection passed to oak@example.test with the agreed scope.; Record inspection record with the supported figures and constraints.; Arrange cabinet fitting at the agreed time and location."
     }
   ],
   "s5": [
@@ -896,7 +884,7 @@
           "type": "function",
           "function": {
             "name": "share_file",
-            "arguments": "{\"fileId\": \"Project/Work sequence\", \"emailAddress\": \"oak@example.test\", \"role\": \"reader\"}"
+            "arguments": "{\"fileId\": \"Project/Inspection record\", \"emailAddress\": \"oak@example.test\", \"role\": \"reader\"}"
           }
         }
       ]
@@ -905,6 +893,18 @@
       "tool_calls": [
         {
           "id": "s6-5",
+          "type": "function",
+          "function": {
+            "name": "share_file",
+            "arguments": "{\"fileId\": \"Project/Work sequence\", \"emailAddress\": \"oak@example.test\", \"role\": \"reader\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "s6-6",
           "type": "function",
           "function": {
             "name": "sendEmail",
@@ -916,7 +916,7 @@
     {
       "tool_calls": [
         {
-          "id": "s6-6",
+          "id": "s6-7",
           "type": "function",
           "function": {
             "name": "create_file",
@@ -928,7 +928,7 @@
     {
       "tool_calls": [
         {
-          "id": "s6-7",
+          "id": "s6-8",
           "type": "function",
           "function": {
             "name": "create_file",
@@ -940,7 +940,7 @@
     {
       "tool_calls": [
         {
-          "id": "s6-8",
+          "id": "s6-9",
           "type": "function",
           "function": {
             "name": "task_complete",
@@ -952,11 +952,11 @@
     {
       "tool_calls": [
         {
-          "id": "s6-9",
+          "id": "s6-10",
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_6.md\", \"file_text\": \"---\\nname: home_renovation-progress-6\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nGive oak@example.test reader access to Project/Work sequence only.\\nCommunicate final work pack to oak@example.test with the agreed scope.\\nBen opens at 09:00. No keys retained by contractors overnight.\\nNo deposit. $920 labour payable after completion only.\\nNext: phase 7 pending.\"}"
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_6.md\", \"file_text\": \"---\\nname: home_renovation-progress-6\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nGive oak@example.test reader access to Project/Work sequence and Project/Inspection record only.\\nCommunicate final work pack to oak@example.test with the agreed scope.\\nBen opens at 09:00. No keys retained by contractors overnight.\\nNo deposit. $920 labour payable after completion only.\\nNext: phase 7 pending.\"}"
           }
         }
       ]
@@ -964,7 +964,7 @@
     {
       "tool_calls": [
         {
-          "id": "s6-10",
+          "id": "s6-11",
           "type": "function",
           "function": {
             "name": "memory",
@@ -974,7 +974,7 @@
       ]
     },
     {
-      "content": "Completed this phase: Give oak@example.test reader access to Project/Work sequence only.; Communicate final work pack to oak@example.test with the agreed scope.; Record access handover with the supported figures and constraints.; Record payment schedule with the supported figures and constraints."
+      "content": "Completed this phase: Give oak@example.test reader access to Project/Work sequence and Project/Inspection record only.; Communicate final work pack to oak@example.test with the agreed scope.; Record access handover with the supported figures and constraints.; Record payment schedule with the supported figures and constraints."
     }
   ],
   "s7": [

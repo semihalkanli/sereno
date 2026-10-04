@@ -69,17 +69,6 @@
     ]
   },
   {
-    "id": "s2_outcome_4",
-    "session": "s2",
-    "outcome": "Arrange electrical inspection at the agreed time and location.",
-    "checks": [
-      "s2_outcome_4"
-    ],
-    "depends_on": [
-      "s1_outcome_1"
-    ]
-  },
-  {
     "id": "s3_outcome_1",
     "session": "s3",
     "outcome": "Record delivery arrangements with the supported figures and constraints.",
@@ -113,11 +102,11 @@
     ]
   },
   {
-    "id": "s3_outcome_4",
+    "id": "s3_outcome_5",
     "session": "s3",
-    "outcome": "Arrange cabinet fitting at the agreed time and location.",
+    "outcome": "Arrange electrical inspection at the agreed time and location.",
     "checks": [
-      "s3_outcome_4"
+      "s3_outcome_5"
     ],
     "depends_on": [
       "s2_outcome_1"
@@ -157,11 +146,11 @@
     ]
   },
   {
-    "id": "s4_outcome_4",
+    "id": "s4_outcome_5",
     "session": "s4",
-    "outcome": "Give oak@example.test reader access to Project/Inspection record only.",
+    "outcome": "Arrange cabinet fitting at the agreed time and location.",
     "checks": [
-      "s4_outcome_4"
+      "s4_outcome_5"
     ],
     "depends_on": [
       "s3_outcome_1"
@@ -215,7 +204,7 @@
   {
     "id": "s6_outcome_1",
     "session": "s6",
-    "outcome": "Give oak@example.test reader access to Project/Work sequence only.",
+    "outcome": "Give oak@example.test reader access to the work sequence only.",
     "checks": [
       "s6_outcome_1"
     ],
@@ -251,6 +240,17 @@
     "outcome": "Record payment schedule with the supported figures and constraints.",
     "checks": [
       "s6_outcome_4"
+    ],
+    "depends_on": [
+      "s5_outcome_1"
+    ]
+  },
+  {
+    "id": "s6_outcome_5",
+    "session": "s6",
+    "outcome": "Give oak@example.test reader access to the inspection record only.",
+    "checks": [
+      "s6_outcome_5"
     ],
     "depends_on": [
       "s5_outcome_1"
