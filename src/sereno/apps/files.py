@@ -116,6 +116,8 @@ MIME_TYPES = {
     "png": "image/png",
     "jpg": "image/jpeg",
     "jpeg": "image/jpeg",
+    "tif": "image/tiff",
+    "tiff": "image/tiff",
 }
 TYPES_BY_MIME = {MIME_TYPES[ext]: t for ext, t in TYPES_BY_EXTENSION.items()} | {"text/html": "document"}
 FileType = Literal["document", "spreadsheet", "presentation", "pdf", "file", "folder"]

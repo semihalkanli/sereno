@@ -85,6 +85,11 @@ def test_types_and_mime_types_from_extension():
     assert files.file("old/archive.bin").type == "file"
 
 
+def test_tiff_print_files_get_an_image_mime_type():
+    assert File(path="prints/Pier Lights.tif").mime_type == "image/tiff"
+    assert File(path="prints/Pier Lights.tiff").mime_type == "image/tiff"
+
+
 def test_search_by_parent_lists_a_folder(world):
     result, out = call(world, "search_files", query="parentId = 'contracts/halden-rowe'")
     assert out.error is None
