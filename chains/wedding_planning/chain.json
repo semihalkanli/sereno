@@ -65,7 +65,28 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s1_outcome_1_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "(?:\\$|USD\\s*)\\s*2,?400(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*2,?900(?:\\.00)?(?!\\d|\\.\\d)"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s1_outcome_2",
@@ -133,7 +154,30 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s1_outcome_4_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "(?:\\$|USD\\s*)\\s*9,?000(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*2,?400(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*42(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*1,?680(?:\\.00)?(?!\\d|\\.\\d)"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         }
       ]
     },
@@ -183,7 +227,27 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s2_outcome_1_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "(?:\\$|USD\\s*)\\s*1,?680(?:\\.00)?(?!\\d|\\.\\d)"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s2_outcome_2",
@@ -204,7 +268,27 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s2_outcome_2_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "(?:\\$|USD\\s*)\\s*850(?:\\.00)?(?!\\d|\\.\\d)"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s2_outcome_3",
@@ -248,7 +332,28 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s2_outcome_4_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "3",
+                    "2"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         }
       ]
     },
@@ -444,7 +549,28 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s4_outcome_1_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "entrance",
+                    "reserve"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s4_outcome_2",
@@ -568,7 +694,28 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s5_outcome_1_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "(?:\\$|USD\\s*)\\s*1,?680(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*1,?260(?:\\.00)?(?!\\d|\\.\\d)"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s5_outcome_2",
@@ -613,7 +760,29 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s5_outcome_3_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "entrance",
+                    "vegetarian",
+                    "markers"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s5_outcome_4",
@@ -747,7 +916,28 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s6_outcome_4_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "14:00",
+                    "14:30"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         }
       ]
     },
@@ -838,7 +1028,29 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s7_outcome_3_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "Timeline",
+                    "access",
+                    "arrangements"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s7_outcome_4",
@@ -913,7 +1125,32 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s8_outcome_1_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "(?:\\$|USD\\s*)\\s*2,?400(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*1,?680(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*850(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*240(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*30(?:\\.00)?(?!\\d|\\.\\d)",
+                    "(?:\\$|USD\\s*)\\s*5,?200(?:\\.00)?(?!\\d|\\.\\d)"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s8_outcome_2",
@@ -959,7 +1196,29 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s8_outcome_3_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "seating",
+                    "supplier",
+                    "access"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         }
       ]
     },
@@ -1146,7 +1405,27 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s10_outcome_1_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "(?:\\$|USD\\s*)\\s*5,?200(?:\\.00)?(?!\\d|\\.\\d)"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s10_outcome_2",
@@ -1209,7 +1488,29 @@
             }
           },
           "new": true,
-          "min": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s10_outcome_4_memory",
+              "check": "count",
+              "app": "memory",
+              "collection": "files",
+              "changed": true,
+              "where": {
+                "path": {
+                  "regex": "^/memories/"
+                },
+                "content": {
+                  "regex": [
+                    "gallery",
+                    "private",
+                    "delivery"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         }
       ]
     }
@@ -1235,7 +1536,28 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s1_outcome_1_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "(?:\\$|USD\\s*)\\s*2,?400(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*2,?900(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s1_outcome_2",
@@ -1303,7 +1625,30 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s1_outcome_4_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "(?:\\$|USD\\s*)\\s*9,?000(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*2,?400(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*42(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*1,?680(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s2_outcome_1",
@@ -1324,7 +1669,27 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s2_outcome_1_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "(?:\\$|USD\\s*)\\s*1,?680(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s2_outcome_2",
@@ -1345,7 +1710,27 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s2_outcome_2_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "(?:\\$|USD\\s*)\\s*850(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s2_outcome_3",
@@ -1389,7 +1774,28 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s2_outcome_4_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "3",
+                "2"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s3_outcome_1",
@@ -1503,7 +1909,28 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s4_outcome_1_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "entrance",
+                "reserve"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s4_outcome_2",
@@ -1598,7 +2025,28 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s5_outcome_1_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "(?:\\$|USD\\s*)\\s*1,?680(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*1,?260(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s5_outcome_2",
@@ -1643,7 +2091,29 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s5_outcome_3_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "entrance",
+                "vegetarian",
+                "markers"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s5_outcome_4",
@@ -1748,7 +2218,28 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s6_outcome_4_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "14:00",
+                "14:30"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s7_outcome_1",
@@ -1810,7 +2301,29 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s7_outcome_3_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "Timeline",
+                "access",
+                "arrangements"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s7_outcome_4",
@@ -1856,7 +2369,32 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s8_outcome_1_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "(?:\\$|USD\\s*)\\s*2,?400(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*1,?680(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*850(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*240(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*30(?:\\.00)?(?!\\d|\\.\\d)",
+                "(?:\\$|USD\\s*)\\s*5,?200(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s8_outcome_2",
@@ -1902,7 +2440,29 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s8_outcome_3_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "seating",
+                "supplier",
+                "access"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s9_outcome_1",
@@ -2031,7 +2591,27 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s10_outcome_1_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "(?:\\$|USD\\s*)\\s*5,?200(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s10_outcome_2",
@@ -2094,7 +2674,29 @@
         }
       },
       "new": true,
-      "min": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s10_outcome_4_memory",
+          "check": "count",
+          "app": "memory",
+          "collection": "files",
+          "changed": true,
+          "where": {
+            "path": {
+              "regex": "^/memories/"
+            },
+            "content": {
+              "regex": [
+                "gallery",
+                "private",
+                "delivery"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "private_records_not_shared",

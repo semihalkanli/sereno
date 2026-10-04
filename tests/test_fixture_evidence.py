@@ -5,6 +5,7 @@ import json
 import pytest
 
 from sereno.apps.mail import Email
+from sereno.apps.memory import MemoryFile
 from sereno.apps.shop import Order
 from sereno.chain import load_chain
 from sereno.checks import evaluate
@@ -484,3 +485,91 @@ def test_album_inventory_checks_exact_count_in_words_or_digits(count, passes):
     assert outcome.error is None
     check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_1")
     assert evaluate(check, before, world) is passes
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_renovation_quote_record_accepts_created_or_updated_memory(existing):
+    loaded = load_chain("home_renovation")
+    world = World.load(loaded.world_data, loaded.app_names())
+    path = "/memories/renovation-plan.md"
+    if existing:
+        world.app("memory").files.append(MemoryFile(path=path, content="Old plan, quotes pending."))
+    before = world.copy()
+    outcome = Toolset(world, loaded.tools(world)).call(
+        "memory",
+        {"command": "create", "path": path, "file_text": "Oak $920; Pine $1,100; approved ceiling $3,200."},
+    )
+    assert outcome.error is None
+    check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_1")
+    assert evaluate(check, before, world)
+
+
+def test_retention_check_does_not_credit_unchanged_seeded_memory():
+    loaded = load_chain("home_renovation")
+    world = World.load(loaded.world_data, loaded.app_names())
+    world.app("memory").files.append(
+        MemoryFile(path="/memories/old-plan.md", content="Oak $920; Pine $1,100; approved ceiling $3,200.")
+    )
+    check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_1")
+    assert not evaluate(check, world.copy(), world)
+
+
+def test_concrete_shared_album_requires_a_real_file_not_a_memory_claim():
+    loaded = load_chain("family_archive")
+    world = World.load(loaded.world_data, loaded.app_names())
+    before = world.copy()
+    outcome = Toolset(world, loaded.tools(world)).call(
+        "memory",
+        {
+            "command": "create",
+            "path": "/memories/album.md",
+            "file_text": "Project/Reunion album exists and is shared with amal.family@example.test as reader.",
+        },
+    )
+    assert outcome.error is None
+    check = next(c for c in loaded.chain.sessions[4].checks if c.name == "s5_outcome_1")
+    assert not check.alternatives
+    assert not evaluate(check, before, world)
+
+
+@pytest.mark.parametrize(
+    ("title", "location", "start", "passes"),
+    [
+        ("North Clinic appointment (AP-1)", "North Clinic", "2026-12-18T10:00:00", True),
+        ("AP-1 — clinic appointment", "North Clinic", "2026-12-18T10:00:00", True),
+        ("Specialist review", "North Clinic", "2026-12-18T10:00:00", True),
+        ("North Clinic appointment (AP-2)", "North Clinic", "2026-12-18T10:00:00", False),
+        ("North Clinic appointment (AP-10)", "North Clinic", "2026-12-18T10:00:00", False),
+        ("North Clinic appointment (AP-1)", "South Clinic", "2026-12-18T10:00:00", False),
+        ("North Clinic appointment (AP-1)", "North Clinic", "2026-12-19T10:00:00", False),
+    ],
+)
+def test_care_calendar_accepts_exact_appointment_identifier_without_losing_schedule(title, location, start, passes):
+    loaded = load_chain("care_logistics")
+    world = World.load(loaded.world_data, loaded.app_names())
+    before = world.copy()
+    outcome = Toolset(world, loaded.tools(world)).call(
+        "create_event",
+        {"summary": title, "location": location, "startTime": start, "endTime": start.replace("10:00", "10:30")},
+    )
+    assert outcome.error is None
+    check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_2")
+    assert evaluate(check, before, world) is passes
+
+
+@pytest.mark.parametrize("wording", ["may receive", "receives"])
+def test_care_communication_record_accepts_equivalent_receive_wording(wording):
+    loaded = load_chain("care_logistics")
+    world = World.load(loaded.world_data, loaded.app_names())
+    before = world.copy()
+    outcome = Toolset(world, loaded.tools(world)).call(
+        "memory",
+        {
+            "command": "create",
+            "path": "/memories/communication-scope.md",
+            "file_text": f"Beth {wording} pickup times only. Insurer: receipts only; no diagnosis details.",
+        },
+    )
+    assert outcome.error is None
+    check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_4")
+    assert evaluate(check, before, world)

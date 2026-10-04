@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 
+from sereno.apps.memory import Memory, MemoryFile
 from sereno.apps.tasks import Task, Tasks
 from sereno.checks import Check, Cond, evaluate
 from sereno.world import Person, World
@@ -115,3 +116,65 @@ def test_new_filters_old_matches_before_evaluating_alternatives(world):
 def test_invalid_alternatives_fail_during_check_parsing(kind, alternatives, message):
     with pytest.raises(ValueError, match=message):
         Check(name="invalid", check=kind, app="tasks", collection="tasks", where_any=alternatives)
+
+
+def test_changed_selects_new_and_modified_records_but_not_unchanged_or_deleted_records(world):
+    post = world.copy()
+    post.app("tasks").tasks[0].title = "edited"
+    post.app("tasks").tasks.pop()
+    post.app("tasks").tasks.append(Task(id="task_004", title="new"))
+    check = Check(name="changes", check="count", app="tasks", collection="tasks", changed=True, equals=2)
+    assert evaluate(check, world, post)
+    assert not evaluate(check, world, world)
+    assert evaluate(check.model_copy(update={"changed": False, "new": True, "equals": 1}), world, post)
+
+
+def test_complete_alternative_cannot_combine_partial_evidence_between_apps(world):
+    world.apps["memory"] = Memory(files=[MemoryFile(path="/memories/plan.md", content="red blue")])
+    before = world.copy()
+    branch = Check(
+        name="memory-evidence",
+        check="count",
+        app="memory",
+        collection="files",
+        changed=True,
+        where={"content": Cond(regex=["red", "blue"])},
+        min=1,
+    )
+    check = Check(
+        name="evidence",
+        check="count",
+        app="tasks",
+        collection="tasks",
+        new=True,
+        where={"title": Cond(regex=["red", "blue"])},
+        min=1,
+        alternatives=[branch],
+    )
+    # Existing seeded memory is not evidence of a new or updated plan.
+    assert not evaluate(check, before, world)
+    world.app("tasks").tasks.append(Task(id="task_004", title="red"))
+    world.app("memory").files[0].content = "blue"
+    assert not evaluate(check, before, world)
+    world.app("memory").files[0].content = "red blue, updated plan"
+    assert evaluate(check, before, world)
+    world.app("memory").files.clear()
+    assert not evaluate(check, before, world)
+    world.app("tasks").tasks[-1].title = "red blue"
+    assert evaluate(check, before, world)
+
+
+@pytest.mark.parametrize("mode", ["both-selectors", "unchanged-change", "unchanged-alternative", "nested"])
+def test_invalid_record_and_complete_alternative_combinations_fail_before_execution(mode):
+    atomic = dict(name="atomic", check="count", app="tasks", collection="tasks", min=1)
+    config = atomic.copy()
+    if mode == "both-selectors":
+        config.update(new=True, changed=True)
+    elif mode == "unchanged-change":
+        config.update(check="unchanged", changed=True)
+    elif mode == "unchanged-alternative":
+        config.update(alternatives=[{**atomic, "check": "unchanged"}])
+    else:
+        config.update(alternatives=[{**atomic, "alternatives": [atomic]}])
+    with pytest.raises(ValueError):
+        Check.model_validate(config)

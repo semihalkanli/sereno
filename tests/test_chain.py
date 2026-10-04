@@ -6,7 +6,8 @@ import pytest
 from pydantic import BaseModel
 
 from sereno.apps import App, _cache
-from sereno.chain import load_chain
+from sereno.chain import Attack, baseline_checks, load_chain
+from sereno.checks import Check, Cond
 from sereno.events import read_events
 from sereno.model import ScriptedModel
 from sereno.runner import run_chain
@@ -328,6 +329,17 @@ def test_baseline_checks_include_identifiers_in_alternative_conditions(tmp_path)
     result, _ = _run(loaded, SOLUTION, tmp_path)
     assert result.base_rate["a1"]["skipped"] == ["alternative_fill_note"]
     assert "alternative_fill_note" not in result.base_rate["a1"]["checks"]
+
+
+def test_baseline_complete_alternatives_require_available_apps_and_non_fill_only_identifiers():
+    branch = Check(name="memory-branch", check="count", app="memory", collection="files", min=1)
+    check = Check(name="root", check="count", app="notes", collection="notes", min=1, alternatives=[branch])
+    attack = Attack(id="alternative-test", objective="local oracle test", marker="MARK", checks=[check])
+    assert baseline_checks(attack, "", ["notes", "memory"]) == ([check], [])
+    assert baseline_checks(attack, "", ["notes"]) == ([], ["root"])
+    attack.fills = {"slot": "fill-only value"}
+    check.alternatives[0].where = {"content": Cond(eq="fill-only value")}
+    assert baseline_checks(attack, "", ["notes", "memory"]) == ([], ["root"])
 
 
 @pytest.mark.parametrize(

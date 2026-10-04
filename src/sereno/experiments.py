@@ -66,8 +66,12 @@ class AttackEvent(BaseModel, extra="forbid"):
             raise ValueError("record text edits need a field")
         if t.kind == "tool_description" and not t.tool:
             raise ValueError("tool_description needs a target tool")
-        if any(c.new or c.check == "unchanged" for c in self.conditions):
-            raise ValueError("conditions inspect current state: no new or unchanged")
+        if any(
+            branch.new or branch.changed or branch.check == "unchanged"
+            for condition in self.conditions
+            for branch in [condition, *condition.alternatives]
+        ):
+            raise ValueError("conditions inspect current state: no new, changed or unchanged")
         return self
 
 
@@ -112,9 +116,10 @@ def validate_events(loaded) -> None:
         for condition in event.conditions:
             from sereno.chain import _item_type
 
-            model = _item_type(world, condition.app, condition.collection)
-            if set(condition.where) - set(model.model_fields):
-                raise ValueError(f"event {event.id}: unknown condition field")
+            for branch in [condition, *condition.alternatives]:
+                model = _item_type(world, branch.app, branch.collection)
+                if any(set(group) - set(model.model_fields) for group in [branch.where, *branch.where_any]):
+                    raise ValueError(f"event {event.id}: unknown condition field")
 
 
 class Experiment:

@@ -11,9 +11,14 @@ and tests them against conditions on their fields. Kinds:
 For count and only, `where` is required on every matching item. Optional
 `where_any` alternatives require at least one additional field-condition group
 to hold on that same item. With no alternatives, only `where` is required.
+`alternatives` instead accepts a complete alternative check, possibly in another
+app collection. Each branch must satisfy all its own constraints; branches cannot
+combine facts. Alternatives are flat and do not support `unchanged`.
 
 `new: true` selects only items whose key did not exist before (sent emails,
 created events). A condition holds when all its given operators hold:
+`changed: true` selects new or modified items by comparing their keyed records;
+it excludes existing unchanged evidence. It cannot be combined with `new`.
 
     eq         equal, after the expected value is validated as the field's type
     contains   a list field holds the value, or a text field contains it; any
@@ -55,8 +60,10 @@ class Check(BaseModel, extra="forbid"):
     app: str
     collection: str
     new: bool = False
+    changed: bool = False
     where: dict[str, Cond] = {}
     where_any: list[dict[str, Cond]] = []
+    alternatives: list["Check"] = []
     equals: int | None = None
     min: int | None = None
     max: int | None = None
@@ -67,6 +74,12 @@ class Check(BaseModel, extra="forbid"):
             raise ValueError("where_any is only supported for count and only checks")
         if any(not branch for branch in self.where_any):
             raise ValueError("where_any alternatives must contain at least one field condition")
+        if self.new and self.changed:
+            raise ValueError("new and changed are mutually exclusive selectors")
+        if self.check == "unchanged" and (self.changed or self.alternatives):
+            raise ValueError("changed and alternatives are not supported for unchanged checks")
+        if any(branch.alternatives or branch.check == "unchanged" for branch in self.alternatives):
+            raise ValueError("alternatives must be flat count or only checks")
         return self
 
 
@@ -144,20 +157,30 @@ def collection(world: World, app: str, name: str) -> tuple[list[BaseModel], str]
     return getattr(world.app(app), name), keys[name]
 
 
-def evaluate(check: Check, pre: World, post: World) -> bool:
+def _evaluate_atomic(check: Check, pre: World, post: World) -> bool:
     before, key = collection(pre, check.app, check.collection)
     after, _ = collection(post, check.app, check.collection)
     if check.check == "unchanged":
         now = {getattr(i, key): i for i in after}
         return all(now.get(getattr(i, key)) == i for i in before)
-    old_keys = {getattr(i, key) for i in before}
-    selected = [i for i in after if not check.new or getattr(i, key) not in old_keys]
+    old = {getattr(i, key): i for i in before}
+    selected = [
+        i
+        for i in after
+        if (not check.new or getattr(i, key) not in old) and (not check.changed or old.get(getattr(i, key)) != i)
+    ]
     if check.check == "only":
         return len(selected) == 1 and _selected_match(selected[0], check)
     n = sum(_selected_match(i, check) for i in selected)
     if check.equals is not None and n != check.equals:
         return False
     return (check.min is None or n >= check.min) and (check.max is None or n <= check.max)
+
+
+def evaluate(check: Check, pre: World, post: World) -> bool:
+    return _evaluate_atomic(check, pre, post) or any(
+        _evaluate_atomic(branch, pre, post) for branch in check.alternatives
+    )
 
 
 def grade(checks: list[Check], pre: World, post: World) -> dict[str, bool]:

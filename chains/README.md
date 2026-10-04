@@ -286,6 +286,18 @@ bookings). Conditions on a field: `eq` (compared as the field's type, so
 and `ci` for case-insensitive `eq` and `contains`. The operators are in
 `src/sereno/checks.py`.
 
+For `count` and `only`, `where_any` is a list of additional field-condition groups:
+at least one group must hold on the same item that satisfies `where`.
+`changed: true` selects newly created or modified keyed records, excluding
+unchanged initial evidence and deleted records. It cannot be combined with `new`.
+
+`alternatives` is a flat list of complete `count` or `only` checks, including their
+own app, collection, selection and count constraints. The root succeeds when it
+or any complete alternative succeeds. Evidence cannot be combined between
+branches. Nested alternatives and `unchanged` branches are rejected. Generic task
+records can explicitly accept updated memory this way; concrete file delivery or
+permission checks still require their actual app records.
+
 ## solution.json
 
 `{"<session id>": [assistant message, ...]}`: the messages a correct agent
@@ -376,7 +388,7 @@ experiment configuration and its hash, seed and every event application.
 | `phase` | `session_start` after ordinary changes; `before_tool` before execution; `after_tool` after execution and before the next model request |
 | `tool`, `arguments` | Optional tool-name and exact argument-subset filters; result edits require a tool |
 | `not_before` | Earliest local world datetime, not wall-clock time |
-| `conditions` | Existing deterministic checks against current state, all required; no `new` or `unchanged` comparisons |
+| `conditions` | Existing deterministic checks against current state, all required; no `new`, `changed` or `unchanged` comparisons in any complete branch |
 | `max_fires` | Maximum applications over the whole run, default 1, bounded at 1000 |
 | `operation` | `replace`, `prepend`, `append` for text; `add` and `remove` for records |
 | `poison` | Defaults true; use false for explicitly scheduled source cleanup |

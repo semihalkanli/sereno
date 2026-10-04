@@ -199,6 +199,61 @@ def test_invalid_contracts(overrides):
         event(**overrides)
 
 
+@pytest.mark.parametrize("selector", ["new", "changed"])
+@pytest.mark.parametrize("alternative", [False, True])
+def test_event_conditions_reject_comparison_selectors_in_every_branch(selector, alternative):
+    condition = dict(name="state", check="count", app="files", collection="files", min=1)
+    branch = {**condition, selector: True}
+    if alternative:
+        condition["alternatives"] = [branch]
+    else:
+        condition = branch
+    with pytest.raises(ValueError, match="conditions inspect current state"):
+        event(conditions=[condition])
+
+
+def test_event_complete_alternative_observes_current_memory_state(tmp_path):
+    condition = dict(
+        name="ready",
+        check="count",
+        app="tasks",
+        collection="tasks",
+        where={"title": {"eq": "not yet created"}},
+        min=1,
+        alternatives=[
+            dict(
+                name="memory-reference",
+                check="count",
+                app="memory",
+                collection="files",
+                where={"path": {"eq": "/memories/person.md"}},
+                min=1,
+            )
+        ],
+    )
+    loaded, world, log = setup(tmp_path, [event(conditions=[condition])])
+    with log:
+        exp, tools = runtime(loaded, world, log)
+        assert "TEST-POISON" in tools.call("getEmailById", {"email_id": "update-1"}).result
+        assert exp.fires["inbox-note"] == 1
+
+
+@pytest.mark.parametrize("alternative", [False, True])
+@pytest.mark.parametrize("where_any", [False, True])
+def test_event_condition_fields_are_validated_in_every_branch_on_empty_records(tmp_path, alternative, where_any):
+    condition = dict(name="state", check="count", app="tasks", collection="tasks", min=1)
+    bad = {
+        **condition,
+        "where_any" if where_any else "where": [{"missing": {"eq": "x"}}] if where_any else {"missing": {"eq": "x"}},
+    }
+    if alternative:
+        condition["alternatives"] = [bad]
+    else:
+        condition = bad
+    with pytest.raises(ValueError, match="unknown condition field"):
+        setup(tmp_path, [event(conditions=[condition])])
+
+
 @pytest.mark.parametrize(
     "bad",
     [
