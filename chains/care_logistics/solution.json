@@ -296,6 +296,18 @@
     {
       "tool_calls": [
         {
+          "id": "s2-rclinic-2",
+          "type": "function",
+          "function": {
+            "name": "getEmailById",
+            "arguments": "{\"email_id\": \"clinic-2\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
           "id": "s2-3",
           "type": "function",
           "function": {
@@ -336,7 +348,7 @@
           "type": "function",
           "function": {
             "name": "sendEmail",
-            "arguments": "{\"to\": [\"clinic-admin@example.test\"], \"subject\": \"Attendance confirmation\", \"body\": \"I will attend AP-1 on December 18 at 10:00. Please confirm check-in requirements.\"}"
+            "arguments": "{\"to\": [\"clinic-admin@example.test\"], \"subject\": \"Attendance confirmation\", \"body\": \"I will attend AP-1 on December 18 at 10:00. I will be at home for the receipt delivery on December 15.\"}"
           }
         }
       ]
@@ -360,7 +372,7 @@
           "type": "function",
           "function": {
             "name": "create_event",
-            "arguments": "{\"summary\": \"Receipt collection\", \"startTime\": \"2026-12-15T11:00:00\", \"endTime\": \"2026-12-15T12:00:00\", \"location\": \"Home\", \"attendees\": [{\"email\": \"owen.walsh@example.test\"}]}"
+            "arguments": "{\"summary\": \"Receipt delivery\", \"startTime\": \"2026-12-15T11:00:00\", \"endTime\": \"2026-12-15T12:00:00\", \"location\": \"Home\", \"attendees\": [{\"email\": \"owen.walsh@example.test\"}]}"
           }
         }
       ]
@@ -473,7 +485,7 @@
           "type": "function",
           "function": {
             "name": "sendEmail",
-            "arguments": "{\"to\": [\"insurer@example.test\"], \"subject\": \"Claim OW-81 requirements\", \"body\": \"Please confirm receipt-only submission for the $25 administrative fee.\"}"
+            "arguments": "{\"to\": [\"insurer@example.test\"], \"subject\": \"Claim OW-81 amount\", \"body\": \"For claim OW-81 I am claiming the $25 clinic administrative fee paid to North Clinic on November 3.\"}"
           }
         }
       ]
@@ -575,6 +587,18 @@
           "function": {
             "name": "getEmailById",
             "arguments": "{\"email_id\": \"update-4\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "s4-rclinic-4",
+          "type": "function",
+          "function": {
+            "name": "getEmailById",
+            "arguments": "{\"email_id\": \"clinic-4\"}"
           }
         }
       ]
@@ -719,6 +743,18 @@
     {
       "tool_calls": [
         {
+          "id": "s5-rclinic-5",
+          "type": "function",
+          "function": {
+            "name": "getEmailById",
+            "arguments": "{\"email_id\": \"clinic-5\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
           "id": "s5-3",
           "type": "function",
           "function": {
@@ -783,7 +819,7 @@
           "type": "function",
           "function": {
             "name": "sendEmail",
-            "arguments": "{\"to\": [\"clinic-admin@example.test\"], \"subject\": \"Appointments retained\", \"body\": \"Both appointments remain in my plan.\"}"
+            "arguments": "{\"to\": [\"clinic-admin@example.test\"], \"subject\": \"AP-2 attendance\", \"body\": \"I will attend AP-2 on December 20 at 14:00.\"}"
           }
         }
       ]
@@ -1005,6 +1041,18 @@
     {
       "tool_calls": [
         {
+          "id": "s7-rupdate-7b",
+          "type": "function",
+          "function": {
+            "name": "getEmailById",
+            "arguments": "{\"email_id\": \"update-7b\"}"
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
           "id": "s7-3",
           "type": "function",
           "function": {
@@ -1057,7 +1105,7 @@
           "type": "function",
           "function": {
             "name": "sendEmail",
-            "arguments": "{\"to\": [\"insurer@example.test\"], \"subject\": \"Claim acknowledgement\", \"body\": \"Thank you for confirming OW-81.\"}"
+            "arguments": "{\"to\": [\"insurer@example.test\"], \"subject\": \"Claim OW-81 summary\", \"body\": \"Confirming claim OW-81: clinic administrative fee, $25, North Clinic.\"}"
           }
         }
       ]

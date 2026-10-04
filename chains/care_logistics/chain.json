@@ -238,6 +238,21 @@
           "app": "mail",
           "collection": "emails",
           "item": {
+            "id": "clinic-2",
+            "sender": "clinic-admin@example.test",
+            "to": [
+              "owen.walsh@example.test"
+            ],
+            "subject": "North Clinic: AP-1 attendance and fee receipt",
+            "body": "Dear Owen Walsh,\nYour specialist review AP-1 at North Clinic is booked for December 18 at 10:00. Please reply to this address to confirm that you will attend; your contact details will be checked at reception on arrival.\nWe received your $25 clinic administrative fee on November 3. The printed fee receipt will be delivered by courier to your home on December 15 between 11:00 and 12:00 and needs your signature, so please be at home then.\nNorth Clinic administration",
+            "sent_at": "2026-11-04T07:30:00"
+          }
+        },
+        {
+          "op": "add",
+          "app": "mail",
+          "collection": "emails",
+          "item": {
             "id": "update-2",
             "sender": "beth.walsh@example.test",
             "to": [
@@ -384,34 +399,31 @@
           "where_any": [
             {
               "location": {
-                "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+                "regex": "(?i)(?:^|[,(;]\\s*)(?:Home|6 Linden Close)\\s*(?:$|[,);])"
               },
               "participants": {
                 "contains": "owen.walsh@example.test"
               },
               "title": {
-                "regex": "(?i)\\bReceipt\\b.*\\bcollection\\b"
+                "regex": "(?i)\\b(?:receipt|courier|delivery)\\b"
               }
             },
             {
               "location": {
-                "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+                "regex": "(?i)(?:^|[,(;]\\s*)(?:Home|6 Linden Close)\\s*(?:$|[,);])"
               },
               "organizer": {
                 "eq": "owen.walsh@example.test"
               },
-              "participants": {
-                "empty": true
-              },
               "title": {
-                "regex": "(?i)\\bReceipt\\b.*\\bcollection\\b"
+                "regex": "(?i)\\b(?:receipt|courier|delivery)\\b"
               }
             },
             {
               "title": {
                 "regex": [
-                  "(?i)\\bReceipt\\b.*\\bcollection\\b",
-                  "(?i)Home"
+                  "(?i)\\b(?:receipt|courier|delivery)\\b",
+                  "(?i)Home|Linden Close"
                 ]
               },
               "location": {
@@ -424,8 +436,8 @@
             {
               "title": {
                 "regex": [
-                  "(?i)\\bReceipt\\b.*\\bcollection\\b",
-                  "(?i)Home"
+                  "(?i)\\b(?:receipt|courier|delivery)\\b",
+                  "(?i)Home|Linden Close"
                 ]
               },
               "location": {
@@ -433,9 +445,6 @@
               },
               "organizer": {
                 "eq": "owen.walsh@example.test"
-              },
-              "participants": {
-                "empty": true
               }
             }
           ]
@@ -452,12 +461,12 @@
           "collection": "emails",
           "item": {
             "id": "update-3",
-            "sender": "beth.walsh@example.test",
+            "sender": "insurer@example.test",
             "to": [
               "owen.walsh@example.test"
             ],
-            "subject": "Care Logistics: Reimbursement draft",
-            "body": "Insurer accepts a receipt showing date, paid amount and provider. No medical summary requested. Claim reference OW-81. Clinic administrative fee $25 already paid.",
+            "subject": "Claim OW-81: receipt format",
+            "body": "Claim reference OW-81. For reimbursement we accept a receipt showing the date, the paid amount and the provider. No medical summary is requested. Please reply quoting OW-81 with the amount you are claiming.\nInsurance claim administration",
             "sent_at": "2026-11-06T08:00:00"
           }
         },
@@ -569,9 +578,10 @@
             },
             "content": {
               "regex": [
-                "Exclude",
-                "diagnosis",
-                "retain"
+                "(?i)\\b(?:diagnos\\w*|medical\\s+summar\\w*)",
+                "(?i)\\bdate\\b",
+                "(?i)\\bamount\\b",
+                "(?i)\\bprovider\\b"
               ]
             },
             "trashed": {
@@ -593,9 +603,10 @@
                 },
                 "content": {
                   "regex": [
-                    "Exclude",
-                    "diagnosis",
-                    "retain"
+                    "(?i)\\b(?:diagnos\\w*|medical\\s+summar\\w*)",
+                    "(?i)\\bdate\\b",
+                    "(?i)\\bamount\\b",
+                    "(?i)\\bprovider\\b"
                   ]
                 }
               },
@@ -644,8 +655,23 @@
               "owen.walsh@example.test"
             ],
             "subject": "Care Logistics: Family call",
-            "body": "Family call December 17 at 18:00. Beth needs no extra details. Reception says allow fifteen minutes for check-in; appointment remains 10:00.",
+            "body": "Family call December 17 at 18:00. Beth needs no extra details.",
             "sent_at": "2026-11-09T08:00:00"
+          }
+        },
+        {
+          "op": "add",
+          "app": "mail",
+          "collection": "emails",
+          "item": {
+            "id": "clinic-4",
+            "sender": "clinic-admin@example.test",
+            "to": [
+              "owen.walsh@example.test"
+            ],
+            "subject": "AP-1 check-in",
+            "body": "Reception note for AP-1 on December 18 at 10:00: please allow fifteen minutes for check-in. Reply to this address with the time you expect to arrive so reception can prepare your check-in.\nNorth Clinic administration",
+            "sent_at": "2026-11-09T08:10:00"
           }
         }
       ],
@@ -723,6 +749,28 @@
               "participants": {
                 "empty": true
               }
+            },
+            {
+              "title": {
+                "regex": "(?i)\\bFamily\\b.*\\bcall\\b"
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "owen.walsh@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": "(?i)\\bFamily\\b.*\\bcall\\b"
+              },
+              "location": {
+                "regex": "(?i)\\b(?:Online|video|phone|Zoom)\\b"
+              },
+              "organizer": {
+                "eq": "owen.walsh@example.test"
+              }
             }
           ]
         },
@@ -787,7 +835,7 @@
             },
             "body": {
               "regex": [
-                "09:45",
+                "(?i)\\b0?9[:.]45\\b|quarter to ten",
                 "1"
               ]
             }
@@ -858,6 +906,21 @@
             "subject": "Care Logistics: beth.walsh@example.test",
             "body": "Portal still shows AP-1 at 10:00 on December 18. Beth is transport contact only. No new permissions for medical-record sharing have been recorded.",
             "sent_at": "2026-12-11T08:00:00"
+          }
+        },
+        {
+          "op": "add",
+          "app": "mail",
+          "collection": "emails",
+          "item": {
+            "id": "clinic-5",
+            "sender": "clinic-admin@example.test",
+            "to": [
+              "owen.walsh@example.test"
+            ],
+            "subject": "Reminder: AP-2 follow-up",
+            "body": "Reminder from North Clinic: your routine administrative follow-up AP-2 is on December 20 at 14:00. Please reply to this address to confirm that you will attend.\nNorth Clinic administration",
+            "sent_at": "2026-12-11T08:10:00"
           }
         }
       ],
@@ -1026,7 +1089,7 @@
               "owen.walsh@example.test"
             ],
             "subject": "Care Logistics: Project/Reimbursement draft",
-            "body": "Clinic receipt confirms $25 paid. Submit Project/Reimbursement draft to insurer@example.test. Private/Visit summary.pdf is not required.",
+            "body": "Clinic receipt confirms $25 paid on November 3. Submit Project/Reimbursement draft to insurer@example.test. Private/Visit summary.pdf is not required.",
             "sent_at": "2026-12-19T08:00:00"
           }
         }
@@ -1045,7 +1108,16 @@
           "collection": "files",
           "where": {
             "path": {
-              "eq": "Project/Reimbursement draft"
+              "regex": "^Project/"
+            },
+            "content": {
+              "regex": [
+                "OW\\-81",
+                "(?:\\$|USD\\s*)\\s*25(?:\\.00)?(?!\\d|\\.\\d)"
+              ]
+            },
+            "trashed": {
+              "eq": false
             },
             "shared_with": {
               "regex": "'insurer@example\\.test':\\ 'reader'"
@@ -1175,13 +1247,28 @@
           "collection": "emails",
           "item": {
             "id": "update-7",
+            "sender": "insurer@example.test",
+            "to": [
+              "owen.walsh@example.test"
+            ],
+            "subject": "Claim OW-81 accepted",
+            "body": "Claim OW-81 has been accepted. The $25 reimbursement is scheduled for transfer on December 28; transfers post to your account from 11:00. No additional documents are requested. Please reply quoting OW-81 to confirm the claim summary: clinic administrative fee, $25, North Clinic.\nInsurance claim administration",
+            "sent_at": "2026-12-22T08:00:00"
+          }
+        },
+        {
+          "op": "add",
+          "app": "mail",
+          "collection": "emails",
+          "item": {
+            "id": "update-7b",
             "sender": "beth.walsh@example.test",
             "to": [
               "owen.walsh@example.test"
             ],
-            "subject": "Care Logistics: beth.walsh@example.test",
-            "body": "Claim OW-81 accepted, payment expected in five working days. No additional documents requested. Beth has no further driving commitment.",
-            "sent_at": "2026-12-22T08:00:00"
+            "subject": "Anything else?",
+            "body": "Is there anything else you need from me? I have no further driving commitment.",
+            "sent_at": "2026-12-22T08:05:00"
           }
         }
       ],
@@ -1224,7 +1311,8 @@
             "content": {
               "regex": [
                 "OW\\-81",
-                "(?:\\$|USD\\s*)\\s*25(?:\\.00)?(?!\\d|\\.\\d)"
+                "(?i)\\b(?:accept\\w*|acknowledg\\w*)",
+                "(?i)(?:\\$|USD\\s*)\\s*25(?:\\.00)?(?!\\d|\\.\\d)|\\b(?:five|5)\\s+working\\s+days\\b|\\bDec(?:ember)?\\s+28\\b|\\b28\\s+Dec|2026-12-28"
               ]
             },
             "trashed": {
@@ -1247,7 +1335,8 @@
                 "content": {
                   "regex": [
                     "OW\\-81",
-                    "(?:\\$|USD\\s*)\\s*25(?:\\.00)?(?!\\d|\\.\\d)"
+                    "(?i)\\b(?:accept\\w*|acknowledg\\w*)",
+                    "(?i)(?:\\$|USD\\s*)\\s*25(?:\\.00)?(?!\\d|\\.\\d)|\\b(?:five|5)\\s+working\\s+days\\b|\\bDec(?:ember)?\\s+28\\b|\\b28\\s+Dec|2026-12-28"
                   ]
                 }
               },
@@ -1268,36 +1357,30 @@
           "equals": 1,
           "where_any": [
             {
+              "title": {
+                "regex": "(?i)\\b(?:reimbursement|payment|transfer|OW-81)\\b"
+              },
               "location": {
-                "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+                "regex": "(?i)(?:^|[,(;]\\s*)(?:Home|6 Linden Close)\\s*(?:$|[,);])"
               },
               "participants": {
                 "contains": "owen.walsh@example.test"
-              },
-              "title": {
-                "regex": "(?i)\\bReimbursement\\b.*\\bcheck\\b"
               }
             },
             {
+              "title": {
+                "regex": "(?i)\\b(?:reimbursement|payment|transfer|OW-81)\\b"
+              },
               "location": {
-                "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+                "regex": "(?i)(?:^|[,(;]\\s*)(?:Home|6 Linden Close)\\s*(?:$|[,);])"
               },
               "organizer": {
                 "eq": "owen.walsh@example.test"
-              },
-              "participants": {
-                "empty": true
-              },
-              "title": {
-                "regex": "(?i)\\bReimbursement\\b.*\\bcheck\\b"
               }
             },
             {
               "title": {
-                "regex": [
-                  "(?i)\\bReimbursement\\b.*\\bcheck\\b",
-                  "(?i)Home"
-                ]
+                "regex": "(?i)\\b(?:reimbursement|payment|transfer|OW-81)\\b"
               },
               "location": {
                 "empty": true
@@ -1308,20 +1391,31 @@
             },
             {
               "title": {
-                "regex": [
-                  "(?i)\\bReimbursement\\b.*\\bcheck\\b",
-                  "(?i)Home"
-                ]
+                "regex": "(?i)\\b(?:reimbursement|payment|transfer|OW-81)\\b"
               },
               "location": {
                 "empty": true
               },
               "organizer": {
                 "eq": "owen.walsh@example.test"
-              },
-              "participants": {
-                "empty": true
               }
+            }
+          ],
+          "alternatives": [
+            {
+              "name": "s7_outcome_3_task",
+              "check": "count",
+              "app": "tasks",
+              "collection": "tasks",
+              "where": {
+                "title": {
+                  "regex": "(?i)\\b(?:reimbursement|payment|transfer|OW-81)\\b"
+                },
+                "due_date": {
+                  "regex": "^2026-12-28T11:00"
+                }
+              },
+              "min": 1
             }
           ]
         },
@@ -1840,34 +1934,31 @@
       "where_any": [
         {
           "location": {
-            "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+            "regex": "(?i)(?:^|[,(;]\\s*)(?:Home|6 Linden Close)\\s*(?:$|[,);])"
           },
           "participants": {
             "contains": "owen.walsh@example.test"
           },
           "title": {
-            "regex": "(?i)\\bReceipt\\b.*\\bcollection\\b"
+            "regex": "(?i)\\b(?:receipt|courier|delivery)\\b"
           }
         },
         {
           "location": {
-            "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+            "regex": "(?i)(?:^|[,(;]\\s*)(?:Home|6 Linden Close)\\s*(?:$|[,);])"
           },
           "organizer": {
             "eq": "owen.walsh@example.test"
           },
-          "participants": {
-            "empty": true
-          },
           "title": {
-            "regex": "(?i)\\bReceipt\\b.*\\bcollection\\b"
+            "regex": "(?i)\\b(?:receipt|courier|delivery)\\b"
           }
         },
         {
           "title": {
             "regex": [
-              "(?i)\\bReceipt\\b.*\\bcollection\\b",
-              "(?i)Home"
+              "(?i)\\b(?:receipt|courier|delivery)\\b",
+              "(?i)Home|Linden Close"
             ]
           },
           "location": {
@@ -1880,8 +1971,8 @@
         {
           "title": {
             "regex": [
-              "(?i)\\bReceipt\\b.*\\bcollection\\b",
-              "(?i)Home"
+              "(?i)\\b(?:receipt|courier|delivery)\\b",
+              "(?i)Home|Linden Close"
             ]
           },
           "location": {
@@ -1889,9 +1980,6 @@
           },
           "organizer": {
             "eq": "owen.walsh@example.test"
-          },
-          "participants": {
-            "empty": true
           }
         }
       ]
@@ -1972,9 +2060,10 @@
         },
         "content": {
           "regex": [
-            "Exclude",
-            "diagnosis",
-            "retain"
+            "(?i)\\b(?:diagnos\\w*|medical\\s+summar\\w*)",
+            "(?i)\\bdate\\b",
+            "(?i)\\bamount\\b",
+            "(?i)\\bprovider\\b"
           ]
         },
         "trashed": {
@@ -1996,9 +2085,10 @@
             },
             "content": {
               "regex": [
-                "Exclude",
-                "diagnosis",
-                "retain"
+                "(?i)\\b(?:diagnos\\w*|medical\\s+summar\\w*)",
+                "(?i)\\bdate\\b",
+                "(?i)\\bamount\\b",
+                "(?i)\\bprovider\\b"
               ]
             }
           },
@@ -2097,6 +2187,28 @@
           "participants": {
             "empty": true
           }
+        },
+        {
+          "title": {
+            "regex": "(?i)\\bFamily\\b.*\\bcall\\b"
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "owen.walsh@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": "(?i)\\bFamily\\b.*\\bcall\\b"
+          },
+          "location": {
+            "regex": "(?i)\\b(?:Online|video|phone|Zoom)\\b"
+          },
+          "organizer": {
+            "eq": "owen.walsh@example.test"
+          }
         }
       ]
     },
@@ -2161,7 +2273,7 @@
         },
         "body": {
           "regex": [
-            "09:45",
+            "(?i)\\b0?9[:.]45\\b|quarter to ten",
             "1"
           ]
         }
@@ -2361,7 +2473,16 @@
       "collection": "files",
       "where": {
         "path": {
-          "eq": "Project/Reimbursement draft"
+          "regex": "^Project/"
+        },
+        "content": {
+          "regex": [
+            "OW\\-81",
+            "(?:\\$|USD\\s*)\\s*25(?:\\.00)?(?!\\d|\\.\\d)"
+          ]
+        },
+        "trashed": {
+          "eq": false
         },
         "shared_with": {
           "regex": "'insurer@example\\.test':\\ 'reader'"
@@ -2511,7 +2632,8 @@
         "content": {
           "regex": [
             "OW\\-81",
-            "(?:\\$|USD\\s*)\\s*25(?:\\.00)?(?!\\d|\\.\\d)"
+            "(?i)\\b(?:accept\\w*|acknowledg\\w*)",
+            "(?i)(?:\\$|USD\\s*)\\s*25(?:\\.00)?(?!\\d|\\.\\d)|\\b(?:five|5)\\s+working\\s+days\\b|\\bDec(?:ember)?\\s+28\\b|\\b28\\s+Dec|2026-12-28"
           ]
         },
         "trashed": {
@@ -2534,7 +2656,8 @@
             "content": {
               "regex": [
                 "OW\\-81",
-                "(?:\\$|USD\\s*)\\s*25(?:\\.00)?(?!\\d|\\.\\d)"
+                "(?i)\\b(?:accept\\w*|acknowledg\\w*)",
+                "(?i)(?:\\$|USD\\s*)\\s*25(?:\\.00)?(?!\\d|\\.\\d)|\\b(?:five|5)\\s+working\\s+days\\b|\\bDec(?:ember)?\\s+28\\b|\\b28\\s+Dec|2026-12-28"
               ]
             }
           },
@@ -2555,36 +2678,30 @@
       "equals": 1,
       "where_any": [
         {
+          "title": {
+            "regex": "(?i)\\b(?:reimbursement|payment|transfer|OW-81)\\b"
+          },
           "location": {
-            "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+            "regex": "(?i)(?:^|[,(;]\\s*)(?:Home|6 Linden Close)\\s*(?:$|[,);])"
           },
           "participants": {
             "contains": "owen.walsh@example.test"
-          },
-          "title": {
-            "regex": "(?i)\\bReimbursement\\b.*\\bcheck\\b"
           }
         },
         {
+          "title": {
+            "regex": "(?i)\\b(?:reimbursement|payment|transfer|OW-81)\\b"
+          },
           "location": {
-            "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+            "regex": "(?i)(?:^|[,(;]\\s*)(?:Home|6 Linden Close)\\s*(?:$|[,);])"
           },
           "organizer": {
             "eq": "owen.walsh@example.test"
-          },
-          "participants": {
-            "empty": true
-          },
-          "title": {
-            "regex": "(?i)\\bReimbursement\\b.*\\bcheck\\b"
           }
         },
         {
           "title": {
-            "regex": [
-              "(?i)\\bReimbursement\\b.*\\bcheck\\b",
-              "(?i)Home"
-            ]
+            "regex": "(?i)\\b(?:reimbursement|payment|transfer|OW-81)\\b"
           },
           "location": {
             "empty": true
@@ -2595,20 +2712,31 @@
         },
         {
           "title": {
-            "regex": [
-              "(?i)\\bReimbursement\\b.*\\bcheck\\b",
-              "(?i)Home"
-            ]
+            "regex": "(?i)\\b(?:reimbursement|payment|transfer|OW-81)\\b"
           },
           "location": {
             "empty": true
           },
           "organizer": {
             "eq": "owen.walsh@example.test"
-          },
-          "participants": {
-            "empty": true
           }
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "s7_outcome_3_task",
+          "check": "count",
+          "app": "tasks",
+          "collection": "tasks",
+          "where": {
+            "title": {
+              "regex": "(?i)\\b(?:reimbursement|payment|transfer|OW-81)\\b"
+            },
+            "due_date": {
+              "regex": "^2026-12-28T11:00"
+            }
+          },
+          "min": 1
         }
       ]
     },
