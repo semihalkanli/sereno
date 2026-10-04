@@ -160,7 +160,7 @@
           "collection": "events",
           "where": {
             "title": {
-              "regex": "\\b(?:family|reunion)\\b.*\\bplanning\\b.*\\bcall\\b"
+              "regex": "(?i)\\b(?:family|reunion)\\b.*\\bplanning\\b.*\\bcall\\b"
             },
             "start": {
               "eq": "2026-11-09T18:00:00"
@@ -790,20 +790,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "eq": "June station pickup"
-            },
             "start": {
               "eq": "2026-12-19T11:00:00"
-            },
-            "location": {
-              "eq": "Central Station"
-            },
-            "participants": {
-              "contains": "mina.kim@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "mina.kim@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "daniel.kim@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b",
+                  "(?i)Central\\ Station"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "mina.kim@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b",
+                  "(?i)Central\\ Station"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "daniel.kim@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         }
       ]
     },
@@ -1510,7 +1559,7 @@
       "collection": "events",
       "where": {
         "title": {
-          "regex": "\\b(?:family|reunion)\\b.*\\bplanning\\b.*\\bcall\\b"
+          "regex": "(?i)\\b(?:family|reunion)\\b.*\\bplanning\\b.*\\bcall\\b"
         },
         "start": {
           "eq": "2026-11-09T18:00:00"
@@ -2000,20 +2049,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "eq": "June station pickup"
-        },
         "start": {
           "eq": "2026-12-19T11:00:00"
-        },
-        "location": {
-          "eq": "Central Station"
-        },
-        "participants": {
-          "contains": "mina.kim@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "mina.kim@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Central\\ Station\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "daniel.kim@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b",
+              "(?i)Central\\ Station"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "mina.kim@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bJune\\b.*\\bstation\\b.*\\bpickup\\b",
+              "(?i)Central\\ Station"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "daniel.kim@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s6_outcome_1",

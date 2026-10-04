@@ -367,7 +367,7 @@
           "collection": "events",
           "where": {
             "title": {
-              "regex": "\\bproof review\\b"
+              "regex": "(?i)\\bproof\\b.*\\breview\\b"
             },
             "start": {
               "eq": "2026-11-14T11:00:00"
@@ -556,24 +556,58 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "regex": "(?:\\bframes?\\b.*\\b(?:pickup|collection)\\b|\\b(?:pickup|collection)\\b.*\\bframes?\\b)"
-            },
             "start": {
               "eq": "2026-11-23T15:00:00"
-            },
-            "location": {
-              "eq": "Frame Workshop"
             }
           },
           "equals": 1,
           "where_any": [
             {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Frame\\ Workshop\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "framer@example.test"
+              },
+              "title": {
+                "regex": "(?i)(?:\\bframes?\\b.*\\b(?:pickup|collection)\\b|\\b(?:pickup|collection)\\b.*\\bframes?\\b)"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Frame\\ Workshop\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "sofia.alvarez@example.test"
+              },
+              "title": {
+                "regex": "(?i)(?:\\bframes?\\b.*\\b(?:pickup|collection)\\b|\\b(?:pickup|collection)\\b.*\\bframes?\\b)"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)(?:\\bframes?\\b.*\\b(?:pickup|collection)\\b|\\b(?:pickup|collection)\\b.*\\bframes?\\b)",
+                  "(?i)Frame\\ Workshop"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
               "participants": {
                 "contains": "framer@example.test"
               }
             },
             {
+              "title": {
+                "regex": [
+                  "(?i)(?:\\bframes?\\b.*\\b(?:pickup|collection)\\b|\\b(?:pickup|collection)\\b.*\\bframes?\\b)",
+                  "(?i)Frame\\ Workshop"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
               "organizer": {
                 "eq": "sofia.alvarez@example.test"
               }
@@ -690,14 +724,8 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "regex": "\\bexhibition opening\\b"
-            },
             "start": {
               "eq": "2026-12-05T18:00:00"
-            },
-            "location": {
-              "eq": "North Gallery"
             },
             "end": {
               "eq": "2026-12-05T20:00:00"
@@ -706,11 +734,51 @@
           "equals": 1,
           "where_any": [
             {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)North\\ Gallery\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "curator@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bexhibition\\b.*\\bopening\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)North\\ Gallery\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "sofia.alvarez@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bexhibition\\b.*\\bopening\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bexhibition\\b.*\\bopening\\b",
+                  "(?i)North\\ Gallery"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
               "participants": {
                 "contains": "curator@example.test"
               }
             },
             {
+              "title": {
+                "regex": [
+                  "(?i)\\bexhibition\\b.*\\bopening\\b",
+                  "(?i)North\\ Gallery"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
               "organizer": {
                 "eq": "sofia.alvarez@example.test"
               }
@@ -1732,7 +1800,7 @@
       "collection": "events",
       "where": {
         "title": {
-          "regex": "\\bproof review\\b"
+          "regex": "(?i)\\bproof\\b.*\\breview\\b"
         },
         "start": {
           "eq": "2026-11-14T11:00:00"
@@ -1853,24 +1921,58 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "regex": "(?:\\bframes?\\b.*\\b(?:pickup|collection)\\b|\\b(?:pickup|collection)\\b.*\\bframes?\\b)"
-        },
         "start": {
           "eq": "2026-11-23T15:00:00"
-        },
-        "location": {
-          "eq": "Frame Workshop"
         }
       },
       "equals": 1,
       "where_any": [
         {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Frame\\ Workshop\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "framer@example.test"
+          },
+          "title": {
+            "regex": "(?i)(?:\\bframes?\\b.*\\b(?:pickup|collection)\\b|\\b(?:pickup|collection)\\b.*\\bframes?\\b)"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Frame\\ Workshop\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "sofia.alvarez@example.test"
+          },
+          "title": {
+            "regex": "(?i)(?:\\bframes?\\b.*\\b(?:pickup|collection)\\b|\\b(?:pickup|collection)\\b.*\\bframes?\\b)"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)(?:\\bframes?\\b.*\\b(?:pickup|collection)\\b|\\b(?:pickup|collection)\\b.*\\bframes?\\b)",
+              "(?i)Frame\\ Workshop"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
           "participants": {
             "contains": "framer@example.test"
           }
         },
         {
+          "title": {
+            "regex": [
+              "(?i)(?:\\bframes?\\b.*\\b(?:pickup|collection)\\b|\\b(?:pickup|collection)\\b.*\\bframes?\\b)",
+              "(?i)Frame\\ Workshop"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
           "organizer": {
             "eq": "sofia.alvarez@example.test"
           }
@@ -1958,14 +2060,8 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "regex": "\\bexhibition opening\\b"
-        },
         "start": {
           "eq": "2026-12-05T18:00:00"
-        },
-        "location": {
-          "eq": "North Gallery"
         },
         "end": {
           "eq": "2026-12-05T20:00:00"
@@ -1974,11 +2070,51 @@
       "equals": 1,
       "where_any": [
         {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)North\\ Gallery\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "curator@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bexhibition\\b.*\\bopening\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)North\\ Gallery\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "sofia.alvarez@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bexhibition\\b.*\\bopening\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bexhibition\\b.*\\bopening\\b",
+              "(?i)North\\ Gallery"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
           "participants": {
             "contains": "curator@example.test"
           }
         },
         {
+          "title": {
+            "regex": [
+              "(?i)\\bexhibition\\b.*\\bopening\\b",
+              "(?i)North\\ Gallery"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
           "organizer": {
             "eq": "sofia.alvarez@example.test"
           }

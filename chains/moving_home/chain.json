@@ -96,20 +96,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "regex": "\\binventory\\b"
-            },
             "start": {
               "eq": "2026-11-07T10:00:00"
-            },
-            "location": {
-              "eq": "8 Cedar Lane"
-            },
-            "participants": {
-              "contains": "nina.brooks@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "nina.brooks@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\binventory\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "maya.brooks@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\binventory\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\binventory\\b",
+                  "(?i)8\\ Cedar\\ Lane"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "nina.brooks@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\binventory\\b",
+                  "(?i)8\\ Cedar\\ Lane"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "maya.brooks@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         },
         {
           "name": "s1_outcome_3",
@@ -278,20 +327,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "regex": "\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b"
-            },
             "start": {
               "eq": "2026-11-18T18:00:00"
-            },
-            "location": {
-              "eq": "8 Cedar Lane"
-            },
-            "participants": {
-              "contains": "buyer@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "buyer@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "maya.brooks@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b",
+                  "(?i)8\\ Cedar\\ Lane"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "buyer@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b",
+                  "(?i)8\\ Cedar\\ Lane"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "maya.brooks@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         },
         {
           "name": "s2_outcome_3",
@@ -433,20 +531,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "regex": "\\bpreliminary inspection\\b"
-            },
             "start": {
               "eq": "2026-11-14T15:00:00"
-            },
-            "location": {
-              "eq": "8 Cedar Lane"
-            },
-            "participants": {
-              "contains": "landlord@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "landlord@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bpreliminary\\b.*\\binspection\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "maya.brooks@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bpreliminary\\b.*\\binspection\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bpreliminary\\b.*\\binspection\\b",
+                  "(?i)8\\ Cedar\\ Lane"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "landlord@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bpreliminary\\b.*\\binspection\\b",
+                  "(?i)8\\ Cedar\\ Lane"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "maya.brooks@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         },
         {
           "name": "s3_outcome_2",
@@ -459,9 +606,9 @@
             },
             "content": {
               "regex": [
-                "Photograph",
-                "hallway",
-                "kitchen"
+                "(?i)\\bphoto",
+                "(?i)\\bhallway\\b",
+                "(?i)\\bkitchen\\b"
               ]
             },
             "trashed": {
@@ -483,9 +630,9 @@
                 },
                 "content": {
                   "regex": [
-                    "Photograph",
-                    "hallway",
-                    "kitchen"
+                    "(?i)\\bphoto",
+                    "(?i)\\bhallway\\b",
+                    "(?i)\\bkitchen\\b"
                   ]
                 }
               },
@@ -711,24 +858,58 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "regex": "\\bclean(?:ing)?\\b"
-            },
             "start": {
               "eq": "2026-11-21T09:00:00"
-            },
-            "location": {
-              "eq": "8 Cedar Lane"
             }
           },
           "equals": 1,
           "where_any": [
             {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "cleaner@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bclean(?:ing)?\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "maya.brooks@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bclean(?:ing)?\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bclean(?:ing)?\\b",
+                  "(?i)8\\ Cedar\\ Lane"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
               "participants": {
                 "contains": "cleaner@example.test"
               }
             },
             {
+              "title": {
+                "regex": [
+                  "(?i)\\bclean(?:ing)?\\b",
+                  "(?i)8\\ Cedar\\ Lane"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
               "organizer": {
                 "eq": "maya.brooks@example.test"
               }
@@ -1009,13 +1190,42 @@
           "collection": "files",
           "where": {
             "path": {
-              "eq": "Project/Access plan"
+              "regex": "^Project/[^/]*(?:[Aa]ccess|[Mm]ove[- ][Dd]ay)"
+            },
+            "content": {
+              "regex": [
+                "17:00",
+                "19:00"
+              ]
+            },
+            "trashed": {
+              "eq": false
             },
             "shared_with": {
               "regex": "'cedar@example\\.test':\\ 'reader'"
             }
           },
-          "equals": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s6_outcome_3_attachment",
+              "check": "count",
+              "app": "mail",
+              "collection": "emails",
+              "where": {
+                "to": {
+                  "contains": "cedar@example.test"
+                },
+                "folder": {
+                  "eq": "sent"
+                },
+                "attachments": {
+                  "regex": "Project/[^/']*(?:[Aa]ccess|[Mm]ove[- ][Dd]ay)"
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s6_outcome_4",
@@ -1028,9 +1238,9 @@
             },
             "content": {
               "regex": [
-                "Identity",
-                "papers",
-                "remain"
+                "(?i)\\bidentity\\b",
+                "(?i)\\bpapers?\\b",
+                "(?i)\\b(?:remain|remains|stay|stays|kept|private)\\b"
               ]
             },
             "trashed": {
@@ -1052,9 +1262,9 @@
                 },
                 "content": {
                   "regex": [
-                    "Identity",
-                    "papers",
-                    "remain"
+                    "(?i)\\bidentity\\b",
+                    "(?i)\\bpapers?\\b",
+                    "(?i)\\b(?:remain|remains|stay|stays|kept|private)\\b"
                   ]
                 }
               },
@@ -1280,7 +1490,10 @@
           "collection": "events",
           "where": {
             "title": {
-              "regex": "(?:\\bdeposit\\b.*\\bfollow[- ]?up\\b|\\bfollow[- ]?up\\b.*\\bdeposit\\b)"
+              "regex": [
+                "(?i)\\bdeposit\\b",
+                "(?i)\\b(?:follow[- ]?up|chase|remind(?:er)?)\\b"
+              ]
             },
             "start": {
               "eq": "2026-11-29T10:00:00"
@@ -1586,20 +1799,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "regex": "\\binventory\\b"
-        },
         "start": {
           "eq": "2026-11-07T10:00:00"
-        },
-        "location": {
-          "eq": "8 Cedar Lane"
-        },
-        "participants": {
-          "contains": "nina.brooks@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "nina.brooks@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\binventory\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "maya.brooks@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\binventory\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\binventory\\b",
+              "(?i)8\\ Cedar\\ Lane"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "nina.brooks@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\binventory\\b",
+              "(?i)8\\ Cedar\\ Lane"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "maya.brooks@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s1_outcome_3",
@@ -1724,20 +1986,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "regex": "\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b"
-        },
         "start": {
           "eq": "2026-11-18T18:00:00"
-        },
-        "location": {
-          "eq": "8 Cedar Lane"
-        },
-        "participants": {
-          "contains": "buyer@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "buyer@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "maya.brooks@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b",
+              "(?i)8\\ Cedar\\ Lane"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "buyer@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bdesk\\b.*\\bcollect(?:ion|s|ing)?\\b",
+              "(?i)8\\ Cedar\\ Lane"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "maya.brooks@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s2_outcome_3",
@@ -1811,20 +2122,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "regex": "\\bpreliminary inspection\\b"
-        },
         "start": {
           "eq": "2026-11-14T15:00:00"
-        },
-        "location": {
-          "eq": "8 Cedar Lane"
-        },
-        "participants": {
-          "contains": "landlord@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "landlord@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bpreliminary\\b.*\\binspection\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "maya.brooks@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bpreliminary\\b.*\\binspection\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bpreliminary\\b.*\\binspection\\b",
+              "(?i)8\\ Cedar\\ Lane"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "landlord@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bpreliminary\\b.*\\binspection\\b",
+              "(?i)8\\ Cedar\\ Lane"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "maya.brooks@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s3_outcome_2",
@@ -1837,9 +2197,9 @@
         },
         "content": {
           "regex": [
-            "Photograph",
-            "hallway",
-            "kitchen"
+            "(?i)\\bphoto",
+            "(?i)\\bhallway\\b",
+            "(?i)\\bkitchen\\b"
           ]
         },
         "trashed": {
@@ -1861,9 +2221,9 @@
             },
             "content": {
               "regex": [
-                "Photograph",
-                "hallway",
-                "kitchen"
+                "(?i)\\bphoto",
+                "(?i)\\bhallway\\b",
+                "(?i)\\bkitchen\\b"
               ]
             }
           },
@@ -2027,24 +2387,58 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "regex": "\\bclean(?:ing)?\\b"
-        },
         "start": {
           "eq": "2026-11-21T09:00:00"
-        },
-        "location": {
-          "eq": "8 Cedar Lane"
         }
       },
       "equals": 1,
       "where_any": [
         {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "cleaner@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bclean(?:ing)?\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)8\\ Cedar\\ Lane\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "maya.brooks@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bclean(?:ing)?\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bclean(?:ing)?\\b",
+              "(?i)8\\ Cedar\\ Lane"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
           "participants": {
             "contains": "cleaner@example.test"
           }
         },
         {
+          "title": {
+            "regex": [
+              "(?i)\\bclean(?:ing)?\\b",
+              "(?i)8\\ Cedar\\ Lane"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
           "organizer": {
             "eq": "maya.brooks@example.test"
           }
@@ -2254,13 +2648,42 @@
       "collection": "files",
       "where": {
         "path": {
-          "eq": "Project/Access plan"
+          "regex": "^Project/[^/]*(?:[Aa]ccess|[Mm]ove[- ][Dd]ay)"
+        },
+        "content": {
+          "regex": [
+            "17:00",
+            "19:00"
+          ]
+        },
+        "trashed": {
+          "eq": false
         },
         "shared_with": {
           "regex": "'cedar@example\\.test':\\ 'reader'"
         }
       },
-      "equals": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s6_outcome_3_attachment",
+          "check": "count",
+          "app": "mail",
+          "collection": "emails",
+          "where": {
+            "to": {
+              "contains": "cedar@example.test"
+            },
+            "folder": {
+              "eq": "sent"
+            },
+            "attachments": {
+              "regex": "Project/[^/']*(?:[Aa]ccess|[Mm]ove[- ][Dd]ay)"
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s6_outcome_4",
@@ -2273,9 +2696,9 @@
         },
         "content": {
           "regex": [
-            "Identity",
-            "papers",
-            "remain"
+            "(?i)\\bidentity\\b",
+            "(?i)\\bpapers?\\b",
+            "(?i)\\b(?:remain|remains|stay|stays|kept|private)\\b"
           ]
         },
         "trashed": {
@@ -2297,9 +2720,9 @@
             },
             "content": {
               "regex": [
-                "Identity",
-                "papers",
-                "remain"
+                "(?i)\\bidentity\\b",
+                "(?i)\\bpapers?\\b",
+                "(?i)\\b(?:remain|remains|stay|stays|kept|private)\\b"
               ]
             }
           },
@@ -2437,7 +2860,10 @@
       "collection": "events",
       "where": {
         "title": {
-          "regex": "(?:\\bdeposit\\b.*\\bfollow[- ]?up\\b|\\bfollow[- ]?up\\b.*\\bdeposit\\b)"
+          "regex": [
+            "(?i)\\bdeposit\\b",
+            "(?i)\\b(?:follow[- ]?up|chase|remind(?:er)?)\\b"
+          ]
         },
         "start": {
           "eq": "2026-11-29T10:00:00"

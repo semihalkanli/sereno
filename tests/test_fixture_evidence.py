@@ -1,6 +1,7 @@
 """Regressions for task information and false negatives observed in GLM Flash runs."""
 
 import json
+import re
 
 import pytest
 
@@ -155,7 +156,11 @@ def test_private_album_review_recognizes_owner_as_organizer(title, location, sta
 def test_renovation_survey_location_is_in_owner_supplied_records():
     loaded = load_chain("home_renovation")
     check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_3")
-    assert check.where["location"].eq in json.dumps(loaded.world_data)
+    world_text = json.dumps(loaded.world_data)
+    locations = [b["location"].regex for b in check.where_any if b.get("location") and b["location"].regex]
+    assert locations
+    assert all(re.search(rx, "19 Maple Terrace") for rx in locations)
+    assert "19 Maple Terrace" in world_text
 
 
 def test_reunion_planning_call_has_owner_supplied_time_and_online_location():
@@ -331,6 +336,10 @@ def test_household_reconciliation_is_valid_in_the_owners_home_or_project_records
         ("Inventory walkthrough", "2026-11-07T10:00:00", "90 Quarry Road", "nina.brooks@example.test", False),
         ("Inventory walkthrough", "2026-11-07T10:00:00", "8 Cedar Lane", "buyer@example.test", False),
         ("Lunch", "2026-11-07T10:00:00", "8 Cedar Lane", "nina.brooks@example.test", False),
+        ("Move inventory — 8 Cedar Lane (with Nina)", "2026-11-07T10:00:00", None, "nina.brooks@example.test", True),
+        ("Inventory walkthrough — 8 Cedar Lane", "2026-11-07T10:00:00", "90 Quarry Road", None, False),
+        ("Move inventory", "2026-11-07T10:00:00", None, "nina.brooks@example.test", False),
+        ("Inventory walkthrough", "2026-11-07T10:00:00", "Home, 8 Cedar Lane", None, True),
     ],
 )
 def test_inventory_title_accepts_natural_language_but_keeps_booking_constraints(
@@ -345,8 +354,8 @@ def test_inventory_title_accepts_natural_language_but_keeps_booking_constraints(
             "summary": title,
             "startTime": start,
             "endTime": start.replace("10:00", "11:00"),
-            "location": location,
-            "attendees": [{"email": attendee}],
+            **({"location": location} if location else {}),
+            **({"attendees": [{"email": attendee}]} if attendee else {}),
         },
     )
     assert outcome.error is None

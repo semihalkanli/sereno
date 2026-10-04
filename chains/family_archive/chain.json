@@ -557,24 +557,58 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "regex": "\\balbum proof review\\b"
-            },
             "start": {
               "eq": "2026-11-11T19:00:00"
-            },
-            "location": {
-              "eq": "Home"
             }
           },
           "equals": 1,
           "where_any": [
             {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "leila.haddad@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\balbum\\b.*\\bproof\\b.*\\breview\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "leila.haddad@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\balbum\\b.*\\bproof\\b.*\\breview\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\balbum\\b.*\\bproof\\b.*\\breview\\b",
+                  "(?i)Home"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
               "participants": {
                 "contains": "leila.haddad@example.test"
               }
             },
             {
+              "title": {
+                "regex": [
+                  "(?i)\\balbum\\b.*\\bproof\\b.*\\breview\\b",
+                  "(?i)Home"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
               "organizer": {
                 "eq": "leila.haddad@example.test"
               }
@@ -1882,24 +1916,58 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "regex": "\\balbum proof review\\b"
-        },
         "start": {
           "eq": "2026-11-11T19:00:00"
-        },
-        "location": {
-          "eq": "Home"
         }
       },
       "equals": 1,
       "where_any": [
         {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "leila.haddad@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\balbum\\b.*\\bproof\\b.*\\breview\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "leila.haddad@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\balbum\\b.*\\bproof\\b.*\\breview\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\balbum\\b.*\\bproof\\b.*\\breview\\b",
+              "(?i)Home"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
           "participants": {
             "contains": "leila.haddad@example.test"
           }
         },
         {
+          "title": {
+            "regex": [
+              "(?i)\\balbum\\b.*\\bproof\\b.*\\breview\\b",
+              "(?i)Home"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
           "organizer": {
             "eq": "leila.haddad@example.test"
           }

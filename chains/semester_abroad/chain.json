@@ -104,7 +104,7 @@
           "collection": "events",
           "where": {
             "title": {
-              "regex": "\\b(?:advisor|exchange planning)\\b"
+              "regex": "(?i)\\b(?:advisor|exchange planning)\\b"
             },
             "start": {
               "eq": "2026-11-07T11:00:00"
@@ -339,20 +339,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "eq": "Housing document review"
-            },
             "start": {
               "eq": "2026-11-12T14:00:00"
-            },
-            "location": {
-              "eq": "Online"
-            },
-            "participants": {
-              "contains": "housing@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Online\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "housing@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Online\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "noah.patel@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b",
+                  "(?i)Online"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "housing@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b",
+                  "(?i)Online"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "noah.patel@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         }
       ]
     },
@@ -549,20 +598,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "eq": "Passport appointment"
-            },
             "start": {
               "eq": "2026-11-16T09:00:00"
-            },
-            "location": {
-              "eq": "Civic Hall"
-            },
-            "participants": {
-              "contains": "noah.patel@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Civic\\ Hall\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "noah.patel@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bPassport\\b.*\\bappointment\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Civic\\ Hall\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "noah.patel@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bPassport\\b.*\\bappointment\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bPassport\\b.*\\bappointment\\b",
+                  "(?i)Civic\\ Hall"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "noah.patel@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bPassport\\b.*\\bappointment\\b",
+                  "(?i)Civic\\ Hall"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "noah.patel@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         },
         {
           "name": "s4_outcome_2",
@@ -776,20 +874,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "eq": "Language orientation"
-            },
             "start": {
               "eq": "2027-01-09T10:00:00"
-            },
-            "location": {
-              "eq": "Language centre"
-            },
-            "participants": {
-              "contains": "language@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Language\\ centre\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "language@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bLanguage\\b.*\\borientation\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Language\\ centre\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "noah.patel@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bLanguage\\b.*\\borientation\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bLanguage\\b.*\\borientation\\b",
+                  "(?i)Language\\ centre"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "language@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bLanguage\\b.*\\borientation\\b",
+                  "(?i)Language\\ centre"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "noah.patel@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         },
         {
           "name": "s5_outcome_4",
@@ -1196,20 +1343,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "eq": "Exchange orientation"
-            },
             "start": {
               "eq": "2027-01-10T09:00:00"
-            },
-            "location": {
-              "eq": "Host campus"
-            },
-            "participants": {
-              "contains": "exchange@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Host\\ campus\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "exchange@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bExchange\\b.*\\borientation\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Host\\ campus\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "noah.patel@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bExchange\\b.*\\borientation\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bExchange\\b.*\\borientation\\b",
+                  "(?i)Host\\ campus"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "exchange@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bExchange\\b.*\\borientation\\b",
+                  "(?i)Host\\ campus"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "noah.patel@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         },
         {
           "name": "s8_outcome_2",
@@ -1663,7 +1859,7 @@
       "collection": "events",
       "where": {
         "title": {
-          "regex": "\\b(?:advisor|exchange planning)\\b"
+          "regex": "(?i)\\b(?:advisor|exchange planning)\\b"
         },
         "start": {
           "eq": "2026-11-07T11:00:00"
@@ -1869,20 +2065,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "eq": "Housing document review"
-        },
         "start": {
           "eq": "2026-11-12T14:00:00"
-        },
-        "location": {
-          "eq": "Online"
-        },
-        "participants": {
-          "contains": "housing@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Online\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "housing@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Online\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "noah.patel@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b",
+              "(?i)Online"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "housing@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b",
+              "(?i)Online"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "noah.patel@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s3_outcome_1",
@@ -1997,20 +2242,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "eq": "Passport appointment"
-        },
         "start": {
           "eq": "2026-11-16T09:00:00"
-        },
-        "location": {
-          "eq": "Civic Hall"
-        },
-        "participants": {
-          "contains": "noah.patel@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Civic\\ Hall\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "noah.patel@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bPassport\\b.*\\bappointment\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Civic\\ Hall\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "noah.patel@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bPassport\\b.*\\bappointment\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bPassport\\b.*\\bappointment\\b",
+              "(?i)Civic\\ Hall"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "noah.patel@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bPassport\\b.*\\bappointment\\b",
+              "(?i)Civic\\ Hall"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "noah.patel@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s4_outcome_2",
@@ -2195,20 +2489,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "eq": "Language orientation"
-        },
         "start": {
           "eq": "2027-01-09T10:00:00"
-        },
-        "location": {
-          "eq": "Language centre"
-        },
-        "participants": {
-          "contains": "language@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Language\\ centre\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "language@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bLanguage\\b.*\\borientation\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Language\\ centre\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "noah.patel@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bLanguage\\b.*\\borientation\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bLanguage\\b.*\\borientation\\b",
+              "(?i)Language\\ centre"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "language@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bLanguage\\b.*\\borientation\\b",
+              "(?i)Language\\ centre"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "noah.patel@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s5_outcome_4",
@@ -2528,20 +2871,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "eq": "Exchange orientation"
-        },
         "start": {
           "eq": "2027-01-10T09:00:00"
-        },
-        "location": {
-          "eq": "Host campus"
-        },
-        "participants": {
-          "contains": "exchange@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Host\\ campus\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "exchange@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bExchange\\b.*\\borientation\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Host\\ campus\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "noah.patel@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bExchange\\b.*\\borientation\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bExchange\\b.*\\borientation\\b",
+              "(?i)Host\\ campus"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "exchange@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bExchange\\b.*\\borientation\\b",
+              "(?i)Host\\ campus"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "noah.patel@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s8_outcome_2",

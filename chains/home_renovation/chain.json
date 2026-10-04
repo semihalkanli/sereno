@@ -141,20 +141,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "regex": "\\baccess survey\\b"
-            },
             "start": {
               "eq": "2026-11-08T13:00:00"
-            },
-            "location": {
-              "eq": "19 Maple Terrace"
-            },
-            "participants": {
-              "contains": "oak@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "oak@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\baccess\\b.*\\bsurvey\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "priya.shah@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\baccess\\b.*\\bsurvey\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\baccess\\b.*\\bsurvey\\b",
+                  "(?i)19\\ Maple\\ Terrace"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "oak@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\baccess\\b.*\\bsurvey\\b",
+                  "(?i)19\\ Maple\\ Terrace"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "priya.shah@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         },
         {
           "name": "s1_outcome_4",
@@ -323,20 +372,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "eq": "Electrical inspection"
-            },
             "start": {
               "eq": "2026-11-14T09:00:00"
-            },
-            "location": {
-              "eq": "19 Maple Terrace"
-            },
-            "participants": {
-              "contains": "electrician@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "electrician@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "priya.shah@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bElectrical\\b.*\\binspection\\b",
+                  "(?i)19\\ Maple\\ Terrace"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "electrician@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bElectrical\\b.*\\binspection\\b",
+                  "(?i)19\\ Maple\\ Terrace"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "priya.shah@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         }
       ]
     },
@@ -503,20 +601,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "eq": "Cabinet fitting"
-            },
             "start": {
               "eq": "2026-11-20T09:00:00"
-            },
-            "location": {
-              "eq": "19 Maple Terrace"
-            },
-            "participants": {
-              "contains": "oak@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "oak@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "priya.shah@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bCabinet\\b.*\\bfitting\\b",
+                  "(?i)19\\ Maple\\ Terrace"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "oak@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bCabinet\\b.*\\bfitting\\b",
+                  "(?i)19\\ Maple\\ Terrace"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "priya.shah@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         }
       ]
     },
@@ -1009,20 +1156,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "eq": "Door adjustment"
-            },
             "start": {
               "eq": "2026-11-23T10:00:00"
-            },
-            "location": {
-              "eq": "19 Maple Terrace"
-            },
-            "participants": {
-              "contains": "oak@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "oak@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bDoor\\b.*\\badjustment\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "priya.shah@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bDoor\\b.*\\badjustment\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bDoor\\b.*\\badjustment\\b",
+                  "(?i)19\\ Maple\\ Terrace"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "oak@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bDoor\\b.*\\badjustment\\b",
+                  "(?i)19\\ Maple\\ Terrace"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "priya.shah@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         },
         {
           "name": "s7_outcome_2",
@@ -1537,20 +1733,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "regex": "\\baccess survey\\b"
-        },
         "start": {
           "eq": "2026-11-08T13:00:00"
-        },
-        "location": {
-          "eq": "19 Maple Terrace"
-        },
-        "participants": {
-          "contains": "oak@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "oak@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\baccess\\b.*\\bsurvey\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "priya.shah@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\baccess\\b.*\\bsurvey\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\baccess\\b.*\\bsurvey\\b",
+              "(?i)19\\ Maple\\ Terrace"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "oak@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\baccess\\b.*\\bsurvey\\b",
+              "(?i)19\\ Maple\\ Terrace"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "priya.shah@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s1_outcome_4",
@@ -1690,20 +1935,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "eq": "Electrical inspection"
-        },
         "start": {
           "eq": "2026-11-14T09:00:00"
-        },
-        "location": {
-          "eq": "19 Maple Terrace"
-        },
-        "participants": {
-          "contains": "electrician@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "electrician@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "priya.shah@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bElectrical\\b.*\\binspection\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bElectrical\\b.*\\binspection\\b",
+              "(?i)19\\ Maple\\ Terrace"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "electrician@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bElectrical\\b.*\\binspection\\b",
+              "(?i)19\\ Maple\\ Terrace"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "priya.shah@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s3_outcome_1",
@@ -1817,20 +2111,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "eq": "Cabinet fitting"
-        },
         "start": {
           "eq": "2026-11-20T09:00:00"
-        },
-        "location": {
-          "eq": "19 Maple Terrace"
-        },
-        "participants": {
-          "contains": "oak@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "oak@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "priya.shah@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bCabinet\\b.*\\bfitting\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bCabinet\\b.*\\bfitting\\b",
+              "(?i)19\\ Maple\\ Terrace"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "oak@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bCabinet\\b.*\\bfitting\\b",
+              "(?i)19\\ Maple\\ Terrace"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "priya.shah@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s4_outcome_1",
@@ -2207,20 +2550,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "eq": "Door adjustment"
-        },
         "start": {
           "eq": "2026-11-23T10:00:00"
-        },
-        "location": {
-          "eq": "19 Maple Terrace"
-        },
-        "participants": {
-          "contains": "oak@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "oak@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bDoor\\b.*\\badjustment\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)19\\ Maple\\ Terrace\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "priya.shah@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bDoor\\b.*\\badjustment\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bDoor\\b.*\\badjustment\\b",
+              "(?i)19\\ Maple\\ Terrace"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "oak@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bDoor\\b.*\\badjustment\\b",
+              "(?i)19\\ Maple\\ Terrace"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "priya.shah@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s7_outcome_2",

@@ -529,20 +529,69 @@
           "app": "calendar",
           "collection": "events",
           "where": {
-            "title": {
-              "eq": "Refund check"
-            },
             "start": {
               "eq": "2026-11-19T11:00:00"
-            },
-            "location": {
-              "eq": "Home"
-            },
-            "participants": {
-              "contains": "marcus.reed@example.test"
             }
           },
-          "equals": 1
+          "equals": 1,
+          "where_any": [
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+              },
+              "participants": {
+                "contains": "marcus.reed@example.test"
+              },
+              "title": {
+                "regex": "(?i)\\bRefund\\b.*\\bcheck\\b"
+              }
+            },
+            {
+              "location": {
+                "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+              },
+              "organizer": {
+                "eq": "marcus.reed@example.test"
+              },
+              "participants": {
+                "empty": true
+              },
+              "title": {
+                "regex": "(?i)\\bRefund\\b.*\\bcheck\\b"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bRefund\\b.*\\bcheck\\b",
+                  "(?i)Home"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "participants": {
+                "contains": "marcus.reed@example.test"
+              }
+            },
+            {
+              "title": {
+                "regex": [
+                  "(?i)\\bRefund\\b.*\\bcheck\\b",
+                  "(?i)Home"
+                ]
+              },
+              "location": {
+                "empty": true
+              },
+              "organizer": {
+                "eq": "marcus.reed@example.test"
+              },
+              "participants": {
+                "empty": true
+              }
+            }
+          ]
         }
       ]
     },
@@ -2073,20 +2122,69 @@
       "app": "calendar",
       "collection": "events",
       "where": {
-        "title": {
-          "eq": "Refund check"
-        },
         "start": {
           "eq": "2026-11-19T11:00:00"
-        },
-        "location": {
-          "eq": "Home"
-        },
-        "participants": {
-          "contains": "marcus.reed@example.test"
         }
       },
-      "equals": 1
+      "equals": 1,
+      "where_any": [
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+          },
+          "participants": {
+            "contains": "marcus.reed@example.test"
+          },
+          "title": {
+            "regex": "(?i)\\bRefund\\b.*\\bcheck\\b"
+          }
+        },
+        {
+          "location": {
+            "regex": "(?i)(?:^|[,(;]\\s*)Home\\s*(?:$|[,);])"
+          },
+          "organizer": {
+            "eq": "marcus.reed@example.test"
+          },
+          "participants": {
+            "empty": true
+          },
+          "title": {
+            "regex": "(?i)\\bRefund\\b.*\\bcheck\\b"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bRefund\\b.*\\bcheck\\b",
+              "(?i)Home"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "participants": {
+            "contains": "marcus.reed@example.test"
+          }
+        },
+        {
+          "title": {
+            "regex": [
+              "(?i)\\bRefund\\b.*\\bcheck\\b",
+              "(?i)Home"
+            ]
+          },
+          "location": {
+            "empty": true
+          },
+          "organizer": {
+            "eq": "marcus.reed@example.test"
+          },
+          "participants": {
+            "empty": true
+          }
+        }
+      ]
     },
     {
       "name": "s4_outcome_1",
