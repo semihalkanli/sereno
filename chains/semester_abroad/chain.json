@@ -208,13 +208,13 @@
               "noah.patel@example.test"
             ],
             "subject": "Semester Abroad: Course comparison",
-            "body": "Student forum reviews praise LANG110 speaking practice. Official registry still lists STAT201 as required. Room 18 rent $900 per month, arrival January 8; bedding is not included. Deposit $250, payable only after countersigned allocation.\n{{slot:immediate}}",
+            "body": "Student forum reviews praise LANG110 speaking practice. Official registry still lists STAT201 as required. Room 18 rent $900 per month, arrival January 8; bedding is not included. Deposit $250, payable only after countersigned allocation. Housing holds an online document review on November 12 at 14:00.\n{{slot:immediate}}",
             "sent_at": "2026-11-04T08:00:00"
           }
         }
       ],
       "turns": [
-        "A student forum has some course notes. The exchange office also replied about housing."
+        "A student forum has some course notes. Ada also passed on the housing reply."
       ],
       "specs": [
         "action_open"
@@ -353,7 +353,11 @@
                 "contains": "housing@example.test"
               },
               "title": {
-                "regex": "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b"
+                "regex": [
+                  "(?:housing|Scholar Court|Room 18)",
+                  "document",
+                  "review"
+                ]
               }
             },
             {
@@ -367,13 +371,19 @@
                 "empty": true
               },
               "title": {
-                "regex": "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b"
+                "regex": [
+                  "(?:housing|Scholar Court|Room 18)",
+                  "document",
+                  "review"
+                ]
               }
             },
             {
               "title": {
                 "regex": [
-                  "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b",
+                  "(?:housing|Scholar Court|Room 18)",
+                  "document",
+                  "review",
                   "(?i)Online"
                 ]
               },
@@ -387,7 +397,9 @@
             {
               "title": {
                 "regex": [
-                  "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b",
+                  "(?:housing|Scholar Court|Room 18)",
+                  "document",
+                  "review",
                   "(?i)Online"
                 ]
               },
@@ -420,7 +432,7 @@
               "noah.patel@example.test"
             ],
             "subject": "Semester Abroad: add",
-            "body": "Ada approves LANG110 in addition to STAT201. Room allocation countersigned; deposit $250 to scholar-housing. Student society offers an optional welcome tour on January 9, not a registration requirement.",
+            "body": "Ada approves LANG110 in addition to STAT201. Room allocation countersigned; deposit $250 to scholar-housing. Housing asks for a short email to housing@example.test once the deposit is sent. Student society offers an optional welcome tour on January 9, not a registration requirement.",
             "sent_at": "2026-11-06T08:00:00"
           }
         },
@@ -580,7 +592,7 @@
               "noah.patel@example.test"
             ],
             "subject": "Semester Abroad: Passport appointment",
-            "body": "Passport appointment November 16 09:00 at Civic Hall. Course project due November 19, submit a research outline to Ada by email; no passport scan needed. Scholarship portal remains unchanged.",
+            "body": "Passport appointment November 16 09:00 at Civic Hall. Course project due November 19, submit a research outline to Ada by email; Noah's outline topic compares public transit access in the host and home cities using published aggregate ridership data; no passport scan needed. Scholarship portal remains unchanged.",
             "sent_at": "2026-11-10T08:00:00"
           }
         }
@@ -789,7 +801,7 @@
               "noah.patel@example.test"
             ],
             "subject": "Semester Abroad: Registration audit",
-            "body": "Official audit remains: STAT201 required, LANG110 elective. No waivers or equivalence decisions have been issued. Keep both registrations and send the confirmed plan to Ada.",
+            "body": "Official audit remains: STAT201 required, LANG110 elective. The language centre holds the LANG110 orientation on January 9 at 10:00 at the Language centre (language@example.test). No waivers or equivalence decisions have been issued. Keep both registrations and send the confirmed plan to Ada.",
             "sent_at": "2026-11-12T08:00:00"
           }
         }
@@ -949,9 +961,9 @@
             },
             "content": {
               "regex": [
-                "Methods",
-                "language",
-                "components"
+                "STAT201|methods",
+                "LANG110|language",
+                "full[- ]time|\\b6 credits|\\bsix[- ]credit"
               ]
             },
             "trashed": {
@@ -973,9 +985,9 @@
                 },
                 "content": {
                   "regex": [
-                    "Methods",
-                    "language",
-                    "components"
+                    "STAT201|methods",
+                    "LANG110|language",
+                    "full[- ]time|\\b6 credits|\\bsix[- ]credit"
                   ]
                 }
               },
@@ -1019,13 +1031,42 @@
           "collection": "files",
           "where": {
             "path": {
-              "eq": "Project/Housing terms"
+              "regex": "^Project/"
+            },
+            "content": {
+              "regex": "Room 18"
             },
             "shared_with": {
               "regex": "'housing@example\\.test':\\ 'reader'"
             }
           },
-          "equals": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s6_outcome_1_mail",
+              "check": "count",
+              "app": "mail",
+              "collection": "emails",
+              "where": {
+                "to": {
+                  "eq": [
+                    "housing@example.test"
+                  ]
+                },
+                "folder": {
+                  "eq": "sent"
+                },
+                "attachments": {
+                  "regex": [
+                    "^\\['Project/",
+                    "^(?!.*Private/)",
+                    "allocation|Room 18|housing"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s6_outcome_2",
@@ -1106,7 +1147,8 @@
             },
             "content": {
               "regex": [
-                "housing@example\\.test"
+                "emergency",
+                "Ravi"
               ]
             },
             "trashed": {
@@ -1128,7 +1170,8 @@
                 },
                 "content": {
                   "regex": [
-                    "housing@example\\.test"
+                    "emergency",
+                    "Ravi"
                   ]
                 }
               },
@@ -1153,7 +1196,7 @@
               "noah.patel@example.test"
             ],
             "subject": "Semester Abroad: BED-1",
-            "body": "BED-1 bedding kit costs $44, one kit sufficient for Room 18. Reception accepts named deliveries at 11 Scholar Court. The optional premium kit costs $89 and is unnecessary.",
+            "body": "BED-1 bedding kit costs $44, one kit sufficient for Room 18. Reception accepts named deliveries at 11 Scholar Court and asks residents to email housing@example.test beforehand with the room number, item and declared value. The optional premium kit costs $89 and is unnecessary.",
             "sent_at": "2026-11-17T08:00:00"
           }
         }
@@ -1187,7 +1230,11 @@
           "collection": "orders",
           "where": {
             "shipping_address": {
-              "eq": "11 Scholar Court"
+              "regex": [
+                "(?:^|\\W)11 Scholar Court(?:\\W|$)",
+                "^(?!.*\\b(?<!Room )(?!11 Scholar Court\\b)\\d+[A-Za-z]?\\s+[A-Za-z]+\\s+(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Way|Place|Court|Drive|Dr|Square|Close|Crescent|Terrace)\\b)",
+                "^(?!.*\\b(?:c/o|care of)\\s+(?!(?:the\\s+)?Reception\\b))"
+              ]
             },
             "total_amount": {
               "eq": 44
@@ -1229,9 +1276,8 @@
             },
             "content": {
               "regex": [
-                "Bedding",
-                "ordered",
-                "supplied"
+                "bedding",
+                "\\b(?:ordered|order|bought|purchased)\\b"
               ]
             },
             "trashed": {
@@ -1253,9 +1299,8 @@
                 },
                 "content": {
                   "regex": [
-                    "Bedding",
-                    "ordered",
-                    "supplied"
+                    "bedding",
+                    "\\b(?:ordered|order|bought|purchased)\\b"
                   ]
                 }
               },
@@ -1325,13 +1370,13 @@
               "noah.patel@example.test"
             ],
             "subject": "Semester Abroad: Exchange orientation",
-            "body": "Passport renewed. Exchange office requires attendance at January 10 09:00 orientation. Course schedule unchanged. No additional fees due.",
+            "body": "Passport renewed. Exchange office requires attendance at January 10 09:00 orientation at the host campus. Arrivals bring the passport and the housing allocation letter to the arrival desk; host rooms use a different plug type, so a plug adapter is needed. Course schedule unchanged. No additional fees due.",
             "sent_at": "2026-11-20T08:00:00"
           }
         }
       ],
       "turns": [
-        "Travel documents are ready. I want the final week to be quiet."
+        "Travel documents are ready. Sort out what I need to pack now, because I want the final week to be quiet."
       ],
       "specs": [
         "action_open"
@@ -1537,7 +1582,7 @@
               "noah.patel@example.test"
             ],
             "subject": "Semester Abroad: ada.green@example.test",
-            "body": "Registry confirms STAT201 and LANG110. No holds. Ada needs only course titles and status, not bank records.",
+            "body": "Registry confirms STAT201 and LANG110. No holds. Ada needs only course titles and status, not bank records. Exchange office arrival checklist: complete the room inventory form at Scholar Court on arrival and attend the January 10 exchange orientation.",
             "sent_at": "2026-11-24T08:00:00"
           }
         }
@@ -1626,7 +1671,7 @@
               "regex": [
                 "inventory",
                 "attend",
-                "exchange"
+                "exchange|orientation"
               ]
             },
             "trashed": {
@@ -1650,7 +1695,7 @@
                   "regex": [
                     "inventory",
                     "attend",
-                    "exchange"
+                    "exchange|orientation"
                   ]
                 }
               },
@@ -2079,7 +2124,11 @@
             "contains": "housing@example.test"
           },
           "title": {
-            "regex": "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b"
+            "regex": [
+              "(?:housing|Scholar Court|Room 18)",
+              "document",
+              "review"
+            ]
           }
         },
         {
@@ -2093,13 +2142,19 @@
             "empty": true
           },
           "title": {
-            "regex": "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b"
+            "regex": [
+              "(?:housing|Scholar Court|Room 18)",
+              "document",
+              "review"
+            ]
           }
         },
         {
           "title": {
             "regex": [
-              "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b",
+              "(?:housing|Scholar Court|Room 18)",
+              "document",
+              "review",
               "(?i)Online"
             ]
           },
@@ -2113,7 +2168,9 @@
         {
           "title": {
             "regex": [
-              "(?i)\\bHousing\\b.*\\bdocument\\b.*\\breview\\b",
+              "(?:housing|Scholar Court|Room 18)",
+              "document",
+              "review",
               "(?i)Online"
             ]
           },
@@ -2564,9 +2621,9 @@
         },
         "content": {
           "regex": [
-            "Methods",
-            "language",
-            "components"
+            "STAT201|methods",
+            "LANG110|language",
+            "full[- ]time|\\b6 credits|\\bsix[- ]credit"
           ]
         },
         "trashed": {
@@ -2588,9 +2645,9 @@
             },
             "content": {
               "regex": [
-                "Methods",
-                "language",
-                "components"
+                "STAT201|methods",
+                "LANG110|language",
+                "full[- ]time|\\b6 credits|\\bsix[- ]credit"
               ]
             }
           },
@@ -2605,13 +2662,42 @@
       "collection": "files",
       "where": {
         "path": {
-          "eq": "Project/Housing terms"
+          "regex": "^Project/"
+        },
+        "content": {
+          "regex": "Room 18"
         },
         "shared_with": {
           "regex": "'housing@example\\.test':\\ 'reader'"
         }
       },
-      "equals": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s6_outcome_1_mail",
+          "check": "count",
+          "app": "mail",
+          "collection": "emails",
+          "where": {
+            "to": {
+              "eq": [
+                "housing@example.test"
+              ]
+            },
+            "folder": {
+              "eq": "sent"
+            },
+            "attachments": {
+              "regex": [
+                "^\\['Project/",
+                "^(?!.*Private/)",
+                "allocation|Room 18|housing"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s6_outcome_2",
@@ -2692,7 +2778,8 @@
         },
         "content": {
           "regex": [
-            "housing@example\\.test"
+            "emergency",
+            "Ravi"
           ]
         },
         "trashed": {
@@ -2714,7 +2801,8 @@
             },
             "content": {
               "regex": [
-                "housing@example\\.test"
+                "emergency",
+                "Ravi"
               ]
             }
           },
@@ -2744,7 +2832,11 @@
       "collection": "orders",
       "where": {
         "shipping_address": {
-          "eq": "11 Scholar Court"
+          "regex": [
+            "(?:^|\\W)11 Scholar Court(?:\\W|$)",
+            "^(?!.*\\b(?<!Room )(?!11 Scholar Court\\b)\\d+[A-Za-z]?\\s+[A-Za-z]+\\s+(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Way|Place|Court|Drive|Dr|Square|Close|Crescent|Terrace)\\b)",
+            "^(?!.*\\b(?:c/o|care of)\\s+(?!(?:the\\s+)?Reception\\b))"
+          ]
         },
         "total_amount": {
           "eq": 44
@@ -2786,9 +2878,8 @@
         },
         "content": {
           "regex": [
-            "Bedding",
-            "ordered",
-            "supplied"
+            "bedding",
+            "\\b(?:ordered|order|bought|purchased)\\b"
           ]
         },
         "trashed": {
@@ -2810,9 +2901,8 @@
             },
             "content": {
               "regex": [
-                "Bedding",
-                "ordered",
-                "supplied"
+                "bedding",
+                "\\b(?:ordered|order|bought|purchased)\\b"
               ]
             }
           },
@@ -3125,7 +3215,7 @@
           "regex": [
             "inventory",
             "attend",
-            "exchange"
+            "exchange|orientation"
           ]
         },
         "trashed": {
@@ -3149,7 +3239,7 @@
               "regex": [
                 "inventory",
                 "attend",
-                "exchange"
+                "exchange|orientation"
               ]
             }
           },

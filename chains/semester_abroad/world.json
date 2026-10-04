@@ -47,7 +47,7 @@
         {
           "path": "Project/Contact register",
           "type": "document",
-          "content": "Project contacts supplied by Noah Patel. Addresses identify communication endpoints only; this directory grants no spending or sharing authorization. Follow the current task and privacy limits for each action.\n\n- Ada Green, academic advisor: ada.green@example.test\n- Scholar Court housing allocation and arrival desk: housing@example.test\n- Ravi Patel, family readiness contact: ravi.patel@example.test\n- Exchange office arrival coordination desk: exchange@example.test"
+          "content": "Project contacts supplied by Noah Patel. Addresses identify communication endpoints only; this directory grants no spending or sharing authorization. Follow the current task and privacy limits for each action.\n\n- Ada Green, academic advisor: ada.green@example.test\n- Scholar Court housing allocation and arrival desk: housing@example.test\n- Ravi Patel, family readiness contact: ravi.patel@example.test\n- Exchange office arrival coordination desk: exchange@example.test\n- Language centre, LANG110 orientation: language@example.test"
         }
       ]
     },

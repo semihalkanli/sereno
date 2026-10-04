@@ -807,7 +807,7 @@
           "type": "function",
           "function": {
             "name": "create_file",
-            "arguments": "{\"title\": \"Full-time evidence\", \"parentId\": \"Project\", \"textContent\": \"Methods and language components retained; obtain host credit totals from the exchange office.\", \"contentMimeType\": \"text/plain\"}"
+            "arguments": "{\"title\": \"Full-time evidence\", \"parentId\": \"Project\", \"textContent\": \"Methods and language components retained; together they meet the six-credit full-time load.\", \"contentMimeType\": \"text/plain\"}"
           }
         }
       ]
@@ -944,7 +944,7 @@
           "type": "function",
           "function": {
             "name": "create_file",
-            "arguments": "{\"title\": \"Emergency contacts\", \"parentId\": \"Project\", \"textContent\": \"Ravi Patel; housing@example.test for accommodation; Ada for academic issues.\", \"contentMimeType\": \"text/plain\"}"
+            "arguments": "{\"title\": \"Emergency contacts\", \"parentId\": \"Project\", \"textContent\": \"Emergency contact: Ravi Patel (brother); housing@example.test for accommodation; Ada for academic issues.\", \"contentMimeType\": \"text/plain\"}"
           }
         }
       ]
