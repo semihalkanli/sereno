@@ -193,7 +193,7 @@
   {
     "id": "s5_outcome_4",
     "session": "s5",
-    "outcome": "Communicate hanging plan ready to curator@example.test with the agreed scope.",
+    "outcome": "Communicate production confirmation to curator@example.test with the agreed scope.",
     "checks": [
       "s5_outcome_4"
     ],

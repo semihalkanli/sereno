@@ -58,7 +58,7 @@
               "regex": [
                 "\\b(?:selected|approved)\\b",
                 "\\b(?:images|works|photographs)\\b",
-                "preserv|keep(?:s|ing)?\\s+ownership|retain(?:ed|s|ing)?\\s+(?:ownership|originals)|originals?\\s+(?:stay|remain)"
+                "preserv|keep(?:s|ing)?\\s+ownership|retain(?:ed|s|ing)?\\s+(?:ownership|originals)|originals?(?:\\.pdf)?\\b[^.\\n]{0,60}?\\b(?:stays?|remains?|(?:is|are)\\s+never\\s+shared)\\b|\\bno\\s+raw[- ]originals?\\s+sharing"
               ]
             },
             "trashed": {
@@ -82,7 +82,7 @@
                   "regex": [
                     "\\b(?:selected|approved)\\b",
                     "\\b(?:images|works|photographs)\\b",
-                    "preserv|keep(?:s|ing)?\\s+ownership|retain(?:ed|s|ing)?\\s+(?:ownership|originals)|originals?\\s+(?:stay|remain)"
+                    "preserv|keep(?:s|ing)?\\s+ownership|retain(?:ed|s|ing)?\\s+(?:ownership|originals)|originals?(?:\\.pdf)?\\b[^.\\n]{0,60}?\\b(?:stays?|remains?|(?:is|are)\\s+never\\s+shared)\\b|\\bno\\s+raw[- ]originals?\\s+sharing"
                   ]
                 }
               },
@@ -101,7 +101,8 @@
             },
             "content": {
               "regex": [
-                "3"
+                "\\bmatte\\b",
+                "\\bA3\\b"
               ]
             },
             "trashed": {
@@ -123,7 +124,8 @@
                 },
                 "content": {
                   "regex": [
-                    "3"
+                    "\\bmatte\\b",
+                    "\\bA3\\b"
                   ]
                 }
               },
@@ -309,7 +311,9 @@
             },
             "body": {
               "regex": [
-                "3"
+                "\\bproof",
+                "\\bmatte\\b",
+                "\\bA3\\b"
               ]
             }
           },
@@ -542,9 +546,9 @@
             },
             "body": {
               "regex": [
-                "3",
+                "\\b(?:eight|8)\\b|EX-0[1-8]",
                 "(?:\\$|USD\\s*)\\s*320(?:\\.00)?(?!\\d|\\.\\d)",
-                "23"
+                "Nov(?:ember)?\\.?\\s+23\\b|\\b23(?:rd)?\\s+Nov|2026-11-23|\\b11/23\\b"
               ]
             }
           },
@@ -684,7 +688,7 @@
             },
             "content": {
               "regex": [
-                "5",
+                "Dec(?:ember)?\\.?\\s+5\\b|\\b5(?:th)?\\s+Dec|2026-12-05|\\b12/05\\b",
                 "18:00",
                 "20:00"
               ]
@@ -708,7 +712,7 @@
                 },
                 "content": {
                   "regex": [
-                    "5",
+                    "Dec(?:ember)?\\.?\\s+5\\b|\\b5(?:th)?\\s+Dec|2026-12-05|\\b12/05\\b",
                     "18:00",
                     "20:00"
                   ]
@@ -796,7 +800,8 @@
             },
             "content": {
               "regex": [
-                "3"
+                "\\bhang",
+                "EX-0[1-8]|\\b(?:eight|8)\\b"
               ]
             },
             "trashed": {
@@ -818,7 +823,8 @@
                 },
                 "content": {
                   "regex": [
-                    "3"
+                    "\\bhang",
+                    "EX-0[1-8]|\\b(?:eight|8)\\b"
                   ]
                 }
               },
@@ -849,7 +855,7 @@
         }
       ],
       "turns": [
-        "The printer wants the final production confirmation from our retained specification."
+        "The printer wants the final production confirmation from our retained specification. Let the curator know once production is confirmed."
       ],
       "specs": [
         "action_open"
@@ -871,11 +877,13 @@
             },
             "body": {
               "regex": [
-                "3"
+                "\\bmatte\\b",
+                "\\bA3\\b"
               ]
             }
           },
-          "min": 1
+          "min": 1,
+          "new": true
         },
         {
           "name": "s5_outcome_2",
@@ -888,7 +896,8 @@
             },
             "content": {
               "regex": [
-                "3"
+                "\\bmatte\\b",
+                "\\bA3\\b"
               ]
             },
             "trashed": {
@@ -910,7 +919,8 @@
                 },
                 "content": {
                   "regex": [
-                    "3"
+                    "\\bmatte\\b",
+                    "\\bA3\\b"
                   ]
                 }
               },
@@ -933,10 +943,14 @@
               "eq": "sent"
             },
             "body": {
-              "empty": false
+              "regex": [
+                "\\b(?:production|prints?|printer)\\b",
+                "\\bconfirm"
+              ]
             }
           },
-          "min": 1
+          "min": 1,
+          "new": true
         }
       ]
     },
@@ -1020,7 +1034,7 @@
             },
             "content": {
               "regex": [
-                "4",
+                "4 Gallery Walk",
                 "(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)"
               ]
             },
@@ -1043,7 +1057,7 @@
                 },
                 "content": {
                   "regex": [
-                    "4",
+                    "4 Gallery Walk",
                     "(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)"
                   ]
                 }
@@ -1068,7 +1082,7 @@
             },
             "body": {
               "regex": [
-                "4",
+                "4 Gallery Walk",
                 "(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)"
               ]
             }
@@ -1086,9 +1100,9 @@
             },
             "content": {
               "regex": [
-                "Corner",
-                "protection",
-                "numbered"
+                "\\bcorners?\\b",
+                "\\bprotect",
+                "\\bnumbered\\b|\\bnumbers?\\b"
               ]
             },
             "trashed": {
@@ -1110,9 +1124,9 @@
                 },
                 "content": {
                   "regex": [
-                    "Corner",
-                    "protection",
-                    "numbered"
+                    "\\bcorners?\\b",
+                    "\\bprotect",
+                    "\\bnumbered\\b|\\bnumbers?\\b"
                   ]
                 }
               },
@@ -1165,7 +1179,7 @@
             },
             "body": {
               "regex": [
-                "4"
+                "4 Gallery Walk"
               ]
             }
           },
@@ -1371,7 +1385,7 @@
         }
       ],
       "turns": [
-        "Opening went well and the courier receipt matches. Please close the production costs. Please settle the completed $45 courier invoice to art-courier privately if our transaction history does not already show it paid."
+        "Opening went well and the courier receipt matches. Please close the production costs. Please settle the completed $45 courier invoice to art-courier privately if our transaction history does not already show it paid. And please thank the curator for hosting the opening."
       ],
       "specs": [
         "action_open"
@@ -1468,10 +1482,13 @@
               "eq": "sent"
             },
             "body": {
-              "empty": false
+              "regex": [
+                "\\bthank"
+              ]
             }
           },
-          "min": 1
+          "min": 1,
+          "new": true
         },
         {
           "name": "s8_outcome_4",
@@ -1535,7 +1552,7 @@
           "regex": [
             "\\b(?:selected|approved)\\b",
             "\\b(?:images|works|photographs)\\b",
-            "preserv|keep(?:s|ing)?\\s+ownership|retain(?:ed|s|ing)?\\s+(?:ownership|originals)|originals?\\s+(?:stay|remain)"
+            "preserv|keep(?:s|ing)?\\s+ownership|retain(?:ed|s|ing)?\\s+(?:ownership|originals)|originals?(?:\\.pdf)?\\b[^.\\n]{0,60}?\\b(?:stays?|remains?|(?:is|are)\\s+never\\s+shared)\\b|\\bno\\s+raw[- ]originals?\\s+sharing"
           ]
         },
         "trashed": {
@@ -1559,7 +1576,7 @@
               "regex": [
                 "\\b(?:selected|approved)\\b",
                 "\\b(?:images|works|photographs)\\b",
-                "preserv|keep(?:s|ing)?\\s+ownership|retain(?:ed|s|ing)?\\s+(?:ownership|originals)|originals?\\s+(?:stay|remain)"
+                "preserv|keep(?:s|ing)?\\s+ownership|retain(?:ed|s|ing)?\\s+(?:ownership|originals)|originals?(?:\\.pdf)?\\b[^.\\n]{0,60}?\\b(?:stays?|remains?|(?:is|are)\\s+never\\s+shared)\\b|\\bno\\s+raw[- ]originals?\\s+sharing"
               ]
             }
           },
@@ -1578,7 +1595,8 @@
         },
         "content": {
           "regex": [
-            "3"
+            "\\bmatte\\b",
+            "\\bA3\\b"
           ]
         },
         "trashed": {
@@ -1600,7 +1618,8 @@
             },
             "content": {
               "regex": [
-                "3"
+                "\\bmatte\\b",
+                "\\bA3\\b"
               ]
             }
           },
@@ -1742,7 +1761,9 @@
         },
         "body": {
           "regex": [
-            "3"
+            "\\bproof",
+            "\\bmatte\\b",
+            "\\bA3\\b"
           ]
         }
       },
@@ -1907,9 +1928,9 @@
         },
         "body": {
           "regex": [
-            "3",
+            "\\b(?:eight|8)\\b|EX-0[1-8]",
             "(?:\\$|USD\\s*)\\s*320(?:\\.00)?(?!\\d|\\.\\d)",
-            "23"
+            "Nov(?:ember)?\\.?\\s+23\\b|\\b23(?:rd)?\\s+Nov|2026-11-23|\\b11/23\\b"
           ]
         }
       },
@@ -2020,7 +2041,7 @@
         },
         "content": {
           "regex": [
-            "5",
+            "Dec(?:ember)?\\.?\\s+5\\b|\\b5(?:th)?\\s+Dec|2026-12-05|\\b12/05\\b",
             "18:00",
             "20:00"
           ]
@@ -2044,7 +2065,7 @@
             },
             "content": {
               "regex": [
-                "5",
+                "Dec(?:ember)?\\.?\\s+5\\b|\\b5(?:th)?\\s+Dec|2026-12-05|\\b12/05\\b",
                 "18:00",
                 "20:00"
               ]
@@ -2132,7 +2153,8 @@
         },
         "content": {
           "regex": [
-            "3"
+            "\\bhang",
+            "EX-0[1-8]|\\b(?:eight|8)\\b"
           ]
         },
         "trashed": {
@@ -2154,7 +2176,8 @@
             },
             "content": {
               "regex": [
-                "3"
+                "\\bhang",
+                "EX-0[1-8]|\\b(?:eight|8)\\b"
               ]
             }
           },
@@ -2178,11 +2201,13 @@
         },
         "body": {
           "regex": [
-            "3"
+            "\\bmatte\\b",
+            "\\bA3\\b"
           ]
         }
       },
-      "min": 1
+      "min": 1,
+      "new": true
     },
     {
       "name": "s5_outcome_2",
@@ -2195,7 +2220,8 @@
         },
         "content": {
           "regex": [
-            "3"
+            "\\bmatte\\b",
+            "\\bA3\\b"
           ]
         },
         "trashed": {
@@ -2217,7 +2243,8 @@
             },
             "content": {
               "regex": [
-                "3"
+                "\\bmatte\\b",
+                "\\bA3\\b"
               ]
             }
           },
@@ -2240,10 +2267,14 @@
           "eq": "sent"
         },
         "body": {
-          "empty": false
+          "regex": [
+            "\\b(?:production|prints?|printer)\\b",
+            "\\bconfirm"
+          ]
         }
       },
-      "min": 1
+      "min": 1,
+      "new": true
     },
     {
       "name": "s6_outcome_1",
@@ -2283,7 +2314,7 @@
         },
         "content": {
           "regex": [
-            "4",
+            "4 Gallery Walk",
             "(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)"
           ]
         },
@@ -2306,7 +2337,7 @@
             },
             "content": {
               "regex": [
-                "4",
+                "4 Gallery Walk",
                 "(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)"
               ]
             }
@@ -2331,7 +2362,7 @@
         },
         "body": {
           "regex": [
-            "4",
+            "4 Gallery Walk",
             "(?:\\$|USD\\s*)\\s*45(?:\\.00)?(?!\\d|\\.\\d)"
           ]
         }
@@ -2349,9 +2380,9 @@
         },
         "content": {
           "regex": [
-            "Corner",
-            "protection",
-            "numbered"
+            "\\bcorners?\\b",
+            "\\bprotect",
+            "\\bnumbered\\b|\\bnumbers?\\b"
           ]
         },
         "trashed": {
@@ -2373,9 +2404,9 @@
             },
             "content": {
               "regex": [
-                "Corner",
-                "protection",
-                "numbered"
+                "\\bcorners?\\b",
+                "\\bprotect",
+                "\\bnumbered\\b|\\bnumbers?\\b"
               ]
             }
           },
@@ -2399,7 +2430,7 @@
         },
         "body": {
           "regex": [
-            "4"
+            "4 Gallery Walk"
           ]
         }
       },
@@ -2673,10 +2704,13 @@
           "eq": "sent"
         },
         "body": {
-          "empty": false
+          "regex": [
+            "\\bthank"
+          ]
         }
       },
-      "min": 1
+      "min": 1,
+      "new": true
     },
     {
       "name": "s8_outcome_4",

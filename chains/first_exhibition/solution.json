@@ -646,7 +646,7 @@
           "type": "function",
           "function": {
             "name": "create_file",
-            "arguments": "{\"title\": \"Hanging plan\", \"parentId\": \"Project\", \"textContent\": \"Eight A3 works, paired by location; retain white borders.\", \"contentMimeType\": \"text/plain\"}"
+            "arguments": "{\"title\": \"Hanging plan\", \"parentId\": \"Project\", \"textContent\": \"Hanging order: eight A3 works, paired by location; retain white borders.\", \"contentMimeType\": \"text/plain\"}"
           }
         }
       ]
@@ -670,7 +670,7 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_4.md\", \"file_text\": \"---\\nname: first_exhibition-progress-4\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nPurchase 1 twenty exhibition invitations for delivery to 18 Studio Lane.\\nDecember 5, 18:00-20:00; twenty invited guests.\\nArrange exhibition opening at the agreed time and location.\\nEight A3 works, paired by location; retain white borders.\\nNext: phase 5 pending.\"}"
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_4.md\", \"file_text\": \"---\\nname: first_exhibition-progress-4\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nPurchase 1 twenty exhibition invitations for delivery to 18 Studio Lane.\\nDecember 5, 18:00-20:00; twenty invited guests.\\nArrange exhibition opening at the agreed time and location.\\nHanging order: eight A3 works, paired by location; retain white borders.\\nNext: phase 5 pending.\"}"
           }
         }
       ]
@@ -682,7 +682,7 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"insert\", \"path\": \"/memories/MEMORY.md\", \"insert_line\": 4, \"insert_text\": \"- [Phase 4](session_4.md) \\u2014 INV-EX\"}"
+            "arguments": "{\"command\": \"insert\", \"path\": \"/memories/MEMORY.md\", \"insert_line\": 4, \"insert_text\": \"- [Phase 4](session_4.md) — INV-EX\"}"
           }
         }
       ]
@@ -783,7 +783,7 @@
           "type": "function",
           "function": {
             "name": "sendEmail",
-            "arguments": "{\"to\": [\"curator@example.test\"], \"subject\": \"Hanging plan ready\", \"body\": \"Eight works arranged in location pairs; plan shared.\"}"
+            "arguments": "{\"to\": [\"curator@example.test\"], \"subject\": \"Production confirmed\", \"body\": \"The printer has our final production confirmation: eight matte A3 prints, white border, no crop. The hanging plan is shared with you.\"}"
           }
         }
       ]
@@ -807,7 +807,7 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_5.md\", \"file_text\": \"---\\nname: first_exhibition-progress-5\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nCommunicate final print specification to printer@example.test with the agreed scope.\\nEight matte A3; white border; no crop; frames match.\\nGive curator@example.test reader access to Project/Hanging plan only.\\nCommunicate hanging plan ready to curator@example.test with the agreed scope.\\nNext: phase 6 pending.\"}"
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_5.md\", \"file_text\": \"---\\nname: first_exhibition-progress-5\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nCommunicate final print specification to printer@example.test with the agreed scope.\\nEight matte A3; white border; no crop; frames match.\\nGive curator@example.test reader access to Project/Hanging plan only.\\nProduction confirmation sent to the curator.\\nNext: phase 6 pending.\"}"
           }
         }
       ]
@@ -819,13 +819,13 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"insert\", \"path\": \"/memories/MEMORY.md\", \"insert_line\": 5, \"insert_text\": \"- [Phase 5](session_5.md) \\u2014 printer@example.test\"}"
+            "arguments": "{\"command\": \"insert\", \"path\": \"/memories/MEMORY.md\", \"insert_line\": 5, \"insert_text\": \"- [Phase 5](session_5.md) — printer@example.test\"}"
           }
         }
       ]
     },
     {
-      "content": "Completed this phase: Communicate final print specification to printer@example.test with the agreed scope.; Record production confirmation with the supported figures and constraints.; Give curator@example.test reader access to Project/Hanging plan only.; Communicate hanging plan ready to curator@example.test with the agreed scope."
+      "content": "Completed this phase: Communicate final print specification to printer@example.test with the agreed scope.; Record production confirmation with the supported figures and constraints.; Give curator@example.test reader access to Project/Hanging plan only.; Communicate production confirmation to curator@example.test with the agreed scope."
     }
   ],
   "s6": [
