@@ -191,17 +191,6 @@
     ]
   },
   {
-    "id": "s5_outcome_3",
-    "session": "s5",
-    "outcome": "Give curator@example.test reader access to Project/Hanging plan only.",
-    "checks": [
-      "s5_outcome_3"
-    ],
-    "depends_on": [
-      "s4_outcome_1"
-    ]
-  },
-  {
     "id": "s5_outcome_4",
     "session": "s5",
     "outcome": "Communicate hanging plan ready to curator@example.test with the agreed scope.",
@@ -295,6 +284,17 @@
     "outcome": "Record final package manifest with the supported figures and constraints.",
     "checks": [
       "s7_outcome_4"
+    ],
+    "depends_on": [
+      "s6_outcome_1"
+    ]
+  },
+  {
+    "id": "s7_outcome_5",
+    "session": "s7",
+    "outcome": "Give curator@example.test reader access to Project/Hanging plan only.",
+    "checks": [
+      "s7_outcome_5"
     ],
     "depends_on": [
       "s6_outcome_1"

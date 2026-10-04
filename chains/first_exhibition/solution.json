@@ -312,7 +312,7 @@
           "type": "function",
           "function": {
             "name": "create_file",
-            "arguments": "{\"title\": \"Caption sheet\", \"parentId\": \"Project\", \"textContent\": \"Eight titles with year and location; no home address.\", \"contentMimeType\": \"text/plain\"}"
+            "arguments": "{\"title\": \"Caption sheet\", \"parentId\": \"Project\", \"textContent\": \"Captions (title, year, location; no home address):\\nEX-01 Morning Platform, 2024, North Station\\nEX-02 Rain on Glass, 2024, Market Square\\nEX-03 River Steps, 2023, River Walk\\nEX-04 Workshop Light, 2025, Old Mill\\nEX-05 Empty Court, 2023, Court Street\\nEX-06 Winter Crossing, 2025, Canal Bridge\\nEX-07 Quiet Corner, 2024, Harbour Lane\\nEX-08 Last Tram, 2025, Tram Depot\", \"contentMimeType\": \"text/plain\"}"
           }
         }
       ]
