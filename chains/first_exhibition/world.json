@@ -105,7 +105,7 @@
         {
           "path": "Project/Signed print specification",
           "type": "document",
-          "content": "Signed by Sofia Alvarez, 2026-11-02. Exactly eight works EX-01 through EX-08. Matte A3, white border, no crop. Preserve originals and ownership. One proof first; full batch only after proof approval. Approved production derivatives are in Project/Print exports. No glossy upgrade, borderless finish, public licensing or raw-original sharing is authorized."
+          "content": "Signed by Sofia Alvarez, 2026-11-02. Exactly eight works EX-01 through EX-08. Matte A3, white border, no crop. Preserve originals and ownership. One proof first; full batch only after proof approval. Approved production derivatives are in Project/Print exports."
         },
         {
           "path": "Project/Print exports/EX-01.jpg",
@@ -223,7 +223,7 @@
       "files": [
         {
           "path": "/memories/MEMORY.md",
-          "content": "- [Personal context](person.md) \u2014 household preferences and trusted contacts\n"
+          "content": "- [Personal context](person.md) — household preferences and trusted contacts\n"
         },
         {
           "path": "/memories/person.md",

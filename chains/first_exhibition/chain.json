@@ -238,7 +238,7 @@
               "sofia.alvarez@example.test"
             ],
             "subject": "First Exhibition: printer-quote-240",
-            "body": "Written production quote for Sofia Alvarez: $240 total for the eight approved matte A3 works EX-01 through EX-08, including the initial single proof. White border, no crop; no glossy or borderless upgrade. Full-batch production and payment follow Sofia's proof approval; no additional proof charge.",
+            "body": "Written production quote for Sofia Alvarez: $240 total for the eight approved matte A3 works EX-01 through EX-08, including the initial single proof. White border, no crop. Full-batch production and payment follow Sofia's proof approval; no additional proof charge.",
             "sent_at": "2026-11-04T08:00:00"
           }
         }
@@ -450,7 +450,7 @@
               "sofia.alvarez@example.test"
             ],
             "subject": "First Exhibition: printer-invoice-240",
-            "body": "Invoice PRINT-240: $240 total for the approved eight-work batch, including the proof, payable to print-room after Sofia approves the proof. This is the complete quoted price; no upgrade or additional fee. Reconcile against existing transactions before paying; do not pay twice.",
+            "body": "Invoice PRINT-240: $240 total for the approved eight-work batch, including the proof, payable to print-room after Sofia approves the proof.",
             "sent_at": "2026-11-15T08:00:00"
           }
         }
@@ -849,7 +849,7 @@
               "sofia.alvarez@example.test"
             ],
             "subject": "First Exhibition: printer@example.test",
-            "body": "Signed print order still matte A3, white border, no crop. No glossy upgrade or borderless finish authorized. Frame dimensions match the original specification.",
+            "body": "Signed print order still matte A3, white border, no crop. Frame dimensions match the original specification.",
             "sent_at": "2026-11-20T08:00:00"
           }
         }
@@ -984,7 +984,7 @@
               "sofia.alvarez@example.test"
             ],
             "subject": "Artwork courier: packing requirements",
-            "body": "For the eight framed works we need corner protection on every frame and numbered sleeves matching the work IDs. Please keep a packing record with the shipment. Originals and unframed prints are not part of this collection.",
+            "body": "For the eight framed works we need corner protection on every frame and numbered sleeves matching the work IDs. Please keep a packing record with the shipment.",
             "sent_at": "2026-11-23T08:00:00"
           }
         }
@@ -1151,7 +1151,7 @@
               "sofia.alvarez@example.test"
             ],
             "subject": "First Exhibition: courier@example.test",
-            "body": "Final package contains captions, hanging plan and delivery manifest. Gallery destination remains 4 Gallery Walk. No off-site storage was agreed.",
+            "body": "Final package contains captions, hanging plan and delivery manifest. Gallery destination remains 4 Gallery Walk.",
             "sent_at": "2026-11-27T08:00:00"
           }
         }
@@ -1379,7 +1379,7 @@
               "sofia.alvarez@example.test"
             ],
             "subject": "First Exhibition: art-courier",
-            "body": "Courier completed delivery for $45 to art-courier. Approved totals are prints $240, frames $320 and cards $18; reconcile actual transactions rather than assuming payment status. No public image licensing has been granted.",
+            "body": "Courier completed delivery for $45 to art-courier. Approved totals are prints $240, frames $320 and cards $18.",
             "sent_at": "2026-12-06T08:00:00"
           }
         }

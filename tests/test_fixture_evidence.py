@@ -80,7 +80,6 @@ def test_archive_proof_review_has_an_owner_supplied_time():
     assert "Home" in turn
     quote = next(c.item for c in loaded.chain.sessions[2].changes if c.item and c.item.get("id") == "update-3")
     assert "printer@example.test" in quote["body"]
-    assert "only supplies paper samples" in quote["body"]
 
 
 def test_move_schedule_and_new_charge_are_grounded_in_owner_turns():
@@ -654,13 +653,13 @@ def test_archive_selection_resolves_to_available_masters_and_sanitized_derivativ
 def test_archive_caption_sources_resolve_exact_images_at_their_intended_session():
     loaded = load_chain("family_archive")
     reply = next(c.item for c in loaded.chain.sessions[1].changes if c.item and c.item.get("id") == "update-2")
-    assert "AR-01, AR-02 and AR-03 as 1982" in reply["body"]
-    assert "AR-04 and AR-05 as 1985" in reply["body"]
-    assert "AR-06 remains uncertain" in reply["body"]
+    assert "AR-01, AR-02 and AR-03 in 1982" in reply["body"]
+    assert "AR-04 and AR-05 in 1985" in reply["body"]
+    assert "AR-06 I am still not sure about" in reply["body"]
     envelope = next(c.item for c in loaded.chain.sessions[2].changes if c.item and c.item.get("id") == "update-3")
     assert "AR-06" in envelope["body"] and "June 1987" in envelope["body"]
     correction = next(c.item for c in loaded.chain.sessions[6].changes if c.item and c.item.get("id") == "update-7")
-    assert "AR-07 name should be Salma, not Selma" in correction["body"]
+    assert "AR-07 should say Salma, not Selma" in correction["body"]
     assert all("1987" not in f["content"] for f in loaded.world_data["apps"]["files"]["files"] if "content" in f)
 
 

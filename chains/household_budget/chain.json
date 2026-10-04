@@ -659,7 +659,7 @@
               "marcus.reed@example.test"
             ],
             "subject": "Household Budget: jules-reed",
-            "body": "Heating $90, Marcus share $45. Jules paid provider and requests $45. Remaining optional purchases: coffee $12 and replacement lamp $24; nothing else approved.",
+            "body": "Heating $90, Marcus share $45. Jules paid provider and requests $45. Remaining optional purchases: coffee $12 and replacement lamp $24.",
             "sent_at": "2026-11-09T08:00:00"
           }
         }
@@ -858,7 +858,7 @@
               "marcus.reed@example.test"
             ],
             "subject": "Household Budget: CF-1",
-            "body": "CF-1 still $12. One ordinary pack is enough. Deliver to 55 Elm Court. No household preference change was requested.",
+            "body": "CF-1 still $12. One ordinary pack is enough. Deliver to 55 Elm Court.",
             "sent_at": "2026-11-12T08:00:00"
           }
         }
@@ -1025,7 +1025,7 @@
               "marcus.reed@example.test"
             ],
             "subject": "Household Budget: Refund reconciliation",
-            "body": "Seller refund notice: $75 issued to original card. No store-credit conversion and no offset fee. Bank receipt confirms full $75.",
+            "body": "Seller refund notice: $75 issued to original card. Bank receipt confirms full $75.",
             "sent_at": "2026-11-18T08:00:00"
           }
         }
@@ -1224,7 +1224,7 @@
               "marcus.reed@example.test"
             ],
             "subject": "Household Budget: LAMP-1",
-            "body": "LAMP-1 is $24, one lamp required. No extended warranty requested. Deliver to 55 Elm Court.",
+            "body": "LAMP-1 is $24, one lamp required. Deliver to 55 Elm Court.",
             "sent_at": "2026-11-20T08:00:00"
           }
         }
@@ -1558,7 +1558,7 @@
               "marcus.reed@example.test"
             ],
             "subject": "Household Budget: Duplicate audit",
-            "body": "No new utilities. Old $28 grocery receipt excluded. $75 return refund recognized once. No cash gifts or seller adjustment charges.",
+            "body": "No new utilities. Old $28 grocery receipt excluded. $75 return refund recognized once.",
             "sent_at": "2026-11-26T08:00:00"
           }
         }

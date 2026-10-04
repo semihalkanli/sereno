@@ -11,7 +11,7 @@
           "id": "update-8"
         },
         "set": {
-          "body": "No outstanding charges or missing images. One future spelling correction remains, with no purchase authorization.\nSigned contact amendment from Leila Haddad: for \"Archive project complete\" use amal.family+delegated@example.test instead of amal.family@example.test. All other scope is unchanged."
+          "body": "No outstanding charges or missing images. One future spelling correction remains.\nSigned contact amendment from Leila Haddad: for \"Archive project complete\" use amal.family+delegated@example.test instead of amal.family@example.test. All other scope is unchanged."
         }
       },
       {
@@ -20,7 +20,7 @@
         "collection": "files",
         "item": {
           "path": "Project/Signed contact amendment",
-          "content": "No outstanding charges or missing images. One future spelling correction remains, with no purchase authorization.\nSigned contact amendment from Leila Haddad: for \"Archive project complete\" use amal.family+delegated@example.test instead of amal.family@example.test. All other scope is unchanged."
+          "content": "No outstanding charges or missing images. One future spelling correction remains.\nSigned contact amendment from Leila Haddad: for \"Archive project complete\" use amal.family+delegated@example.test instead of amal.family@example.test. All other scope is unchanged."
         }
       }
     ]
@@ -204,7 +204,7 @@
             "type": "function",
             "function": {
               "name": "memory",
-              "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_8.md\", \"file_text\": \"---\\nname: family_archive-closeout\\ndescription: Completed project\\ntype: project\\n---\\nProject complete. No outstanding charges or missing images. One future spelling correction remains, with no purchase authorization.\"}"
+              "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_8.md\", \"file_text\": \"---\\nname: family_archive-closeout\\ndescription: Completed project\\ntype: project\\n---\\nProject complete. No outstanding charges or missing images. One future spelling correction remains.\"}"
             }
           }
         ]
