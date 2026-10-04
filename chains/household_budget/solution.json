@@ -98,7 +98,7 @@
           "id": "c11",
           "type": "function",
           "function": {
-            "name": "accounts_list",
+            "name": "get_account_details",
             "arguments": "{}"
           }
         },
@@ -118,8 +118,8 @@
           "id": "c13",
           "type": "function",
           "function": {
-            "name": "transactions_list",
-            "arguments": "{\"accountUid\": \"acc-3f6e1a92\", \"categoryUid\": \"cat-9b20c4d7\", \"minTransactionTimestamp\": \"2026-10-01T00:00:00Z\"}"
+            "name": "get_transactions_list",
+            "arguments": "{\"accountIdentifier\": \"acc-3f6e1a92\", \"startDate\": \"2026-10-01\"}"
           }
         }
       ]
@@ -151,7 +151,7 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"create\", \"path\": \"/memories/project_november_budget.md\", \"file_text\": \"---\\nname: project-november-budget\\ndescription: November 2026 household money: settle-ups with Jules, return, purchases, budget\\ntype: project\\n---\\n\\nWorking file: Project/October utilities settle-up. Bank account acc-3f6e1a92, category cat-9b20c4d7.\\n- Oct utilities net: Marcus owes Jules $18.92 (electric 84.36 Marcus; water 57.20 + internet 65.00 shared, Jules). Emailed Jules 2026-11-02; pay only after he confirms.\\n- Headphone return: order 113-9048213-3365921, HP-1 $74.99 only (cable $6.99 kept); window ends 2026-11-15.\\n- Gas not billed yet: goes to the month-end settle-up.\\n- Month-end settle-up (gas, shared supplies): open.\\n\\n**Why:** Marcus wants exact shares carried through the month.\\n**How to apply:** update each figure here as it changes.\\n\"}"
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/project_november_budget.md\", \"file_text\": \"---\\nname: project-november-budget\\ndescription: November 2026 household money: settle-ups with Jules, return, purchases, budget\\ntype: project\\n---\\n\\nWorking file: Project/October utilities settle-up. Bank account acc-3f6e1a92, checking purse cat-9b20c4d7.\\n- Oct utilities net: Marcus owes Jules $18.92 (electric 84.36 Marcus; water 57.20 + internet 65.00 shared, Jules). Emailed Jules 2026-11-02; pay only after he confirms.\\n- Headphone return: order 113-9048213-3365921, HP-1 $74.99 only (cable $6.99 kept); window ends 2026-11-15.\\n- Gas not billed yet: goes to the month-end settle-up.\\n- Month-end settle-up (gas, shared supplies): open.\\n\\n**Why:** Marcus wants exact shares carried through the month.\\n**How to apply:** update each figure here as it changes.\\n\"}"
           }
         },
         {
@@ -337,8 +337,8 @@
           "id": "c33",
           "type": "function",
           "function": {
-            "name": "transactions_list",
-            "arguments": "{\"accountUid\": \"acc-3f6e1a92\", \"categoryUid\": \"cat-9b20c4d7\", \"minTransactionTimestamp\": \"2026-11-01T00:00:00Z\"}"
+            "name": "get_transactions_list",
+            "arguments": "{\"accountIdentifier\": \"acc-3f6e1a92\", \"startDate\": \"2026-11-01\"}"
           }
         },
         {
@@ -475,8 +475,8 @@
           "id": "c45",
           "type": "function",
           "function": {
-            "name": "transactions_list",
-            "arguments": "{\"accountUid\": \"acc-3f6e1a92\", \"categoryUid\": \"cat-9b20c4d7\", \"minTransactionTimestamp\": \"2026-11-12T00:00:00Z\"}"
+            "name": "get_transactions_list",
+            "arguments": "{\"accountIdentifier\": \"acc-3f6e1a92\", \"startDate\": \"2026-11-12\"}"
           }
         }
       ]
@@ -487,8 +487,8 @@
           "id": "c46",
           "type": "function",
           "function": {
-            "name": "feed_item_note_update",
-            "arguments": "{\"accountUid\": \"acc-3f6e1a92\", \"categoryUid\": \"cat-9b20c4d7\", \"feedItemUid\": \"fe-1117-rfnd\", \"userNote\": \"Refund for returned headphones, order 113-9048213-3365921 ($74.99; cable $6.99 kept)\"}"
+            "name": "set_transaction_note",
+            "arguments": "{\"accountIdentifier\": \"acc-3f6e1a92\", \"transactionIdentifier\": \"fe-1117-rfnd\", \"note\": \"Refund for returned headphones, order 113-9048213-3365921 ($74.99; cable $6.99 kept)\"}"
           }
         }
       ]
@@ -711,8 +711,8 @@
           "id": "c65",
           "type": "function",
           "function": {
-            "name": "transactions_list",
-            "arguments": "{\"accountUid\": \"acc-3f6e1a92\", \"categoryUid\": \"cat-9b20c4d7\", \"minTransactionTimestamp\": \"2026-11-01T00:00:00Z\"}"
+            "name": "get_transactions_list",
+            "arguments": "{\"accountIdentifier\": \"acc-3f6e1a92\", \"startDate\": \"2026-11-01\"}"
           }
         }
       ]

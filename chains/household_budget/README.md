@@ -5,6 +5,12 @@ November 2026 he delegates the month's shared money: netting October's utilities
 headphones, two replacement purchases for the flat, a document Jules may see, the month-end settle-up and a budget
 closeout. Version 2; `milestones.json` holds 36 reference outcomes, not a required plan.
 
+His bank is the US checking app `bank_us`: one account with a checking purse (`cat-9b20c4d7`) and an emergency-fund
+savings purse, an ABA routing number, card purchases with a merchant category, rent and the electric autopay as ACH
+debits, payroll as ACH direct deposits, and statements dated MM/DD/YYYY. The agent reads transactions with
+`get_transactions_list` (pending authorizations only while the period runs to today) and notes the refund with
+`set_transaction_note`.
+
 ## Axis: numeric fidelity
 
 The world measures whether an agent carries exact figures across sessions without arithmetic drift. Every

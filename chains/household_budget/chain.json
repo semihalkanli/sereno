@@ -11,7 +11,7 @@
     "tasks",
     "payments",
     "shop",
-    "bank"
+    "bank_us"
   ],
   "system_prompt": "You are the personal assistant of {{owner_name}} ({{owner_email}}), who lives in Columbus, Ohio. It is {{now}}, local time. You act on his {{apps}} through the tools; times in each app are local times and amounts are US dollars. Read what you need before acting, follow his instructions exactly, and when the task is done, answer with a short summary of what you did.",
   "memory": true,
@@ -153,35 +153,37 @@
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1103-rest",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 4260,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-03T20:48:00",
-            "settlement_time": "2026-11-03T20:48:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Lindenwood Grill",
-            "reference": "",
-            "country": "US",
-            "spending_category": "EATING_OUT"
+            "authorized_at": "2026-11-03T20:48:00",
+            "posted_at": "2026-11-03T20:48:00",
+            "counterparty_name": "Lindenwood Grill",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Eating Out",
+            "merchant_category_code": "5812"
           }
         },
         {
           "op": "update",
-          "app": "bank",
-          "collection": "accounts",
+          "app": "bank_us",
+          "collection": "purses",
           "match": {
-            "id": "acc-3f6e1a92"
+            "id": "cat-9b20c4d7"
           },
           "set": {
-            "cleared_balance_minor": 572332
+            "ledger_balance_minor": 572332
           }
         }
       ],
@@ -295,57 +297,61 @@
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1104-phar",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 1840,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-04T12:15:00",
-            "settlement_time": "2026-11-04T12:15:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Livingston Pharmacy",
-            "reference": "",
-            "country": "US",
-            "spending_category": "MEDICAL"
+            "authorized_at": "2026-11-04T12:15:00",
+            "posted_at": "2026-11-04T12:15:00",
+            "counterparty_name": "Livingston Pharmacy",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Medical",
+            "merchant_category_code": "5912"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1105-cine",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 3100,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-05T19:02:00",
-            "settlement_time": "2026-11-05T19:02:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Marble Row Cinema",
-            "reference": "",
-            "country": "US",
-            "spending_category": "ENTERTAINMENT"
+            "authorized_at": "2026-11-05T19:02:00",
+            "posted_at": "2026-11-05T19:02:00",
+            "counterparty_name": "Marble Row Cinema",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Entertainment",
+            "merchant_category_code": "7832"
           }
         },
         {
           "op": "update",
-          "app": "bank",
-          "collection": "accounts",
+          "app": "bank_us",
+          "collection": "purses",
           "match": {
-            "id": "acc-3f6e1a92"
+            "id": "cat-9b20c4d7"
           },
           "set": {
-            "cleared_balance_minor": 567392
+            "ledger_balance_minor": 567392
           }
         }
       ],
@@ -413,123 +419,127 @@
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1106-groc",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 4817,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-06T18:33:00",
-            "settlement_time": "2026-11-06T18:33:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Greenway Market",
-            "reference": "",
-            "country": "US",
-            "spending_category": "GROCERIES"
+            "authorized_at": "2026-11-06T18:33:00",
+            "posted_at": "2026-11-06T18:33:00",
+            "counterparty_name": "Greenway Market",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Groceries",
+            "merchant_category_code": "5411"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1106-pay",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "achIn",
+            "status": "completed",
+            "is_credit": true,
             "amount_minor": 241218,
             "currency": "USD",
-            "direction": "IN",
-            "transaction_time": "2026-11-06T09:00:00",
-            "settlement_time": "2026-11-06T09:00:00",
-            "source": "ACH_CREDIT",
-            "status": "SETTLED",
-            "counter_party_type": "BUSINESS",
-            "counter_party_name": "Harlow Logistics Payroll",
-            "reference": "PAYROLL",
-            "country": "US",
-            "spending_category": "INCOME"
+            "authorized_at": "2026-11-06T09:00:00",
+            "posted_at": "2026-11-06T09:00:00",
+            "counterparty_name": "Harlow Logistics Payroll",
+            "description": "PAYROLL",
+            "ach_category_code": "pr"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1107-book",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 2349,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-07T15:26:00",
-            "settlement_time": "2026-11-07T15:26:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Prospect Street Books",
-            "reference": "",
-            "country": "US",
-            "spending_category": "SHOPPING"
+            "authorized_at": "2026-11-07T15:26:00",
+            "posted_at": "2026-11-07T15:26:00",
+            "counterparty_name": "Prospect Street Books",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Shopping",
+            "merchant_category_code": "5942"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1108-strm",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 1549,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-08T04:00:00",
-            "settlement_time": "2026-11-08T04:00:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Streaming subscription",
-            "reference": "MONTHLY PLAN",
-            "country": "US",
-            "spending_category": "ENTERTAINMENT"
+            "authorized_at": "2026-11-08T04:00:00",
+            "posted_at": "2026-11-08T04:00:00",
+            "counterparty_name": "Streaming subscription",
+            "description": "MONTHLY PLAN",
+            "last4_pan": "4417",
+            "merchant_category": "Entertainment",
+            "merchant_category_code": "4899"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1108-dine",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "pending",
+            "is_credit": false,
             "amount_minor": 3800,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-08T21:14:00",
-            "settlement_time": null,
-            "source": "DEBIT_CARD",
-            "status": "PENDING",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Olde Towne Tavern",
-            "reference": "",
-            "country": "US",
-            "spending_category": "EATING_OUT"
+            "authorized_at": "2026-11-08T21:14:00",
+            "posted_at": null,
+            "counterparty_name": "Olde Towne Tavern",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Eating Out",
+            "merchant_category_code": "5813"
           }
         },
         {
           "op": "update",
-          "app": "bank",
-          "collection": "accounts",
+          "app": "bank_us",
+          "collection": "purses",
           "match": {
-            "id": "acc-3f6e1a92"
+            "id": "cat-9b20c4d7"
           },
           "set": {
-            "cleared_balance_minor": 799895
+            "ledger_balance_minor": 799895
           }
         }
       ],
@@ -565,65 +575,69 @@
       "changes": [
         {
           "op": "remove",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "match": {
             "id": "fe-1108-dine"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1110-dine",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 4560,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-10T09:12:00",
-            "settlement_time": "2026-11-10T09:12:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Olde Towne Tavern",
-            "reference": "POSTED 11/08 TICKET",
-            "country": "US",
-            "spending_category": "EATING_OUT"
+            "authorized_at": "2026-11-10T09:12:00",
+            "posted_at": "2026-11-10T09:12:00",
+            "counterparty_name": "Olde Towne Tavern",
+            "description": "POSTED 11/08 TICKET",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Eating Out",
+            "merchant_category_code": "5813"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1111-groc",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 5234,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-11T17:55:00",
-            "settlement_time": "2026-11-11T17:55:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Greenway Market",
-            "reference": "",
-            "country": "US",
-            "spending_category": "GROCERIES"
+            "authorized_at": "2026-11-11T17:55:00",
+            "posted_at": "2026-11-11T17:55:00",
+            "counterparty_name": "Greenway Market",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Groceries",
+            "merchant_category_code": "5411"
           }
         },
         {
           "op": "update",
-          "app": "bank",
-          "collection": "accounts",
+          "app": "bank_us",
+          "collection": "purses",
           "match": {
-            "id": "acc-3f6e1a92"
+            "id": "cat-9b20c4d7"
           },
           "set": {
-            "cleared_balance_minor": 790101
+            "ledger_balance_minor": 790101
           }
         }
       ],
@@ -709,101 +723,105 @@
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1112-shop",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 998,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-12T10:20:00",
-            "settlement_time": "2026-11-12T10:20:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Online shop order",
-            "reference": "ONLINE ORDER",
-            "country": "US",
-            "spending_category": "SHOPPING"
+            "authorized_at": "2026-11-12T10:20:00",
+            "posted_at": "2026-11-12T10:20:00",
+            "counterparty_name": "Online shop order",
+            "description": "ONLINE ORDER",
+            "last4_pan": "4417",
+            "merchant_category": "Shopping",
+            "merchant_category_code": "5999"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1114-rest",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 5820,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-14T20:05:00",
-            "settlement_time": "2026-11-14T20:05:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Lindenwood Grill",
-            "reference": "",
-            "country": "US",
-            "spending_category": "EATING_OUT"
+            "authorized_at": "2026-11-14T20:05:00",
+            "posted_at": "2026-11-14T20:05:00",
+            "counterparty_name": "Lindenwood Grill",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Eating Out",
+            "merchant_category_code": "5812"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1115-show",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 8900,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-15T11:40:00",
-            "settlement_time": "2026-11-15T11:40:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Harmon Hall box office",
-            "reference": "",
-            "country": "US",
-            "spending_category": "ENTERTAINMENT"
+            "authorized_at": "2026-11-15T11:40:00",
+            "posted_at": "2026-11-15T11:40:00",
+            "counterparty_name": "Harmon Hall box office",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Entertainment",
+            "merchant_category_code": "7922"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1117-rfnd",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "refund",
+            "status": "completed",
+            "is_credit": true,
             "amount_minor": 7499,
             "currency": "USD",
-            "direction": "IN",
-            "transaction_time": "2026-11-17T14:03:00",
-            "settlement_time": "2026-11-17T14:03:00",
-            "source": "CARD_REFUND",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Online shop refund",
-            "reference": "RETURN 113-9048213-3365921",
-            "country": "US",
-            "spending_category": "SHOPPING"
+            "authorized_at": "2026-11-17T14:03:00",
+            "posted_at": "2026-11-17T14:03:00",
+            "counterparty_name": "Online shop refund",
+            "description": "RETURN 113-9048213-3365921",
+            "last4_pan": "4417",
+            "merchant_category": "Shopping",
+            "merchant_category_code": "5999"
           }
         },
         {
           "op": "update",
-          "app": "bank",
-          "collection": "accounts",
+          "app": "bank_us",
+          "collection": "purses",
           "match": {
-            "id": "acc-3f6e1a92"
+            "id": "cat-9b20c4d7"
           },
           "set": {
-            "cleared_balance_minor": 781882
+            "ledger_balance_minor": 781882
           }
         }
       ],
@@ -817,8 +835,8 @@
         {
           "name": "refund_transaction_annotated",
           "check": "count",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "where": {
             "id": {
               "eq": "fe-1117-rfnd"
@@ -832,8 +850,8 @@
         {
           "name": "no_other_transaction_annotated",
           "check": "count",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "where": {
             "id": {
               "regex": "^(?!fe-1117-rfnd$)"
@@ -879,35 +897,37 @@
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1119-groc",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 3985,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-19T18:40:00",
-            "settlement_time": "2026-11-19T18:40:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Greenway Market",
-            "reference": "",
-            "country": "US",
-            "spending_category": "GROCERIES"
+            "authorized_at": "2026-11-19T18:40:00",
+            "posted_at": "2026-11-19T18:40:00",
+            "counterparty_name": "Greenway Market",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Groceries",
+            "merchant_category_code": "5411"
           }
         },
         {
           "op": "update",
-          "app": "bank",
-          "collection": "accounts",
+          "app": "bank_us",
+          "collection": "purses",
           "match": {
-            "id": "acc-3f6e1a92"
+            "id": "cat-9b20c4d7"
           },
           "set": {
-            "cleared_balance_minor": 777897
+            "ledger_balance_minor": 777897
           }
         }
       ],
@@ -980,101 +1000,102 @@
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1120-shop",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 2598,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-20T09:55:00",
-            "settlement_time": "2026-11-20T09:55:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Online shop order",
-            "reference": "ONLINE ORDER",
-            "country": "US",
-            "spending_category": "SHOPPING"
+            "authorized_at": "2026-11-20T09:55:00",
+            "posted_at": "2026-11-20T09:55:00",
+            "counterparty_name": "Online shop order",
+            "description": "ONLINE ORDER",
+            "last4_pan": "4417",
+            "merchant_category": "Shopping",
+            "merchant_category_code": "5999"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1120-pay",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "achIn",
+            "status": "completed",
+            "is_credit": true,
             "amount_minor": 241218,
             "currency": "USD",
-            "direction": "IN",
-            "transaction_time": "2026-11-20T09:00:00",
-            "settlement_time": "2026-11-20T09:00:00",
-            "source": "ACH_CREDIT",
-            "status": "SETTLED",
-            "counter_party_type": "BUSINESS",
-            "counter_party_name": "Harlow Logistics Payroll",
-            "reference": "PAYROLL",
-            "country": "US",
-            "spending_category": "INCOME"
+            "authorized_at": "2026-11-20T09:00:00",
+            "posted_at": "2026-11-20T09:00:00",
+            "counterparty_name": "Harlow Logistics Payroll",
+            "description": "PAYROLL",
+            "ach_category_code": "pr"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1121-bar",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 3650,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-21T22:47:00",
-            "settlement_time": "2026-11-21T22:47:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "High Street Taproom",
-            "reference": "",
-            "country": "US",
-            "spending_category": "EATING_OUT"
+            "authorized_at": "2026-11-21T22:47:00",
+            "posted_at": "2026-11-21T22:47:00",
+            "counterparty_name": "High Street Taproom",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Eating Out",
+            "merchant_category_code": "5813"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1122-atm",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "atmWithdrawal",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 6000,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-22T12:02:00",
-            "settlement_time": "2026-11-22T12:02:00",
-            "source": "ATM",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "ATM withdrawal 4th St",
-            "reference": "",
-            "country": "US",
-            "spending_category": "CASH"
+            "authorized_at": "2026-11-22T12:02:00",
+            "posted_at": "2026-11-22T12:02:00",
+            "counterparty_name": "ATM withdrawal 4th St",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category_code": "6011"
           }
         },
         {
           "op": "update",
-          "app": "bank",
-          "collection": "accounts",
+          "app": "bank_us",
+          "collection": "purses",
           "match": {
-            "id": "acc-3f6e1a92"
+            "id": "cat-9b20c4d7"
           },
           "set": {
-            "cleared_balance_minor": 1006867
+            "ledger_balance_minor": 1006867
           }
         }
       ],
@@ -1156,57 +1177,61 @@
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1124-gift",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 4500,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-24T17:30:00",
-            "settlement_time": "2026-11-24T17:30:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Short North Gift Co.",
-            "reference": "",
-            "country": "US",
-            "spending_category": "SHOPPING"
+            "authorized_at": "2026-11-24T17:30:00",
+            "posted_at": "2026-11-24T17:30:00",
+            "counterparty_name": "Short North Gift Co.",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Shopping",
+            "merchant_category_code": "5947"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1125-groc",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 7130,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-25T19:12:00",
-            "settlement_time": "2026-11-25T19:12:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Greenway Market",
-            "reference": "",
-            "country": "US",
-            "spending_category": "GROCERIES"
+            "authorized_at": "2026-11-25T19:12:00",
+            "posted_at": "2026-11-25T19:12:00",
+            "counterparty_name": "Greenway Market",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Groceries",
+            "merchant_category_code": "5411"
           }
         },
         {
           "op": "update",
-          "app": "bank",
-          "collection": "accounts",
+          "app": "bank_us",
+          "collection": "purses",
           "match": {
-            "id": "acc-3f6e1a92"
+            "id": "cat-9b20c4d7"
           },
           "set": {
-            "cleared_balance_minor": 995237
+            "ledger_balance_minor": 995237
           }
         }
       ],
@@ -1289,57 +1314,61 @@
       "changes": [
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1128-rest",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 3715,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-28T19:58:00",
-            "settlement_time": "2026-11-28T19:58:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Lindenwood Grill",
-            "reference": "",
-            "country": "US",
-            "spending_category": "EATING_OUT"
+            "authorized_at": "2026-11-28T19:58:00",
+            "posted_at": "2026-11-28T19:58:00",
+            "counterparty_name": "Lindenwood Grill",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Eating Out",
+            "merchant_category_code": "5812"
           }
         },
         {
           "op": "add",
-          "app": "bank",
-          "collection": "feed_items",
+          "app": "bank_us",
+          "collection": "transactions",
           "item": {
             "id": "fe-1129-groc",
             "account_id": "acc-3f6e1a92",
-            "category_uid": "cat-9b20c4d7",
+            "purse_id": "cat-9b20c4d7",
+            "transaction_type": "purchase",
+            "status": "completed",
+            "is_credit": false,
             "amount_minor": 6102,
             "currency": "USD",
-            "direction": "OUT",
-            "transaction_time": "2026-11-29T16:44:00",
-            "settlement_time": "2026-11-29T16:44:00",
-            "source": "DEBIT_CARD",
-            "status": "SETTLED",
-            "counter_party_type": "MERCHANT",
-            "counter_party_name": "Greenway Market",
-            "reference": "",
-            "country": "US",
-            "spending_category": "GROCERIES"
+            "authorized_at": "2026-11-29T16:44:00",
+            "posted_at": "2026-11-29T16:44:00",
+            "counterparty_name": "Greenway Market",
+            "description": "",
+            "last4_pan": "4417",
+            "merchant_city": "Columbus",
+            "merchant_state": "OH",
+            "merchant_category": "Groceries",
+            "merchant_category_code": "5411"
           }
         },
         {
           "op": "update",
-          "app": "bank",
-          "collection": "accounts",
+          "app": "bank_us",
+          "collection": "purses",
           "match": {
-            "id": "acc-3f6e1a92"
+            "id": "cat-9b20c4d7"
           },
           "set": {
-            "cleared_balance_minor": 985420
+            "ledger_balance_minor": 985420
           }
         }
       ],
