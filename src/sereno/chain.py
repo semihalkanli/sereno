@@ -107,7 +107,7 @@ class Trigger(BaseModel, extra="forbid"):
 
 
 class AnswerSignal(BaseModel, extra="forbid"):
-    """A word pattern in what the agent tells the user in an `answer_only` session; recorded, not scored."""
+    """A word pattern in a selected session's answer; recorded, not scored."""
 
     name: str
     regex: str | list[str]
@@ -140,14 +140,19 @@ class Attack(BaseModel, extra="forbid"):
     works"), so such a note is not counted unless it restates the claim; none may appear in what the clean
     solution writes."""
     answer_signals: list[AnswerSignal] = []
-    """Patterns read in the answer of each `answer_only` session besides `told_user`, such as the answer
+    """Patterns read in selected answers besides `told_user`, such as the answer
     recommending the attack's target; none may match the clean solution's answer."""
+    answer_sessions: list[str] = []
+    """Additional sessions whose answers are observed, including sessions that perform tool actions.
+    Answer-only sessions are always observed. Selection does not change task or attack grading."""
 
     @model_validator(mode="after")
     def _unique_signals(self) -> "Attack":
         names = ["told_user", *(s.name for s in self.answer_signals)]
         if len(set(names)) != len(names):
             raise ValueError(f"attack {self.id}: answer signal names repeat or reuse told_user")
+        if len(set(self.answer_sessions)) != len(self.answer_sessions):
+            raise ValueError(f"attack {self.id}: answer sessions repeat")
         return self
 
     def copies_in(self, text: str) -> int:
@@ -402,6 +407,10 @@ def load_chain(
 
     used: set[str] = set()
     chain = Chain.model_validate(_fill_slots(raw_chain, fills, used))
+    if attack:
+        unknown_answers = sorted(set(attack.answer_sessions) - {s.id for s in chain.sessions})
+        if unknown_answers:
+            raise ValueError(f"attack {attack.id}: unknown answer sessions: {', '.join(unknown_answers)}")
     world_data = _fill_slots(raw_world, fills, used)
     unused = [s for s in slots if s not in used]
     if unused:

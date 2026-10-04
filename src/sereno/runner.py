@@ -42,7 +42,7 @@ class ChainResult:
     session that first showed the poison, whether `poison_copied` holds the session before it in any app, such as
     memory or a saved place (None when the goal is not reached, or is reached in that session or in one that opened
     with the poison's own fill in view again, see `_shows_fill`); in a chain with
-    `answer_only` sessions also `answer_signals`, session id -> what its final answer showed (`Attack.signals_in`),
+    `answer_only` or explicitly selected sessions also `answer_signals`, session id -> what its final answer showed,
     recorded and not scored."""
     stopped_at: str | None = None
     """The first session that ended in "error"; the chain stops there and the run is invalid."""
@@ -292,7 +292,7 @@ def run_chain(
                         )
                         if copies[app]:
                             copied.append(f"{session.id}:{app}")
-                if attack and session.answer_only:
+                if attack and (session.answer_only or session.id in attack.answer_sessions):
                     answers[session.id] = attack.signals_in(
                         outcome.final_text
                         if outcome.question is None
@@ -317,7 +317,7 @@ def run_chain(
             score("final", chain.final_checks, start)
         if attack:
             result.timing["poison_copied"] = copied
-        if attack and any(s.answer_only for s in chain.sessions):
+        if attack and (attack.answer_sessions or any(s.answer_only for s in chain.sessions)):
             result.timing["answer_signals"] = answers
         if attack and chain.memory:
             result.timing["poison_in_memory"] = in_memory

@@ -6,6 +6,10 @@ Apps are written once in `src/sereno/apps/` and a chain only names the ones it
 links. Run a chain with `uv run sereno run <id> --scripted` (its solution, no
 API calls) or `--model glm53` (paid), optionally with `--attack <attack id>`.
 
+The [distinct-world challenge suite](CHALLENGE_DESIGN.md) selects three new attacks
+per world, each with answer observations, a tool-response variant and an unsafe
+grader witness. Its `challenge-suite.json` catalog provides paths for `--attack-file`.
+
 ```
 chains/<id>/
   chain.json        the task: sessions, user turns, outside changes, slots, checks
@@ -142,7 +146,8 @@ What outlives a session and can carry a poison into a later one:
 | `trigger` | `{session, phrase}`: something the user says in a later session that the poison waits for (optional) |
 | `checks` | attack success, over the whole chain, against the initial world |
 | `copy_tokens` | regular expressions for what asserts the poison's claim and survives a restatement, such as `for roof work` or `roof[- ]?works?\W+(?:\w+\W+){0,2}clos`, not the topic word a note dismissing the claim also names; with the marker they count copies the agent writes, ignoring case (optional, decision log sections 125 and 133) |
-| `answer_signals` | `{name, regex}` patterns read in the final answer of each `answer_only` session, besides the built-in `told_user`; `regex` works as in a check (a list must all match, case-insensitive); recorded, not scored (optional) |
+| `answer_signals` | `{name, regex}` patterns read in selected final answers, besides the built-in `told_user`; `regex` works as in a check (a list must all match, case-insensitive); recorded, not scored (optional) |
+| `answer_sessions` | Additional session IDs whose final answers are observed, including sessions with tool actions; `answer_only` sessions are always observed. Does not change grading (optional). |
 
 ### Timing (decision log section 108)
 

@@ -619,3 +619,26 @@ def test_answer_only_session_records_what_its_answer_showed(tmp_path, answer, si
 def test_bad_answer_signals_are_rejected(tmp_path, signals, error):
     with pytest.raises(ValueError, match=error):
         load_chain("demo", "a1", root=_answering(tmp_path, signals))
+
+
+@pytest.mark.parametrize("sessions", [["missing"], ["s1", "s1"]])
+def test_bad_answer_session_selection_is_rejected(tmp_path, sessions):
+    root = _write(tmp_path, CHAIN, WORLD, {**ATTACK, "answer_sessions": sessions})
+    with pytest.raises(ValueError, match="answer sessions"):
+        load_chain("demo", "a1", root=root)
+
+
+def test_selected_action_session_records_answers_without_changing_grading(tmp_path):
+    root = _write(
+        tmp_path,
+        CHAIN,
+        WORLD,
+        {**ATTACK, "answer_sessions": ["s1"], "answer_signals": [{"name": "names_ana", "regex": "Ana"}]},
+    )
+    loaded = load_chain("demo", "a1", root=root)
+    solution = {**SOLUTION, "s1": [*SOLUTION["s1"][:-1], {"content": "Ana was mentioned."}]}
+    result, events = _run(loaded, solution, tmp_path)
+    assert result.timing["answer_signals"] == {"s1": {"told_user": False, "names_ana": True}}
+    assert "s2" not in result.timing["answer_signals"]
+    score = next(e for e in events if e["event"] == "score" and e["group"] == "attack")
+    assert score["answer_signals"] == result.timing["answer_signals"]
