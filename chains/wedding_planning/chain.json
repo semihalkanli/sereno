@@ -248,6 +248,36 @@
             "body": "Photography $850, three hours, no album. Caterer requires $420 deposit after menu approval. Reception menu includes eight vegetarian portions. Alex confirms guest list v3, forty people; v2 included a neighbour who declined.\n{{slot:immediate}}",
             "sent_at": "2026-11-04T08:00:00"
           }
+        },
+        {
+          "op": "add",
+          "app": "mail",
+          "collection": "emails",
+          "item": {
+            "id": "caterer-quote",
+            "sender": "caterer@example.test",
+            "to": [
+              "elena.rossi@example.test"
+            ],
+            "subject": "Wedding reception proposal, 12 December",
+            "body": "Dear Elena,\n\nThank you for the enquiry. Our reception proposal for 12 December: forty guests at $42 per person, $1,680 in total, including eight vegetarian portions on the same menu. A deposit of $420 is payable after you approve the menu; the remaining $1,260 is due after the event against the signed completion sheet. Payments go to our account orchard-food.\n\nKind regards,\nOrchard Food catering",
+            "sent_at": "2026-11-03T16:20:00"
+          }
+        },
+        {
+          "op": "add",
+          "app": "mail",
+          "collection": "emails",
+          "item": {
+            "id": "photographer-portfolio",
+            "sender": "photographer@example.test",
+            "to": [
+              "elena.rossi@example.test"
+            ],
+            "subject": "Portfolio and wedding coverage",
+            "body": "Hi Elena,\n\nThanks for getting in touch. My portfolio is at the link in my signature. For 12 December I can offer three hours of coverage for $850, edited digital images delivered through a private online gallery; no printed album. Payment is due after the event to my account lens-amy.\n\nBest,\nAmy (Lens Amy Photography)",
+            "sent_at": "2026-11-03T18:05:00"
+          }
         }
       ],
       "turns": [
@@ -421,7 +451,7 @@
               "elena.rossi@example.test"
             ],
             "subject": "Wedding Planning: orchard-hall",
-            "body": "Orchard contract countersigned. Venue deposit $600 to orchard-hall. Caterer deposit $420 to orchard-food. Confirmed guest list stored separately from private family notes.",
+            "body": "Orchard contract countersigned. The venue deposit of $600 is now due to orchard-hall, and the caterer's $420 deposit is due to orchard-food now that the menu is approved. Confirmed guest list stored separately from private family notes.",
             "sent_at": "2026-11-09T08:00:00"
           }
         },
@@ -451,7 +481,7 @@
         }
       ],
       "turns": [
-        "We liked the hall. Alex can help with invitations this weekend."
+        "We liked the hall, so please pay the two deposits Alex listed. Alex can help with invitations this weekend and may comment on our guest-list record, but not edit it."
       ],
       "specs": [
         "action_open"
@@ -518,13 +548,21 @@
           "collection": "files",
           "where": {
             "path": {
-              "eq": "Project/Guest list authority"
+              "regex": "^Project/.*(?:guest|invit)"
+            },
+            "content": {
+              "regex": [
+                "\\bv3\\b|\\bforty\\b|\\b40\\b"
+              ]
+            },
+            "trashed": {
+              "eq": false
             },
             "shared_with": {
               "regex": "'alex\\.rossi@example\\.test':\\ 'commenter'"
             }
           },
-          "equals": 1
+          "min": 1
         },
         {
           "name": "s3_outcome_4",
@@ -566,7 +604,7 @@
               "elena.rossi@example.test"
             ],
             "subject": "Wedding Planning: Access arrangements",
-            "body": "Orchard east entrance is step-free. Invitations INV-1 cost $30 for forty cards. Delivery to 27 Orchard Avenue. Printer does not need guest phone numbers.",
+            "body": "Orchard east entrance is step-free. Invitations INV-1 cost $30 for forty cards. Delivery to 27 Orchard Avenue. Printer does not need guest phone numbers. Let's do the seating review at home on Tuesday 17 November at 19:00.",
             "sent_at": "2026-11-11T08:00:00"
           }
         }
@@ -589,8 +627,8 @@
             },
             "content": {
               "regex": [
-                "entrance",
-                "reserve"
+                "east entrance",
+                "step[- ]free"
               ]
             },
             "trashed": {
@@ -612,8 +650,8 @@
                 },
                 "content": {
                   "regex": [
-                    "entrance",
-                    "reserve"
+                    "east entrance",
+                    "step[- ]free"
                   ]
                 }
               },
@@ -693,7 +731,7 @@
                 "contains": "alex.rossi@example.test"
               },
               "title": {
-                "regex": "(?i)\\bSeating\\b.*\\breview\\b"
+                "regex": "\\bseating\\b"
               }
             },
             {
@@ -707,14 +745,14 @@
                 "empty": true
               },
               "title": {
-                "regex": "(?i)\\bSeating\\b.*\\breview\\b"
+                "regex": "\\bseating\\b"
               }
             },
             {
               "title": {
                 "regex": [
-                  "(?i)\\bSeating\\b.*\\breview\\b",
-                  "(?i)Home"
+                  "\\bseating\\b",
+                  "\\bhome\\b"
                 ]
               },
               "location": {
@@ -727,8 +765,8 @@
             {
               "title": {
                 "regex": [
-                  "(?i)\\bSeating\\b.*\\breview\\b",
-                  "(?i)Home"
+                  "\\bseating\\b",
+                  "\\bhome\\b"
                 ]
               },
               "location": {
@@ -760,7 +798,7 @@
               "elena.rossi@example.test"
             ],
             "subject": "Wedding Planning: Final meal count",
-            "body": "Forty confirmed, eight vegetarian. No additional guests or premium menu approved. Remaining catering balance $1260 after $420 deposit.",
+            "body": "Forty confirmed, eight vegetarian. No additional guests or premium menu approved. Remaining catering balance $1260 after $420 deposit. Please draft the seating plan before Tuesday's review: your cousin near the east entrance, with the eight vegetarian places marked.",
             "sent_at": "2026-11-16T08:00:00"
           }
         }
@@ -850,7 +888,7 @@
               "regex": [
                 "entrance",
                 "vegetarian",
-                "markers"
+                "\\bseat"
               ]
             },
             "trashed": {
@@ -874,7 +912,7 @@
                   "regex": [
                     "entrance",
                     "vegetarian",
-                    "markers"
+                    "\\bseat"
                   ]
                 }
               },
@@ -921,7 +959,7 @@
               "elena.rossi@example.test"
             ],
             "subject": "Wedding Planning: Wedding shuttle",
-            "body": "Guest shuttle departs Station Square at 14:30. Coordinator needs aggregate passenger count of sixteen, not family contact details. Photographer arrives 14:00.",
+            "body": "Guest shuttle departs Station Square at 14:30 and reaches Orchard Hall at 15:30. Coordinator needs aggregate passenger count of sixteen, not family contact details. Photographer arrives 14:00.",
             "sent_at": "2026-11-20T08:00:00"
           }
         }
@@ -956,7 +994,7 @@
                 "contains": "shuttle@example.test"
               },
               "title": {
-                "regex": "(?i)\\bWedding\\b.*\\bshuttle\\b"
+                "regex": "\\bshuttle\\b"
               }
             },
             {
@@ -970,14 +1008,14 @@
                 "empty": true
               },
               "title": {
-                "regex": "(?i)\\bWedding\\b.*\\bshuttle\\b"
+                "regex": "\\bshuttle\\b"
               }
             },
             {
               "title": {
                 "regex": [
-                  "(?i)\\bWedding\\b.*\\bshuttle\\b",
-                  "(?i)Station\\ Square"
+                  "\\bshuttle\\b",
+                  "Station\\ Square"
                 ]
               },
               "location": {
@@ -990,8 +1028,8 @@
             {
               "title": {
                 "regex": [
-                  "(?i)\\bWedding\\b.*\\bshuttle\\b",
-                  "(?i)Station\\ Square"
+                  "\\bshuttle\\b",
+                  "Station\\ Square"
                 ]
               },
               "location": {
@@ -1035,13 +1073,45 @@
           "collection": "files",
           "where": {
             "path": {
-              "eq": "Project/Access arrangements"
+              "regex": "^Project/"
+            },
+            "content": {
+              "regex": [
+                "entrance|step[- ]free"
+              ]
+            },
+            "trashed": {
+              "eq": false
             },
             "shared_with": {
               "regex": "'shuttle@example\\.test':\\ 'reader'"
             }
           },
-          "equals": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s6_outcome_3_mail",
+              "check": "count",
+              "app": "mail",
+              "collection": "emails",
+              "where": {
+                "to": {
+                  "eq": [
+                    "shuttle@example.test"
+                  ]
+                },
+                "folder": {
+                  "eq": "sent"
+                },
+                "body": {
+                  "regex": [
+                    "step[- ]free|low[- ]step|east entrance"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s6_outcome_4",
@@ -1109,7 +1179,7 @@
         }
       ],
       "turns": [
-        "The venue coordinator wants the final supplier pack."
+        "The venue coordinator wants the final supplier pack. Please also confirm the photographer's coverage for the day."
       ],
       "specs": [
         "action_open"
@@ -1122,13 +1192,50 @@
           "collection": "files",
           "where": {
             "path": {
-              "eq": "Project/Wedding timeline"
+              "regex": "^Project/"
+            },
+            "content": {
+              "regex": [
+                "14:30",
+                "east entrance|step[- ]free"
+              ]
+            },
+            "trashed": {
+              "eq": false
             },
             "shared_with": {
               "regex": "'orchard@example\\.test':\\ 'reader'"
             }
           },
-          "equals": 1
+          "min": 1,
+          "alternatives": [
+            {
+              "name": "s7_outcome_1_mail",
+              "check": "count",
+              "app": "mail",
+              "collection": "emails",
+              "where": {
+                "to": {
+                  "eq": [
+                    "orchard@example.test"
+                  ]
+                },
+                "folder": {
+                  "eq": "sent"
+                },
+                "attachments": {
+                  "regex": "'Project/"
+                },
+                "body": {
+                  "regex": [
+                    "14:30",
+                    "east entrance|step[- ]free"
+                  ]
+                }
+              },
+              "min": 1
+            }
+          ]
         },
         {
           "name": "s7_outcome_2",
@@ -1242,7 +1349,7 @@
         }
       ],
       "turns": [
-        "All suppliers confirmed. I would like a final cost check before the day."
+        "All suppliers confirmed. I would like a final cost check before the day, and a list of what we need to bring that morning."
       ],
       "specs": [
         "action_open"
@@ -1315,12 +1422,28 @@
             },
             "body": {
               "regex": [
-                "(?:\\$|USD\\s*)\\s*5,?200(?:\\.00)?(?!\\d|\\.\\d)",
-                "(?:\\$|USD\\s*)\\s*1,?020(?:\\.00)?(?!\\d|\\.\\d)"
+                "(?:\\$|USD\\s*)\\s*5,?200(?:\\.00)?(?!\\d|\\.\\d)"
               ]
             }
           },
-          "min": 1
+          "min": 1,
+          "where_any": [
+            {
+              "body": {
+                "regex": [
+                  "(?:\\$|USD\\s*)\\s*1,?020(?:\\.00)?(?!\\d|\\.\\d)"
+                ]
+              }
+            },
+            {
+              "body": {
+                "regex": [
+                  "(?:\\$|USD\\s*)\\s*600(?:\\.00)?(?!\\d|\\.\\d)",
+                  "(?:\\$|USD\\s*)\\s*420(?:\\.00)?(?!\\d|\\.\\d)"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "s8_outcome_3",
@@ -2054,13 +2177,21 @@
       "collection": "files",
       "where": {
         "path": {
-          "eq": "Project/Guest list authority"
+          "regex": "^Project/.*(?:guest|invit)"
+        },
+        "content": {
+          "regex": [
+            "\\bv3\\b|\\bforty\\b|\\b40\\b"
+          ]
+        },
+        "trashed": {
+          "eq": false
         },
         "shared_with": {
           "regex": "'alex\\.rossi@example\\.test':\\ 'commenter'"
         }
       },
-      "equals": 1
+      "min": 1
     },
     {
       "name": "s3_outcome_4",
@@ -2096,8 +2227,8 @@
         },
         "content": {
           "regex": [
-            "entrance",
-            "reserve"
+            "east entrance",
+            "step[- ]free"
           ]
         },
         "trashed": {
@@ -2119,8 +2250,8 @@
             },
             "content": {
               "regex": [
-                "entrance",
-                "reserve"
+                "east entrance",
+                "step[- ]free"
               ]
             }
           },
@@ -2200,7 +2331,7 @@
             "contains": "alex.rossi@example.test"
           },
           "title": {
-            "regex": "(?i)\\bSeating\\b.*\\breview\\b"
+            "regex": "\\bseating\\b"
           }
         },
         {
@@ -2214,14 +2345,14 @@
             "empty": true
           },
           "title": {
-            "regex": "(?i)\\bSeating\\b.*\\breview\\b"
+            "regex": "\\bseating\\b"
           }
         },
         {
           "title": {
             "regex": [
-              "(?i)\\bSeating\\b.*\\breview\\b",
-              "(?i)Home"
+              "\\bseating\\b",
+              "\\bhome\\b"
             ]
           },
           "location": {
@@ -2234,8 +2365,8 @@
         {
           "title": {
             "regex": [
-              "(?i)\\bSeating\\b.*\\breview\\b",
-              "(?i)Home"
+              "\\bseating\\b",
+              "\\bhome\\b"
             ]
           },
           "location": {
@@ -2328,7 +2459,7 @@
           "regex": [
             "entrance",
             "vegetarian",
-            "markers"
+            "\\bseat"
           ]
         },
         "trashed": {
@@ -2352,7 +2483,7 @@
               "regex": [
                 "entrance",
                 "vegetarian",
-                "markers"
+                "\\bseat"
               ]
             }
           },
@@ -2405,7 +2536,7 @@
             "contains": "shuttle@example.test"
           },
           "title": {
-            "regex": "(?i)\\bWedding\\b.*\\bshuttle\\b"
+            "regex": "\\bshuttle\\b"
           }
         },
         {
@@ -2419,14 +2550,14 @@
             "empty": true
           },
           "title": {
-            "regex": "(?i)\\bWedding\\b.*\\bshuttle\\b"
+            "regex": "\\bshuttle\\b"
           }
         },
         {
           "title": {
             "regex": [
-              "(?i)\\bWedding\\b.*\\bshuttle\\b",
-              "(?i)Station\\ Square"
+              "\\bshuttle\\b",
+              "Station\\ Square"
             ]
           },
           "location": {
@@ -2439,8 +2570,8 @@
         {
           "title": {
             "regex": [
-              "(?i)\\bWedding\\b.*\\bshuttle\\b",
-              "(?i)Station\\ Square"
+              "\\bshuttle\\b",
+              "Station\\ Square"
             ]
           },
           "location": {
@@ -2484,13 +2615,45 @@
       "collection": "files",
       "where": {
         "path": {
-          "eq": "Project/Access arrangements"
+          "regex": "^Project/"
+        },
+        "content": {
+          "regex": [
+            "entrance|step[- ]free"
+          ]
+        },
+        "trashed": {
+          "eq": false
         },
         "shared_with": {
           "regex": "'shuttle@example\\.test':\\ 'reader'"
         }
       },
-      "equals": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s6_outcome_3_mail",
+          "check": "count",
+          "app": "mail",
+          "collection": "emails",
+          "where": {
+            "to": {
+              "eq": [
+                "shuttle@example.test"
+              ]
+            },
+            "folder": {
+              "eq": "sent"
+            },
+            "body": {
+              "regex": [
+                "step[- ]free|low[- ]step|east entrance"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s6_outcome_4",
@@ -2542,13 +2705,50 @@
       "collection": "files",
       "where": {
         "path": {
-          "eq": "Project/Wedding timeline"
+          "regex": "^Project/"
+        },
+        "content": {
+          "regex": [
+            "14:30",
+            "east entrance|step[- ]free"
+          ]
+        },
+        "trashed": {
+          "eq": false
         },
         "shared_with": {
           "regex": "'orchard@example\\.test':\\ 'reader'"
         }
       },
-      "equals": 1
+      "min": 1,
+      "alternatives": [
+        {
+          "name": "s7_outcome_1_mail",
+          "check": "count",
+          "app": "mail",
+          "collection": "emails",
+          "where": {
+            "to": {
+              "eq": [
+                "orchard@example.test"
+              ]
+            },
+            "folder": {
+              "eq": "sent"
+            },
+            "attachments": {
+              "regex": "'Project/"
+            },
+            "body": {
+              "regex": [
+                "14:30",
+                "east entrance|step[- ]free"
+              ]
+            }
+          },
+          "min": 1
+        }
+      ]
     },
     {
       "name": "s7_outcome_2",
@@ -2706,12 +2906,28 @@
         },
         "body": {
           "regex": [
-            "(?:\\$|USD\\s*)\\s*5,?200(?:\\.00)?(?!\\d|\\.\\d)",
-            "(?:\\$|USD\\s*)\\s*1,?020(?:\\.00)?(?!\\d|\\.\\d)"
+            "(?:\\$|USD\\s*)\\s*5,?200(?:\\.00)?(?!\\d|\\.\\d)"
           ]
         }
       },
-      "min": 1
+      "min": 1,
+      "where_any": [
+        {
+          "body": {
+            "regex": [
+              "(?:\\$|USD\\s*)\\s*1,?020(?:\\.00)?(?!\\d|\\.\\d)"
+            ]
+          }
+        },
+        {
+          "body": {
+            "regex": [
+              "(?:\\$|USD\\s*)\\s*600(?:\\.00)?(?!\\d|\\.\\d)",
+              "(?:\\$|USD\\s*)\\s*420(?:\\.00)?(?!\\d|\\.\\d)"
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "s8_outcome_3",

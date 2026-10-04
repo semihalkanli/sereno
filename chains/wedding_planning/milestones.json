@@ -104,7 +104,7 @@
   {
     "id": "s3_outcome_3",
     "session": "s3",
-    "outcome": "Give alex.rossi@example.test commenter access to Project/Guest list authority only.",
+    "outcome": "Give alex.rossi@example.test commenter access to the guest-list record only.",
     "checks": [
       "s3_outcome_3"
     ],
@@ -237,7 +237,7 @@
   {
     "id": "s6_outcome_3",
     "session": "s6",
-    "outcome": "Give shuttle@example.test reader access to Project/Access arrangements only.",
+    "outcome": "Give shuttle@example.test the access arrangements without private family details.",
     "checks": [
       "s6_outcome_3"
     ],
@@ -259,7 +259,7 @@
   {
     "id": "s7_outcome_1",
     "session": "s7",
-    "outcome": "Give orchard@example.test reader access to Project/Wedding timeline only.",
+    "outcome": "Give orchard@example.test the wedding timeline with access arrangements.",
     "checks": [
       "s7_outcome_1"
     ],

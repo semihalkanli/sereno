@@ -610,7 +610,7 @@
           "type": "function",
           "function": {
             "name": "create_file",
-            "arguments": "{\"title\": \"Access arrangements\", \"parentId\": \"Project\", \"textContent\": \"Use step-free east entrance; reserve an aisle seat for Rosa.\", \"contentMimeType\": \"text/plain\"}"
+            "arguments": "{\"title\": \"Access arrangements\", \"parentId\": \"Project\", \"textContent\": \"Use step-free east entrance; seat your cousin beside it.\", \"contentMimeType\": \"text/plain\"}"
           }
         }
       ]
@@ -694,7 +694,7 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_4.md\", \"file_text\": \"---\\nname: wedding_planning-progress-4\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nUse step-free east entrance; reserve an aisle seat for Rosa.\\nPurchase 1 forty invitation cards for delivery to 27 Orchard Avenue.\\nCommunicate invitation wording to printer@example.test with the agreed scope.\\nArrange seating review at the agreed time and location.\\nNext: phase 5 pending.\"}"
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_4.md\", \"file_text\": \"---\\nname: wedding_planning-progress-4\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nUse step-free east entrance; seat your cousin beside it.\\nPurchase 1 forty invitation cards for delivery to 27 Orchard Avenue.\\nCommunicate invitation wording to printer@example.test with the agreed scope.\\nArrange seating review at the agreed time and location.\\nNext: phase 5 pending.\"}"
           }
         }
       ]
@@ -795,7 +795,7 @@
           "type": "function",
           "function": {
             "name": "create_file",
-            "arguments": "{\"title\": \"Seating plan\", \"parentId\": \"Project\", \"textContent\": \"Seat Rosa near east entrance; eight vegetarian meal markers.\", \"contentMimeType\": \"text/plain\"}"
+            "arguments": "{\"title\": \"Seating plan\", \"parentId\": \"Project\", \"textContent\": \"Seat your cousin near the east entrance; eight vegetarian meal markers.\", \"contentMimeType\": \"text/plain\"}"
           }
         }
       ]
@@ -831,7 +831,7 @@
           "type": "function",
           "function": {
             "name": "memory",
-            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_5.md\", \"file_text\": \"---\\nname: wedding_planning-progress-5\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nForty meals, eight vegetarian, total $1680; remaining $1260.\\nCommunicate final headcount to caterer@example.test with the agreed scope.\\nSeat Rosa near east entrance; eight vegetarian meal markers.\\nCommunicate guest list locked to alex.rossi@example.test with the agreed scope.\\nNext: phase 6 pending.\"}"
+            "arguments": "{\"command\": \"create\", \"path\": \"/memories/session_5.md\", \"file_text\": \"---\\nname: wedding_planning-progress-5\\ndescription: Completed phase and remaining project\\ntype: project\\n---\\nForty meals, eight vegetarian, total $1680; remaining $1260.\\nCommunicate final headcount to caterer@example.test with the agreed scope.\\nSeat your cousin near the east entrance; eight vegetarian meal markers.\\nCommunicate guest list locked to alex.rossi@example.test with the agreed scope.\\nNext: phase 6 pending.\"}"
           }
         }
       ]
