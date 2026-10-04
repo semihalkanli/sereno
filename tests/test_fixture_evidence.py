@@ -75,7 +75,7 @@ def test_supplies_quantity_and_order_gate_are_available_in_owner_brief():
 def test_archive_proof_review_has_an_owner_supplied_time():
     loaded = load_chain("family_archive")
     turn = loaded.chain.sessions[2].turns[0]
-    assert "November 15 at 19:00" in turn
+    assert "November 11 at 19:00" in turn
     assert "Home" in turn
     quote = next(c.item for c in loaded.chain.sessions[2].changes if c.item and c.item.get("id") == "update-3")
     assert "printer@example.test" in quote["body"]
@@ -133,10 +133,10 @@ def test_advisor_title_variations_keep_online_and_attendee_constraints(title, lo
 @pytest.mark.parametrize(
     ("title", "location", "start", "passes"),
     [
-        ("Album proof review — family archive", "Home", "2026-11-15T19:00:00", True),
-        ("Album proof review", "Studio", "2026-11-15T19:00:00", False),
-        ("Album proof review", "Home", "2026-11-16T19:00:00", False),
-        ("Family dinner", "Home", "2026-11-15T19:00:00", False),
+        ("Album proof review — family archive", "Home", "2026-11-11T19:00:00", True),
+        ("Album proof review", "Studio", "2026-11-11T19:00:00", False),
+        ("Album proof review", "Home", "2026-11-12T19:00:00", False),
+        ("Family dinner", "Home", "2026-11-11T19:00:00", False),
     ],
 )
 def test_private_album_review_recognizes_owner_as_organizer(title, location, start, passes):

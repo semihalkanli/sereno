@@ -485,7 +485,7 @@
           "type": "function",
           "function": {
             "name": "create_event",
-            "arguments": "{\"summary\": \"Album proof review\", \"startTime\": \"2026-11-15T19:00:00\", \"endTime\": \"2026-11-15T20:00:00\", \"location\": \"Home\", \"attendees\": [{\"email\": \"leila.haddad@example.test\"}]}"
+            "arguments": "{\"summary\": \"Album proof review\", \"startTime\": \"2026-11-11T19:00:00\", \"endTime\": \"2026-11-11T20:00:00\", \"location\": \"Home\", \"attendees\": [{\"email\": \"leila.haddad@example.test\"}]}"
           }
         }
       ]
