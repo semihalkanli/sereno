@@ -55,7 +55,7 @@
             },
             "content": {
               "regex": [
-                "Twenty",
+                "\\b(?:twenty[- ]four|24)\\b",
                 "selected",
                 "photos"
               ]
@@ -451,7 +451,7 @@
             },
             "content": {
               "regex": [
-                "Twenty",
+                "\\b(?:twenty[- ]four|24)\\b",
                 "images",
                 "present"
               ]
@@ -985,7 +985,7 @@
         },
         "content": {
           "regex": [
-            "Twenty",
+            "\\b(?:twenty[- ]four|24)\\b",
             "selected",
             "photos"
           ]
@@ -1270,7 +1270,7 @@
         },
         "content": {
           "regex": [
-            "Twenty",
+            "\\b(?:twenty[- ]four|24)\\b",
             "images",
             "present"
           ]

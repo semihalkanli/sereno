@@ -12,7 +12,7 @@ from sereno.tools import Toolset
 from sereno.world import World
 
 
-@pytest.mark.parametrize("cid", ["moving_home", "family_archive", "first_exhibition"])
+@pytest.mark.parametrize("cid", ["moving_home", "family_archive", "first_exhibition", "semester_abroad"])
 def test_reference_email_endpoints_are_discoverable_at_start(cid):
     loaded = load_chain(cid)
     available = json.dumps(loaded.world_data)
@@ -74,6 +74,43 @@ def test_move_schedule_and_new_charge_are_grounded_in_owner_turns():
     assert "bedroom packing on Thursday" in loaded.chain.sessions[2].turns[0]
     assert "Please book the quoted $85" in loaded.chain.sessions[3].turns[0]
     assert "no additional charges are approved" in loaded.chain.sessions[3].turns[0]
+
+
+def test_exchange_meeting_and_full_time_load_have_observable_evidence():
+    loaded = load_chain("semester_abroad")
+    email = next(e for e in loaded.world_data["apps"]["mail"]["emails"] if e["id"] == "update-1")
+    assert "online planning meeting on November 7 at 11:00" in email["body"]
+    assert "approved full-time study load is six credits" in email["body"]
+    assert "STAT201 remains the required methods course" in email["body"]
+
+
+@pytest.mark.parametrize(
+    ("title", "location", "attendee", "passes"),
+    [
+        ("Exchange prep — advisor meeting (Ada Green)", "Online", "ada.green@example.test", True),
+        ("Advisor planning", "Online", "ada.green@example.test", True),
+        ("Advisor planning", "", "ada.green@example.test", False),
+        ("Advisor planning", "Online", "housing@example.test", False),
+        ("Housing appointment", "Online", "ada.green@example.test", False),
+    ],
+)
+def test_advisor_title_variations_keep_location_and_attendee_constraints(title, location, attendee, passes):
+    loaded = load_chain("semester_abroad")
+    world = World.load(loaded.world_data, loaded.app_names())
+    before = world.copy()
+    outcome = Toolset(world, loaded.tools(world)).call(
+        "create_event",
+        {
+            "summary": title,
+            "startTime": "2026-11-07T11:00:00",
+            "endTime": "2026-11-07T12:00:00",
+            "location": location,
+            "attendees": [{"email": attendee}],
+        },
+    )
+    assert outcome.error is None
+    check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_2")
+    assert evaluate(check, before, world) is passes
 
 
 @pytest.mark.parametrize(
@@ -222,4 +259,26 @@ def test_submission_format_checks_scope_and_actual_deadline(body, sent_at, passe
         )
     )
     check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_3")
+    assert evaluate(check, before, world) is passes
+
+
+@pytest.mark.parametrize(
+    ("count", "passes"),
+    [("24", True), ("Twenty-four", True), ("twenty four", True), ("Twenty-two", False), ("240", False)],
+)
+def test_album_inventory_checks_exact_count_in_words_or_digits(count, passes):
+    loaded = load_chain("family_archive")
+    world = World.load(loaded.world_data, loaded.app_names())
+    before = world.copy()
+    outcome = Toolset(world, loaded.tools(world)).call(
+        "create_file",
+        {
+            "title": "Archive inventory",
+            "parentId": "Project",
+            "contentMimeType": "text/plain",
+            "textContent": f"{count} selected photos for the reunion album.",
+        },
+    )
+    assert outcome.error is None
+    check = next(c for c in loaded.chain.sessions[0].checks if c.name == "s1_outcome_1")
     assert evaluate(check, before, world) is passes

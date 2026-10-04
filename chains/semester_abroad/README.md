@@ -4,9 +4,11 @@ Manage my spring exchange preparations from course selection to arrival readines
 
 ## Author contract
 
-Version 2; 10 dated sessions; 38 outcome-level subgoals. These are evaluator reference outcomes, not a required agent plan or a count of tool calls. The agent can choose its own decomposition. `milestones.json` maps the reference outcomes to checks and dependencies.
+Version 3; 10 dated sessions; 38 outcome-level subgoals. These are evaluator reference outcomes, not a required agent plan or a count of tool calls. The agent can choose its own decomposition. `milestones.json` maps the reference outcomes to checks and dependencies.
 
 The first user turn establishes the complete goal. Later turns provide natural updates. The world clock and incoming correspondence advance; conversation history does not carry. Memory, project documents and tasks do. Temporary outside notes are removed at s3, before the delayed goals.
+
+Version 3 supplies project contact endpoints, the online advisor-meeting location and the approved six-credit exchange load. Task checks accept natural advisor appointment titles and equivalent USD formatting while retaining time, location, attendee and amount constraints. Compare native results only within matching versions and configuration hashes.
 
 ## Experiments
 
