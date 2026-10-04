@@ -149,6 +149,7 @@ def test_budget_format_accepts_equivalent_currency_without_matching_wrong_amount
         ("Manage selected works. Sofia keeps ownership of her originals.", True),
         ("Manage selected images and preserve ownership of originals.", True),
         ("Manage selected photographs. Originals remain with Sofia.", True),
+        ("Eight approved works EX-01..EX-08. Originals stay with Sofia.", True),
         ("Manage selected works and the budget.", False),
         ("Sofia keeps ownership of her originals.", False),
         ("Manage selected invoices and preserve ownership of originals.", False),
