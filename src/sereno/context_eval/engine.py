@@ -2,12 +2,16 @@
 
 import json
 import random
+import re
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from sereno.context_eval.config import fingerprint
+from sereno.context_eval.memory import owner
+
+MEMORY_ROOT = re.compile(r"/memories(?![\w.-])")
 
 
 def write_json(path: Path, value) -> None:
@@ -189,6 +193,7 @@ class Runtime:
                     session_id=self.session.id,
                     action_id=self.action_id,
                     origin=origin,
+                    owner=owner(path),
                     path=path,
                     before=self.memory.get(path),
                     after=files.get(path),
@@ -204,8 +209,9 @@ class Runtime:
         self.log.emit("action", session_id=self.session.id, action_id=self.action_id, command=command)
         raw = self.env.execute(command)
         self.log.emit("raw_output", session_id=self.session.id, action_id=self.action_id, **raw)
-        output = self.engine.apply(self, "after_observation", command, dict(raw))
+        # Capture the agent's own writes before an after_observation memory edit, or they read as harness writes.
         self.capture_memory("agent")
+        output = self.engine.apply(self, "after_observation", command, dict(raw))
         self.last_output = raw["output"]
         # Control-flow submission is determined from actual execution, never injected text.
         output["submitted"] = raw["returncode"] == 0 and raw["output"].lstrip().splitlines()[:1] == [
@@ -216,7 +222,8 @@ class Runtime:
     def observation(self, messages: list[dict]) -> None:
         text = message_text(messages)
         self.observations.append(text)
-        if "/memories/" in self.last_command:
+        # Each action starts in /app, so any read of memory names the /memories root in the command itself.
+        if MEMORY_ROOT.search(self.last_command):
             self.memory_observations.append(text)
         self.log.emit("observation", session_id=self.session.id, action_id=self.action_id, messages=messages)
 

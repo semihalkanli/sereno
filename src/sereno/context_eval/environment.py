@@ -19,10 +19,15 @@ def safe(raw):
     if str(p.resolve()) != raw:
         raise ValueError('symlink paths are unsupported')
     return p
+def text(p):
+    try:
+        return p.read_text()
+    except UnicodeDecodeError:
+        raise ValueError(f'non-UTF-8 file {p}') from None
 op = request['op']
 if op == 'read':
     p = safe(request['path'])
-    result = p.read_text() if p.is_file() else None
+    result = text(p) if p.is_file() else None
 elif op == 'write':
     p = safe(request['path'])
     if request['text'] is None:
@@ -46,7 +51,7 @@ elif op == 'memory':
                 size += p.stat().st_size
                 if size > request['max_bytes'] or len(result) >= request['max_files']:
                     raise ValueError('memory snapshot exceeds limits')
-                result[str(p)] = p.read_text()
+                result[str(p)] = text(p)
 else:
     raise ValueError('unknown bridge operation')
 print(json.dumps(result, ensure_ascii=False))
@@ -112,14 +117,19 @@ class DockerEnvironment:
             ) from error
 
     def _bridge(self, request: dict):
-        result = subprocess.run(
-            ["docker", "exec", "-i", self.name, "python3", "-c", BRIDGE],
-            input=json.dumps(request),
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=30,
-        )
+        try:
+            result = subprocess.run(
+                ["docker", "exec", "-i", self.name, "python3", "-c", BRIDGE],
+                input=json.dumps(request),
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30,
+            )
+        except subprocess.CalledProcessError as error:
+            # The bridge's last stderr line names the rejected path or limit; keep it in result.json.
+            reason = (error.stderr or "").strip().splitlines()[-1:] or [f"exit status {error.returncode}"]
+            raise RuntimeError(f"bridge {request['op']} failed: {reason[0]}") from error
         return json.loads(result.stdout)
 
     def read(self, path: str) -> str | None:

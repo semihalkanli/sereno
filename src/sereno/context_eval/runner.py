@@ -206,7 +206,7 @@ def run_campaign(config, output: Path, registry, *, env_factory=DockerEnvironmen
         for arm in (name for name in ("clean", "attack_carry", "attack_reset") if name in config.arms):
             arm_dir = case_dir / "arms" / arm
             (arm_dir / "sessions").mkdir(parents=True)
-            memory = dict(config.memory.seed)
+            memory = config.memory.initial()
             engine = InterventionEngine(events, registry, enabled=arm != "clean", seed=config.seed + repeat)
             for number, session in enumerate(config.sessions):
                 directory = arm_dir / "sessions" / f"{number + 1:03d}-{session.id}"
@@ -225,7 +225,7 @@ def run_campaign(config, output: Path, registry, *, env_factory=DockerEnvironmen
                         and not session.exposure
                         and (number == 0 or config.sessions[number - 1].exposure)
                     ):
-                        memory = dict(config.memory.seed)
+                        memory = config.memory.initial()
                     task_id = session.task_id or target.task_id
                     try:
                         memory, result = run_session(

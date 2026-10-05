@@ -120,16 +120,28 @@ class MetricSpec(Contract):
 class MemoryConfig(Contract):
     enabled: bool = True
     seed: dict[str, str] = {}
+    user: str | None = None
     max_files: int = Field(100, ge=1, le=10000)
     max_bytes: int = Field(1_000_000, ge=25000)
 
+    def initial(self) -> dict[str, str]:
+        """Agent-owned seed files plus the user-written file, identical for every arm."""
+        from sereno.context_eval.memory import USER
+
+        return {**self.seed, **({USER: self.user} if self.user is not None else {})}
+
     @model_validator(mode="after")
     def coherent(self):
+        from sereno.context_eval.memory import USER
+
         for path in self.seed:
             validate_path(path, "/memories")
-        if not self.enabled and self.seed:
-            raise ValueError("disabled memory cannot have seed files")
-        if len(self.seed) > self.max_files or sum(len(t.encode()) for t in self.seed.values()) > self.max_bytes:
+        if USER in self.seed:
+            raise ValueError(f"{USER} is user-written; set memory.user instead of seeding it")
+        files = self.initial()
+        if not self.enabled and files:
+            raise ValueError("disabled memory cannot have seed or user files")
+        if len(files) > self.max_files or sum(len(t.encode()) for t in files.values()) > self.max_bytes:
             raise ValueError("seed exceeds memory limits")
         return self
 

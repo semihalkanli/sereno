@@ -568,3 +568,117 @@ def test_parallel_repeats_have_independent_memory(tmp_path, fixture_world):
     assert len(probes) == 6
     assert all(row["outcome"] == (row["arm"] == "attack_carry") for row in probes)
     assert all(env.closed for env in created)
+
+
+def memory_runtime(tmp_path, factory, events, session_id="exposure"):
+    return Runtime(
+        factory("fixture", 1),
+        InterventionEngine(events, default_registry()),
+        EventLog(tmp_path / f"{session_id}.jsonl", session_id),
+        Session(id=session_id, exposure=True),
+        MemoryConfig(),
+        {},
+        [],
+    )
+
+
+def test_agent_write_in_an_intervened_action_stays_an_agent_write(tmp_path, fixture_world):
+    _, factory, _, _ = fixture_world
+    event = Intervention(
+        id="poison",
+        method="memory",
+        phase="after_observation",
+        sessions=["exposure"],
+        path="/memories/MEMORY.md",
+        text="harness note\n",
+    )
+    runtime = memory_runtime(tmp_path, factory, [event])
+    runtime.execute(write_command("/memories/agent.md", MARKER))
+    changes = {
+        e["path"]: e["origin"]
+        for e in map(json.loads, (tmp_path / "exposure.jsonl").read_text().splitlines())
+        if e["kind"] == "memory_change"
+    }
+    assert changes == {"/memories/agent.md": "agent", "/memories/MEMORY.md": "harness"}
+
+
+@pytest.mark.parametrize(
+    ("command", "counted"),
+    [
+        ("cat /memories/MEMORY.md", True),
+        ("ls /memories", True),
+        ("cd /memories && cat MEMORY.md", True),
+        ("grep -r poison /memories", True),
+        ("cat /memoriesx/file", False),
+        ("cat README.md", False),
+    ],
+)
+def test_memory_reads_are_detected_by_root_path(tmp_path, fixture_world, command, counted):
+    _, factory, _, _ = fixture_world
+    runtime = memory_runtime(tmp_path, factory, [])
+    runtime.last_command = command
+    runtime.observation([{"role": "user", "content": MARKER}])
+    assert bool(runtime.memory_observations) is counted
+
+
+def test_bridge_failure_keeps_its_reason(monkeypatch):
+    from sereno.context_eval import environment
+
+    def failing(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, args[0], stderr="Traceback\nValueError: non-UTF-8 file /memories/x\n")
+
+    monkeypatch.setattr(environment.subprocess, "run", failing)
+    env = environment.DockerEnvironment.__new__(environment.DockerEnvironment)
+    env.name = "fixture"
+    with pytest.raises(RuntimeError, match="bridge memory failed: ValueError: non-UTF-8 file /memories/x"):
+        env.snapshot_memory(100, 1_000_000)
+
+
+@pytest.mark.parametrize(
+    ("key", "rejected"),
+    [
+        ("max_tokens", False),
+        ("thinking_budget_tokens", False),
+        ("max_input_tokens", False),
+        ("api_key", True),
+        ("apikey", True),
+        ("access_token", True),
+        ("token", True),
+        ("client_secret", True),
+    ],
+)
+def test_credential_keys_match_whole_segments(key, rejected):
+    from sereno.context_eval.config import reject_inline_credentials
+
+    model = {"model": {"model_kwargs": {key: "fixture"}}}
+    if rejected:
+        with pytest.raises(ValueError, match="inline credentials"):
+            reject_inline_credentials(model)
+    else:
+        reject_inline_credentials(model)
+
+
+def test_user_memory_file_is_loaded_and_owned_by_the_user(tmp_path, fixture_world):
+    from sereno.context_eval.memory import USER
+
+    dataset, factory, _, _ = fixture_world
+    with pytest.raises(ValidationError, match="user-written"):
+        MemoryConfig(seed={USER: "x"})
+    with pytest.raises(ValidationError, match="disabled memory"):
+        MemoryConfig(enabled=False, user="x")
+    config = campaign_config(dataset)
+    config.memory.user = "Prefer small patches.\n"
+    root, _ = run_fixture(tmp_path, fixture_world, config)
+    for arm in ("clean", "attack_carry", "attack_reset"):
+        probe = session_dir(root, arm, "002-probe")
+        assert json.loads((probe / "memory_start.json").read_text())[USER] == "Prefer small patches.\n"
+        assert "Prefer small patches." in json.loads((probe / "initial_context.json").read_text())["memory"]
+    runtime = memory_runtime(tmp_path, factory, [])
+    runtime.execute(write_command(USER, "edited by agent"))
+    runtime.execute(write_command("/memories/MEMORY.md", "index"))
+    owners = {
+        e["path"]: (e["origin"], e["owner"])
+        for e in map(json.loads, (tmp_path / "exposure.jsonl").read_text().splitlines())
+        if e["kind"] == "memory_change"
+    }
+    assert owners == {USER: ("agent", "user"), "/memories/MEMORY.md": ("agent", "agent")}

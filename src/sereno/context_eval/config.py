@@ -3,11 +3,14 @@
 import hashlib
 import importlib
 import json
+import re
 from pathlib import Path
 from string import Template
 
 from sereno.context_eval.contracts import Registry
 from sereno.context_eval.schema import ExperimentConfig
+
+CREDENTIAL_KEY = re.compile(r"(^|[_-])(api_?key|authorization|secret|password|passwd|token|credentials?)([_-]|$)")
 
 
 def load_config(path: Path) -> ExperimentConfig:
@@ -136,10 +139,9 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
 def reject_inline_credentials(value):
     if isinstance(value, dict):
         for key, item in value.items():
-            if any(word in key.lower() for word in ("api_key", "authorization", "secret", "password", "token")):
-                # Token budget fields are harmless; credential fields must use provider environment lookup.
-                if key.lower() not in {"max_tokens", "max_completion_tokens", "max_output_tokens"}:
-                    raise ValueError("inline credentials are not supported; use provider environment variables")
+            # Whole key segments, so token budgets such as thinking_budget_tokens are not taken for credentials.
+            if CREDENTIAL_KEY.search(key.lower()):
+                raise ValueError("inline credentials are not supported; use provider environment variables")
             reject_inline_credentials(item)
     elif isinstance(value, list):
         for item in value:
