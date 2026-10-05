@@ -228,6 +228,10 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    from sereno.context_eval.cli import add_parser as add_context_eval_parser
+
+    add_context_eval_parser(sub)
+
     run = sub.add_parser("run", help="run one chain")
     run.add_argument("chain", choices=chain_ids())
     attack_source = run.add_mutually_exclusive_group()
@@ -255,6 +259,10 @@ def main() -> None:
     inspect.add_argument("chain", choices=chain_ids())
 
     args = parser.parse_args()
+    if args.command == "context-eval":
+        from sereno.context_eval.cli import execute
+
+        sys.exit(execute(args))
     if args.command == "inspect":
         import json
 

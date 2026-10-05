@@ -1,0 +1,146 @@
+"""Resolve configs without model calls or implicit plugin imports."""
+
+import hashlib
+import importlib
+import json
+from pathlib import Path
+from string import Template
+
+from sereno.context_eval.contracts import Registry
+from sereno.context_eval.schema import ExperimentConfig
+
+
+def load_config(path: Path) -> ExperimentConfig:
+    import yaml
+
+    path = path.resolve()
+    try:
+        raw_config = yaml.safe_load(path.read_text())
+    except yaml.YAMLError as error:
+        raise ValueError("invalid experiment YAML syntax") from error
+    config = ExperimentConfig.model_validate(raw_config)
+    root = path.parent
+    config.dataset_root = resolve(root, config.dataset_root)
+    if config.model_config_file:
+        config.model_config_file = resolve(root, config.model_config_file)
+    for events in config.variants.values():
+        for event in events:
+            if event.payload_file:
+                event.payload_file = resolve(root, event.payload_file)
+                raw = event.payload_file.read_text()
+            else:
+                raw = event.text
+            try:
+                event.text = Template(raw).substitute(event.parameters) if event.parameters else raw
+            except KeyError as error:
+                raise ValueError(f"{event.id}: missing payload template parameter") from error
+            if not event.text:
+                raise ValueError(f"{event.id}: empty payload")
+            event.payload_file = None
+    return config
+
+
+def resolve(root: Path, path: Path) -> Path:
+    return (root / path.expanduser()).resolve()
+
+
+def fingerprint(value) -> str:
+    raw = value if isinstance(value, str) else json.dumps(value, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def default_registry(plugins: list[str] = ()) -> Registry:
+    from sereno.context_eval.agents import MiniSweAdapter, ScriptedAdapter
+    from sereno.context_eval.engine import BoundedStrategy
+
+    registry = Registry()
+    registry.register_agent("mini-swe", MiniSweAdapter())
+    registry.register_agent("scripted", ScriptedAdapter())
+    for name in ("once", "repeat", "sequence"):
+        registry.register_strategy(name, BoundedStrategy(name))
+    for name in plugins:
+        module = importlib.import_module(name)
+        module.register(registry)
+        source = getattr(module, "__file__", None)
+        registry.plugins.append(
+            {"module": name, "source_sha256": hashlib.sha256(Path(source).read_bytes()).hexdigest() if source else None}
+        )
+    return registry
+
+
+def validate(config: ExperimentConfig, registry: Registry) -> dict:
+    from sereno.context_eval.dataset import load_task
+
+    # Python callers can modify a config after construction; validate the complete current contract again.
+    config = ExperimentConfig.model_validate(config.model_dump())
+
+    if config.agent not in registry.agents:
+        raise ValueError(f"unknown agent adapter: {config.agent}")
+    if config.agent == "mini-swe" and not config.model_config_file:
+        raise ValueError("mini-swe requires model_config_file")
+    if config.model_config_file:
+        import yaml
+
+        try:
+            model = yaml.safe_load(config.model_config_file.read_text())
+        except yaml.YAMLError as error:
+            raise ValueError("invalid model YAML syntax") from error
+        if (
+            not isinstance(model, dict)
+            or not isinstance(model.get("model"), dict)
+            or not model["model"].get("model_name")
+        ):
+            raise ValueError("model config requires model.model_name")
+        builtin_models = {
+            "",
+            "litellm",
+            "litellm_textbased",
+            "litellm_response",
+            "openrouter",
+            "openrouter_textbased",
+            "openrouter_response",
+            "portkey",
+            "portkey_response",
+            "requesty",
+            "deterministic",
+        }
+        if model["model"].get("model_class", "") not in builtin_models:
+            raise ValueError("model_class must name a built-in mini-swe model, not an import path")
+        reject_inline_credentials(model)
+    tasks = {}
+    for target in config.targets:
+        tasks[target.task_id] = load_task(config.dataset_root, target.task_id)
+    for session in config.sessions:
+        if session.task_id:
+            tasks[session.task_id] = load_task(config.dataset_root, session.task_id)
+        if config.agent == "scripted" and not session.script:
+            raise ValueError(f"{session.id}: scripted adapter requires script actions")
+    for events in config.variants.values():
+        for event in events:
+            if event.payload_file is not None or event.text is None:
+                raise ValueError("unresolved payload; load YAML with load_config before validating or running")
+            if event.strategy not in registry.strategies:
+                raise ValueError(f"unknown strategy: {event.strategy}")
+    for metric in config.metrics:
+        if metric.name not in registry.metrics:
+            raise ValueError(f"unknown custom metric: {metric.name}")
+    return {
+        "valid": True,
+        "cases": len(config.targets) * len(config.variants) * config.repeats,
+        "sessions_per_case": len(config.sessions) * len(config.arms),
+        "tasks": sorted(tasks),
+        "agent": config.agent,
+    }
+
+
+def reject_inline_credentials(value):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if any(word in key.lower() for word in ("api_key", "authorization", "secret", "password", "token")):
+                # Token budget fields are harmless; credential fields must use provider environment lookup.
+                if key.lower() not in {"max_tokens", "max_completion_tokens", "max_output_tokens"}:
+                    raise ValueError("inline credentials are not supported; use provider environment variables")
+            reject_inline_credentials(item)
+    elif isinstance(value, list):
+        for item in value:
+            reject_inline_credentials(item)

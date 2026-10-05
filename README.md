@@ -44,6 +44,15 @@ event's raw JSON with its diagnostic records, `f` pauses following and `q`
 quits. Wrap paid runs started from the shell in the cost wrapper below to
 record them in the ledger.
 
+## Context integrity experiments
+
+`sereno context-eval` configures prompt injection and persistent memory poisoning
+experiments on external DeepSWE task images. It supports file, observation and
+memory interventions, clean/carry/reset controls, custom metrics and patch export.
+See [Context Integrity Evaluation](docs/context-integrity-evaluation.md) for setup,
+YAML examples and offline verification. Install its optional dependencies with
+`uv sync --extra deepswe`.
+
 ## Development
 
 ```sh

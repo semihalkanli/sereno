@@ -1,0 +1,9 @@
+# Credentials are read by the provider from OPENROUTER_API_KEY in the host environment.
+model:
+  model_class: openrouter
+  model_name: z-ai/glm-5.3-flash
+  cost_tracking: default
+  model_kwargs:
+    provider:
+      order: [z-ai]
+      allow_fallbacks: false
