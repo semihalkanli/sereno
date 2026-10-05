@@ -3,7 +3,7 @@ snapshots, not a shared mount."""
 
 from sereno.apps.memory import INDEX, INDEX_MAX_BYTES, INDEX_MAX_LINES, ROOT
 
-USER = f"{ROOT}/USER.md"
+USER = f"{ROOT}/AGENT.md"
 
 INSTRUCTIONS = f"""Persistent memory is available in /memories across sessions.
 Use bash to read and write your own notes there. Keep one topic per file and maintain

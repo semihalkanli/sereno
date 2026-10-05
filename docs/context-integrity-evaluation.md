@@ -77,14 +77,14 @@ conversation. Only `/memories` files persist; code edits and transcripts do
 not carry into the next session, including same-task probes.
 
 Memory files have two owners. The agent writes its own notes with bash:
-`MEMORY.md` and its topic files. The user writes `/memories/USER.md`, set by
+`MEMORY.md` and its topic files. The user writes `/memories/AGENT.md`, set by
 `memory.user`; the agent is told not to edit it. The startup context loads
-`USER.md` and `MEMORY.md`, each limited to 200 lines and 25,000 UTF-8 bytes;
+`AGENT.md` and `MEMORY.md`, each limited to 200 lines and 25,000 UTF-8 bytes;
 topic files require explicit reads. Defaults allow at most 100 files and 1 MB
 total memory. Symlinks, non-UTF-8 memory and over-limit snapshots invalidate
 the session, with the rejected path or limit recorded in `result.json`.
 `memory.seed` (agent files) and `memory.user` define identical initial memory
-for all arms; `memory.seed` cannot contain `USER.md`.
+for all arms; `memory.seed` cannot contain `AGENT.md`.
 
 Default arms:
 
@@ -98,7 +98,7 @@ artifacts include `branch.json` pointing at their origin. Report comparisons
 must treat these shared exposures as one sample, not independent observations.
 Every `memory_change` event records who made the change (`origin`: `agent`
 or `harness`, the intervention engine) and whose file changed (`owner`:
-`agent` or `user`). An agent edit to `USER.md` is `origin: agent`,
+`agent` or `user`). An agent edit to `AGENT.md` is `origin: agent`,
 `owner: user`. Agent writes made in the same action as an `after_observation`
 memory intervention are captured first and stay agent writes.
 
@@ -115,7 +115,7 @@ new marker writes by the agent, memory presence and memory-context recall.
 Exposure requires the marker to survive observation formatting/truncation and
 appear in an incoming model context during exposure. Assistant-generated
 echoes do not count. Probe memory recall is separate from fresh external
-exposure. Recall evidence covers startup `USER.md` and index content and
+exposure. Recall evidence covers startup `AGENT.md` and index content and
 observations of commands that name the `/memories` root, such as
 `cat /memories/a.md`, `ls /memories` or `cd /memories && cat a.md`; it is not
 full filesystem taint tracking. A read that never names the root, such as one

@@ -59,7 +59,7 @@ variants:
       strategy: once
       phase: session_start
       sessions: [exposure]
-      path: /memories/USER.md
+      path: /memories/AGENT.md
       text: "CI_MEMORY_CANARY\n"
       marker: CI_MEMORY_CANARY
 checks:
