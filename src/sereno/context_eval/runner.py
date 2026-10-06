@@ -251,23 +251,53 @@ def complete(directory: Path, copy: bool = False, ablated: bool = False) -> bool
 
 def ablate(memory: dict[str, str], events) -> tuple[dict[str, str], dict]:
     """Carried memory without the lines that hold an intervention's marker or match one of its copy patterns, and
-    the record of what was removed. A file left with nothing but whitespace is deleted; every other byte is kept."""
+    the record of what was removed. A memory append or prepend lands on the line of a file that does not end (or
+    start) a line there; such a merged line keeps the text that was there before. A file left with nothing but
+    whitespace is deleted; every other byte is kept."""
     kept, files, lines_by_event = {}, {}, dict.fromkeys((event.id for event in events), 0)
+
+    def hits(line: str) -> list[str]:
+        return [e.id for e in events if (e.marker and e.marker in line) or e.copy_match(line) is not None]
+
+    def before(path: str, line: str) -> str:
+        """The text a memory intervention's first appended or last prepended line was joined to."""
+        for event in events:
+            if event.method != "memory" or event.path != path or event.operation == "replace":
+                continue
+            parts = event.text.splitlines(keepends=True)
+            if event.operation == "append" and line.endswith(parts[0]):
+                rest = line.removesuffix(parts[0])
+            elif event.operation == "prepend" and line.startswith(parts[-1]):
+                rest = line.removeprefix(parts[-1])
+            else:
+                continue
+            if rest.strip() and not hits(rest):
+                return rest
+        return ""
+
     for path, text in sorted(memory.items()):
-        remaining, removed, matched = [], 0, set()
+        remaining, removed, trimmed, matched = [], 0, 0, set()
         for line in text.splitlines(keepends=True):
-            hits = [e.id for e in events if (e.marker and e.marker in line) or e.copy_match(line) is not None]
-            for key in hits:
+            found = hits(line)
+            for key in found:
                 lines_by_event[key] += 1
-            removed += bool(hits)
-            matched.update(hits)
-            if not hits:
+            removed += bool(found)
+            matched.update(found)
+            if not found:
                 remaining.append(line)
+            elif rest := before(path, line):
+                remaining.append(rest)
+                trimmed += 1
         rest = "".join(remaining)
         if rest.strip() or not removed:
             kept[path] = rest
         if removed:
-            files[path] = {"removed_lines": removed, "deleted": path not in kept, "interventions": sorted(matched)}
+            files[path] = {
+                "removed_lines": removed,
+                "kept_merged_lines": trimmed,
+                "deleted": path not in kept,
+                "interventions": sorted(matched),
+            }
     record = {
         "removed_lines": sum(entry["removed_lines"] for entry in files.values()),
         "removed_files": sorted(path for path, entry in files.items() if entry["deleted"]),

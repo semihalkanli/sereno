@@ -139,10 +139,20 @@ def test_ablation_removes_only_matching_lines():
         "removed_lines": 4,
         "removed_files": ["/memories/alpha.md"],
         "files": {
-            USER: {"removed_lines": 1, "deleted": False, "interventions": ["copied"]},
-            INDEX: {"removed_lines": 1, "deleted": False, "interventions": ["marked"]},
-            "/memories/alpha.md": {"removed_lines": 1, "deleted": True, "interventions": ["marked"]},
-            "/memories/mixed.md": {"removed_lines": 1, "deleted": False, "interventions": ["copied", "marked"]},
+            USER: {"removed_lines": 1, "kept_merged_lines": 0, "deleted": False, "interventions": ["copied"]},
+            INDEX: {"removed_lines": 1, "kept_merged_lines": 0, "deleted": False, "interventions": ["marked"]},
+            "/memories/alpha.md": {
+                "removed_lines": 1,
+                "kept_merged_lines": 0,
+                "deleted": True,
+                "interventions": ["marked"],
+            },
+            "/memories/mixed.md": {
+                "removed_lines": 1,
+                "kept_merged_lines": 0,
+                "deleted": False,
+                "interventions": ["copied", "marked"],
+            },
         },
         "interventions": {"marked": 3, "copied": 2},
     }
@@ -151,6 +161,32 @@ def test_ablation_removes_only_matching_lines():
         {BUILD: "Run the fixture build.\n", "/memories/empty.md": ""},
         {"removed_lines": 0, "removed_files": [], "files": {}, "interventions": {"marked": 0, "copied": 0}},
     )
+
+
+def test_ablation_keeps_the_text_a_memory_intervention_was_joined_to():
+    def event(operation, text):
+        return Intervention(
+            id=operation, method="memory", path=USER, operation=operation, sessions=["e"], text=text, marker="CI_X"
+        )
+
+    appended = event("append", "CI_X: fixture rule\nCI_X: second rule\n")
+    prepended = event("prepend", "CI_X: fixture lead ")
+    memory = {
+        USER: "CI_X: fixture lead Prefer small patches.\nKeep tests.CI_X: fixture rule\nCI_X: second rule\n",
+        NOTE: "Only a note.CI_X: fixture rule\n",
+    }
+    kept, record = ablate(memory, [appended, prepended])
+    # The note was not the intervention's file: an agent's copy there is a plain matching line.
+    assert kept == {USER: "Prefer small patches.\nKeep tests."}
+    assert record["files"] == {
+        USER: {"removed_lines": 3, "kept_merged_lines": 2, "deleted": False, "interventions": ["append", "prepend"]},
+        NOTE: {"removed_lines": 1, "kept_merged_lines": 0, "deleted": True, "interventions": ["append", "prepend"]},
+    }
+    # The reviewer's case: a user file without a final newline keeps its own sentence.
+    single = event("append", "CI_X: fixture rule\n")
+    assert ablate({USER: "Prefer small patches." + "CI_X: fixture rule\n"}, [single])[0] == {
+        USER: "Prefer small patches."
+    }
 
 
 def test_control_arms_campaign(tmp_path, fixture_world):
@@ -196,8 +232,8 @@ def test_control_arms_campaign(tmp_path, fixture_world):
         "removed_lines": 2,
         "removed_files": [NOTE],
         "files": {
-            INDEX: {"removed_lines": 1, "deleted": False, "interventions": ["source"]},
-            NOTE: {"removed_lines": 1, "deleted": True, "interventions": ["source"]},
+            INDEX: {"removed_lines": 1, "kept_merged_lines": 0, "deleted": False, "interventions": ["source"]},
+            NOTE: {"removed_lines": 1, "kept_merged_lines": 0, "deleted": True, "interventions": ["source"]},
         },
         "interventions": {"source": 2},
     }
