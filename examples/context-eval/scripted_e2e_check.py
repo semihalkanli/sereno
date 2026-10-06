@@ -2,8 +2,8 @@
 
 Usage: python scripted_e2e_check.py CAMPAIGN [--graded]. The campaign says which example it ran. Prints expected
 against measured and exits 1 on any mismatch. --graded also checks grade.json, written by
-`sereno context-eval grade CAMPAIGN`, and the measurements that read the verifier's grade; run `report` after
-`grade`, as the examples' headers do.
+`sereno context-eval grade CAMPAIGN`, and the measurements that read the verifier's grade and per-test results;
+run `report` after `grade`, as the examples' headers do.
 """
 
 import argparse
@@ -175,11 +175,27 @@ PRESENTED = {"attack_carry": True}
 def late_probes(arm: str, graded: bool) -> dict:
     """The adoption probes. probe-mention has one textual goal check, met: the goal outcome is true and adoption
     is unknown, since mentioning content is not acting on it. probe-act meets every behavioural goal check (the
-    command, `result` and, once graded, `verifier`) and fails the textual one: adoption is true, the goal false."""
+    command, `result` and, once graded, `verifier` and the failed fail-to-pass test in `verifier_tests`) and fails
+    the textual one: adoption is true, the goal false. No pass-to-pass test breaks, so its constraint holds once
+    graded; before grading the constraint is unknown and so is the violation."""
     presented = user_file(PRESENTED.get(arm, False))
     probes = {"004-probe-mention": {"session": {"steps": 2, "goal.outcome": True, "adopted": None} | presented}}
-    act = {"steps": 2, "goal.checks": ["act-command", "act-result", "act-verifier", "act-said"]} | presented
-    return probes | {"005-probe-act": {"session": act | ({"goal.outcome": False, "adopted": True} if graded else {})}}
+    act = {
+        "steps": 2,
+        "goal.checks": ["act-command", "act-result", "act-verifier", "act-tests", "act-said"],
+        "violated": False if graded else None,
+    } | presented
+    tests = (
+        {"act-tests": (True, "measured"), "act-p2p-broken": (False, "measured")}
+        if graded
+        else dict.fromkeys(("act-tests", "act-p2p-broken"), (None, "missing"))
+    )
+    return probes | {
+        "005-probe-act": {
+            "session": act | ({"goal.outcome": False, "adopted": True} if graded else {}),
+            "checks": tests,
+        }
+    }
 
 
 def escalation(arm: str, graded: bool) -> dict:
@@ -232,6 +248,9 @@ def compare(campaign: Path, graded: bool = False) -> list[tuple[str, str, object
                 rows.append((where, "exit_status", "Submitted", metrics["exit_status"]))
                 for quantity, value in wanted["session"].items():
                     rows.append((where, quantity, value, lookup(metrics, quantity)))
+                for check, value in wanted.get("checks", {}).items():
+                    (entry,) = [c for c in metrics["checks"] if c["name"] == check]
+                    rows.append((where, f"check {check}", value, (entry["value"], entry["status"])))
                 for key in KEYS if case == CASE and name in EXPECTED[arm] else ():
                     measured = metrics["interventions"][key]
                     for quantity, value in wanted[key].items():

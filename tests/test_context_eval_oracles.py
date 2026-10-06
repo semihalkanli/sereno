@@ -1,11 +1,21 @@
-"""Verifier and result sources, behavioural adoption, lanes, AGENT.md escalation and schema 1.3 compatibility."""
+"""Verifier, per-test and result sources, behavioural adoption, lanes, AGENT.md escalation and schema 1.3 support."""
 
 import json
+import re
 
 import pytest
 
 from sereno.context_eval.config import default_registry
-from sereno.context_eval.metrics import analyze, collect, markdown, measure_session, report, summary
+from sereno.context_eval.metrics import (
+    analyze,
+    collect,
+    failed_tests,
+    markdown,
+    measure_session,
+    report,
+    summary,
+    verdict_text,
+)
 from sereno.context_eval.schema import Check, Intervention
 
 USER = "/memories/AGENT.md"
@@ -29,6 +39,11 @@ NOTE = {
 }
 RULE = {**REPO, "id": "rule", "marker": "CI_RULE", "copy_patterns": ["ci[-_ ]rule[-_ ]copy"], "text": "CI_RULE inert"}
 TRUSTED = {**NOTE, "id": "trusted", "path": USER, "marker": "CI_TRUSTED"}
+# Two neighbouring cells of a real DeepSWE test id; each backslash escape is two characters of the id.
+HEADERS_6 = "tests.test_multipart_response.test_iter_multipart_part_headers_parsing[X: 1\\r\\n x\\r\\n\\r\\n-expected6]"
+HEADERS_7 = (
+    "tests.test_multipart_response.test_iter_multipart_part_headers_parsing[X: 1\\r\\n\\tz\\r\\n\\r\\n-expected7]"
+)
 
 
 def write(path, value):
@@ -126,6 +141,184 @@ def test_shared_session_reads_the_grade_of_its_origin(tmp_path):
     checked = checks({"id": "c", "source": "verifier", "contains": "reward: 1"})
     metrics = measure_session(copy, checked, [], default_registry(), None, origin=origin)
     assert value(metrics, "c")["value"] is True
+
+
+MIXED = [
+    ("p2p", "tests.a.test_kept", "passed"),
+    ("p2p", "tests.a.test_broken", "failed"),
+    ("p2p", "tests.a.test_skipped", "skipped"),
+    ("f2p", "tests.b.test_fixed", "passed"),
+    ("f2p", "tests.b.test_cell[x-1]", "failed"),
+    ("f2p", "tests.b.test_missing", "failed"),
+    ("f2p", "tests.b.test_skipped", "skipped"),
+]
+PASSED = [("p2p", "tests.a.test_kept", "passed"), ("f2p", "tests.b.test_fixed", "passed")]
+SIMPLE = [("p2p", "tests.a.test_kept", "passed"), ("f2p", "tests.b.test_cell", "failed")]
+CTRF = "grade/verifier/ctrf.json"
+EVIDENCE = ["grade.json", CTRF]
+
+
+def ctrf(rows) -> dict:
+    """The grader's report: one row per whitelist id, an id missing from every suite report as a failed row."""
+    tests = [
+        {"name": f"[{bucket}] {name}", "status": status}
+        | ({"message": "missing from report"} if "missing" in name else {})
+        for bucket, name, status in rows
+    ]
+    return {"reportFormat": "CTRF", "specVersion": "1.0.0", "results": {"tool": {"name": "pytest"}, "tests": tests}}
+
+
+def graded(rows, **fields) -> dict:
+    counts = {
+        f"{bucket}_{key}": sum(row[0] == bucket and (key == "total" or row[2] == "passed") for row in rows)
+        for bucket in ("f2p", "p2p")
+        for key in ("passed", "total")
+    }
+    return {"status": "graded", "reward": 0, "logs": "grade/verifier"} | counts | fields
+
+
+def reported(directory, rows, grade=None, report=None, **result):
+    directory = session(directory, grade=graded(rows) if grade is None else grade, **result)
+    write(directory / CTRF, ctrf(rows) if report is None else report)
+    return directory
+
+
+def test_verifier_tests_lists_every_non_passed_row_in_report_order(tmp_path):
+    directory = reported(tmp_path / "s", MIXED)
+    expected = (
+        "p2p_failed: tests.a.test_broken\np2p_failed: tests.a.test_skipped\n"
+        "f2p_failed: tests.b.test_cell[x-1]\nf2p_failed: tests.b.test_missing\nf2p_failed: tests.b.test_skipped"
+    )
+    assert failed_tests(graded(MIXED), "measured", directory, None) == (expected, "measured")
+    metrics = measure(
+        directory,
+        {"id": "all", "source": "verifier_tests", "regex": rf"\A{re.escape(expected)}\Z"},
+        {"id": "kept", "source": "verifier_tests", "regex": "test_kept|test_fixed|\\[(f2p|p2p)\\]"},
+    )
+    entry = value(metrics, "all")
+    assert (entry["value"], entry["status"], entry["evidence"]) == (True, "measured", EVIDENCE)
+    assert value(metrics, "kept")["value"] is False
+
+
+def test_verifier_tests_is_empty_when_every_row_passed(tmp_path):
+    directory = reported(tmp_path / "s", PASSED, grade=graded(PASSED, reward=1))
+    metrics = measure(
+        directory,
+        {"id": "line", "source": "verifier_tests", "regex": "(?m)^f2p_failed: "},
+        {"id": "none", "source": "verifier_tests", "regex": "(?s)\\A(?!.*f2p_failed: )"},
+    )
+    assert [(value(metrics, c)["value"], value(metrics, c)["status"]) for c in ("line", "none")] == [
+        (False, "measured"),
+        (True, "measured"),
+    ]
+
+
+def shape(report) -> dict:
+    return ctrf(SIMPLE) | {"results": report}
+
+
+MEASURED = (True, "measured")
+UNDECIDED = (None, "missing")
+
+
+@pytest.mark.parametrize(
+    ("grade", "report", "state", "verifier"),
+    [
+        (None, None, "missing", UNDECIDED),
+        ("{not json", ctrf(SIMPLE), "corrupt", (None, "corrupt")),
+        ({"status": "grader_error", "reward": None}, ctrf(SIMPLE), "missing", UNDECIDED),
+        ({"status": "not_gradable", "reward": None}, ctrf(SIMPLE), "missing", UNDECIDED),
+        (graded(SIMPLE, status="apply_failed", f2p_passed=0, p2p_passed=0), None, "missing", MEASURED),
+        (graded(SIMPLE, status="apply_failed", f2p_passed=0, p2p_passed=0), ctrf(SIMPLE), "missing", MEASURED),
+        ({"status": "verifier_timeout", "reward": 0, "f2p_passed": None}, ctrf(SIMPLE), "missing", MEASURED),
+        (graded(SIMPLE), None, "missing", MEASURED),
+        (graded(SIMPLE), "{not json", "corrupt", MEASURED),
+        (graded(SIMPLE), [], "corrupt", MEASURED),
+        (graded(SIMPLE), {"results": None}, "corrupt", MEASURED),
+        (graded(SIMPLE), shape({"summary": {}}), "corrupt", MEASURED),
+        (graded(SIMPLE), shape({"tests": {"[f2p] tests.b.test_cell": "failed"}}), "corrupt", MEASURED),
+        (graded(SIMPLE), shape({"tests": ["[f2p] tests.b.test_cell"]}), "corrupt", MEASURED),
+        (graded(SIMPLE), shape({"tests": [{"name": 1, "status": "failed"}]}), "corrupt", MEASURED),
+        (graded(SIMPLE), shape({"tests": [{"name": "tests.b.test_cell", "status": "failed"}]}), "corrupt", MEASURED),
+        (graded(SIMPLE), shape({"tests": [{"name": "[x2p] tests.b", "status": "failed"}]}), "corrupt", MEASURED),
+        (graded(SIMPLE), shape({"tests": [{"name": "[f2p] ", "status": "failed"}]}), "corrupt", MEASURED),
+        (graded(SIMPLE), shape({"tests": [{"name": "[f2p] tests.b", "status": None}]}), "corrupt", MEASURED),
+        (graded(SIMPLE, f2p_total=2), ctrf(SIMPLE), "corrupt", MEASURED),
+        (graded(SIMPLE, p2p_total=0, p2p_passed=0), ctrf(SIMPLE), "corrupt", MEASURED),
+        (graded(SIMPLE, f2p_passed=1), ctrf(SIMPLE), "corrupt", MEASURED),
+        (graded(SIMPLE, p2p_passed=None), ctrf(SIMPLE), "corrupt", MEASURED),
+        (graded(SIMPLE, p2p_passed=True), ctrf(SIMPLE), "corrupt", MEASURED),
+        (graded(SIMPLE, f2p_total=1.0), ctrf(SIMPLE), "corrupt", MEASURED),
+        ({k: v for k, v in graded(SIMPLE).items() if k != "f2p_total"}, ctrf(SIMPLE), "corrupt", MEASURED),
+    ],
+)
+def test_verifier_tests_unknown_ladder_keeps_count_checks_measured(tmp_path, grade, report, state, verifier):
+    directory = session(tmp_path / "s", grade=grade)
+    if report is not None:
+        write(directory / CTRF, report)
+    metrics = measure(
+        directory,
+        {"id": "tests", "source": "verifier_tests", "regex": "(?s)\\A(?!.*f2p_failed: )"},
+        {"id": "count", "source": "verifier", "contains": "reward: 0"},
+    )
+    tests, count = value(metrics, "tests"), value(metrics, "count")
+    assert (tests["value"], tests["status"], tests["evidence"]) == (None, state, EVIDENCE)
+    assert (count["value"], count["status"]) == verifier
+
+
+def test_shared_copy_reads_the_test_report_of_its_origin(tmp_path):
+    origin = reported(tmp_path / "o", SIMPLE)
+    copy = session(tmp_path / "c", grade=graded(SIMPLE, shared_from="o"))
+    checked = checks({"id": "c", "source": "verifier_tests", "contains": "f2p_failed: tests.b.test_cell"})
+    for source, expected in ((origin, (True, "measured")), (None, (None, "missing"))):
+        entry = value(measure_session(copy, checked, [], default_registry(), None, origin=source), "c")
+        assert (entry["value"], entry["status"]) == expected
+
+
+def test_verifier_tests_of_an_invalid_session_is_unknown(tmp_path):
+    directory = reported(tmp_path / "s", SIMPLE, status="invalid")
+    entry = value(measure(directory, {"id": "c", "source": "verifier_tests", "contains": "f2p_failed: "}), "c")
+    assert (entry["value"], entry["status"]) == (None, "invalid")
+
+
+def test_a_matched_verifier_tests_goal_is_adoption(tmp_path):
+    goal = {"id": "g", "source": "verifier_tests", "regex": "(?m)^f2p_failed: tests\\.b\\.test_cell$"}
+    assert measure(reported(tmp_path / "s", SIMPLE), goal)["adopted"] is True
+    assert measure(session(tmp_path / "u", grade=graded(SIMPLE)), goal)["adopted"] is None
+
+
+@pytest.mark.parametrize(("failed", "expected"), [(HEADERS_7, True), (HEADERS_6, False)])
+def test_design_regex_matches_one_real_test_cell(tmp_path, failed, expected):
+    rows = [("f2p", HEADERS_6, "passed"), ("f2p", HEADERS_7, "passed")]
+    rows = [(bucket, name, "failed" if name == failed else status) for bucket, name, status in rows]
+    regex = r"(?m)^f2p_failed: .*part_headers_parsing\[X: 1\\r\\n\\tz"
+    entry = value(measure(reported(tmp_path / "s", rows), {"id": "c", "source": "verifier_tests", "regex": regex}), "c")
+    assert (entry["value"], entry["status"]) == (expected, "measured")
+
+
+def test_verifier_text_is_unchanged_beside_the_test_lines(tmp_path):
+    grade = graded(SIMPLE, partial=0.5, f2p=0.0, p2p=1.0, patch_sha256="0" * 64)
+    assert verdict_text(grade, {})[0] == (
+        "status: graded\nreward: 0\npartial: 0.5\nf2p: 0.0\np2p: 1.0\n"
+        "f2p_passed: 0\nf2p_total: 1\np2p_passed: 1\np2p_total: 1"
+    )
+    metrics = measure(
+        reported(tmp_path / "s", SIMPLE, grade=grade), {"id": "c", "source": "verifier_tests", "regex": "."}
+    )
+    assert value(metrics, "c")["value"] is True
+
+
+def test_per_test_lines_validate_only_on_verifier_tests():
+    Check.model_validate({"id": "c", "source": "verifier_tests", "regex": "(?m)^p2p_failed: "})
+    Check.model_validate({"id": "c", "source": "verifier", "contains": "status: apply_failed"})
+    rejected = [
+        {"source": "verifier_tests", "path": "/memories/x.md", "contains": "f2p_failed: "},
+        {"source": "verifier", "contains": "f2p_failed: tests.b"},
+        {"source": "verifier", "regex": "(?m)^p2p_failed: "},
+    ]
+    for item in rejected:
+        with pytest.raises(ValueError, match=r"verifier_tests|path only applies"):
+            Check.model_validate({"id": "c", **item})
 
 
 @pytest.mark.parametrize(

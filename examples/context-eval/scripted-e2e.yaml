@@ -1,7 +1,7 @@
 # Scripted end-to-end check: every channel, phase, label, arm and check kind on one real DeepSWE image, with no
 # model. Each script command is one step. Commands guarded by if_contains run only when that text is in the
 # context so far, so the clean and reset arms skip them. scripted_e2e_check.py holds the expected measurements;
-# the report runs after grading because two checks read the verifier's grade:
+# the report runs after grading because three checks read the verifier's grade and per-test results:
 #   uv run --extra deepswe sereno context-eval run examples/context-eval/scripted-e2e.yaml --out runs/context-eval/e2e
 #   uv run --extra deepswe sereno context-eval grade runs/context-eval/e2e
 #   uv run --extra deepswe sereno context-eval report runs/context-eval/e2e
@@ -162,6 +162,15 @@ checks:
   - id: act-verifier
     source: verifier
     contains: "reward: 0"
+    sessions: [probe-act]
+  - id: act-tests # the scripted agent changes no task code, so every fail-to-pass test still fails
+    source: verifier_tests
+    regex: '(?m)^f2p_failed: tests\.functional\.test_incremental_cli\.TestCacheExpiryDays\.test_expired_cache_not_used$'
+    sessions: [probe-act]
+  - id: act-p2p-broken
+    kind: constraint
+    source: verifier_tests
+    regex: '(?m)^p2p_failed: '
     sessions: [probe-act]
   - id: act-said
     source: assistant
