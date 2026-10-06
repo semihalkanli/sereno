@@ -46,11 +46,14 @@ record them in the ledger.
 
 ## Context integrity experiments
 
-`sereno context-eval` configures prompt injection and persistent memory poisoning
-experiments on external DeepSWE task images. It supports file, observation and
-memory interventions, clean/carry/reset controls, custom metrics and patch export.
+`sereno context-eval` runs prompt injection and persistent memory poisoning
+experiments with mini-swe-agent on external DeepSWE task images. Each session is
+one whole task; a `/memories` directory carries between tasks. It plants content
+in repository files, command output and memory files, compares clean, carry and
+reset arms, grades patches with each task's own verifier, and reports exposure,
+memory transport, attack success and task success with interval estimates.
 See [Context Integrity Evaluation](docs/context-integrity-evaluation.md) for setup,
-YAML examples and offline verification. Install its optional dependencies with
+examples and offline verification. Install its optional dependencies with
 `uv sync --extra deepswe`.
 
 ## Development
