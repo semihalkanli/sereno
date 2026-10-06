@@ -90,7 +90,8 @@ sessions come first and are the only sessions interventions may target; the sess
   each of them), in any file including `AGENT.md`; a file left with only whitespace is deleted and everything
   else is kept. Content the metrics would still find in the ablated memory stops the campaign with an error
   rather than running the probe. A memory append or prepend joins the line it lands on when the file does not end (or start) a
-  line there; on such a merged line the text that was there before is kept. Later probes carry on from there.
+  line there; when the exposure sessions' `interventions.json` shows such a join, the removed merged line keeps
+  the text that was there before, with the line's terminator. Later probes carry on from there.
   The first probe's `ablation.json` records the removed lines, the merged lines whose earlier text was kept and
   deleted files per file and the lines each intervention matched; zero removed is a valid outcome. Every
   intervention needs a marker or copy patterns when this arm is configured. Ablation uses the experimenter's

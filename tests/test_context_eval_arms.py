@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from sereno.context_eval import stats
 from sereno.context_eval.config import default_registry, validate
+from sereno.context_eval.engine import edit
 from sereno.context_eval.memory import INDEX, USER
 from sereno.context_eval.metrics import report
 from sereno.context_eval.runner import ablate, run_campaign
@@ -178,30 +179,43 @@ def test_ablation_matches_content_across_lines_like_the_metrics():
         ablate({NOTE: "CI_WRAP\nCI_GAP\nRULE\n"}, [marked])
 
 
+def planted(event, before):
+    return {"event": event.model_dump(mode="json"), "before": before, "after": edit(before, event)}
+
+
 def test_ablation_keeps_the_text_a_memory_intervention_was_joined_to():
-    def event(operation, text):
+    def event(operation, text, path=USER):
         return Intervention(
-            id=operation, method="memory", path=USER, operation=operation, sessions=["e"], text=text, marker="CI_X"
+            id=operation, method="memory", path=path, operation=operation, sessions=["e"], text=text, marker="CI_X"
         )
 
     appended = event("append", "CI_X: fixture rule\nCI_X: second rule\n")
     prepended = event("prepend", "CI_X: fixture lead ")
-    memory = {
-        USER: "CI_X: fixture lead Prefer small patches.\nKeep tests.CI_X: fixture rule\nCI_X: second rule\n",
-        NOTE: "Only a note.CI_X: fixture rule\n",
-    }
-    kept, record = ablate(memory, [appended, prepended])
-    # The note was not the intervention's file: an agent's copy there is a plain matching line.
-    assert kept == {USER: "Prefer small patches.\nKeep tests."}
+    lead = planted(prepended, "Prefer small patches.\nKeep tests.")
+    journal = [lead, planted(appended, lead["after"])]
+    memory = {USER: journal[1]["after"], NOTE: "Only a note.CI_X: fixture rule\n"}
+    kept, record = ablate(memory, [appended, prepended], journal)
+    # The note was not the intervention's file: an agent's copy there is a plain matching line. A kept merged
+    # line keeps its terminator so it never fuses with the line after it.
+    assert kept == {USER: "Prefer small patches.\nKeep tests.\n"}
     assert record["files"] == {
         USER: {"removed_lines": 3, "kept_merged_lines": 2, "deleted": False, "interventions": ["append", "prepend"]},
         NOTE: {"removed_lines": 1, "kept_merged_lines": 0, "deleted": True, "interventions": ["append", "prepend"]},
     }
-    # The reviewer's case: a user file without a final newline keeps its own sentence.
-    single = event("append", "CI_X: fixture rule\n")
-    assert ablate({USER: "Prefer small patches." + "CI_X: fixture rule\n"}, [single])[0] == {
-        USER: "Prefer small patches."
-    }
+    # Without the journal's evidence of a join nothing is kept from a matching line.
+    assert ablate(memory, [appended, prepended])[0] == {}
+
+    single = event("append", "CI_X: fixture rule\n", INDEX)
+    # A verbatim copy the agent prefixed is not a join: the file ended a line where the append landed.
+    copied = "- [A](a.md) - hook a\nCI_X: fixture rule\n- CI_X: fixture rule\n- [B](b.md) - hook b\n"
+    kept, record = ablate({INDEX: copied}, [single], [planted(single, "- [A](a.md) - hook a\n")])
+    assert kept == {INDEX: "- [A](a.md) - hook a\n- [B](b.md) - hook b\n"}
+    assert record["files"][INDEX]["kept_merged_lines"] == 0
+    # A real join on a file without a final newline, followed by the agent's own entry, keeps both lines apart.
+    joined = "- [A](a.md) - hook aCI_X: fixture rule\n- [B](b.md) - hook b\n"
+    kept, record = ablate({INDEX: joined}, [single], [planted(single, "- [A](a.md) - hook a")])
+    assert kept == {INDEX: "- [A](a.md) - hook a\n- [B](b.md) - hook b\n"}
+    assert record["files"][INDEX]["kept_merged_lines"] == 1
 
 
 def test_control_arms_campaign(tmp_path, fixture_world):

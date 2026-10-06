@@ -8,6 +8,7 @@ import shutil
 import threading
 import time
 import uuid
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from importlib.metadata import version
@@ -250,32 +251,43 @@ def complete(directory: Path, copy: bool = False, ablated: bool = False) -> bool
     return status == "complete"
 
 
-def ablate(memory: dict[str, str], events) -> tuple[dict[str, str], dict]:
+def terminator(line: str) -> str:
+    return line[len(line.removesuffix("\n").removesuffix("\r")) :] if line.endswith("\n") else ""
+
+
+def ablate(memory: dict[str, str], events, journal=()) -> tuple[dict[str, str], dict]:
     """Carried memory without every line that a match of an intervention's marker or copy patterns overlaps,
-    matched over the whole file text as the metrics detect content, and the record of what was removed. A memory
-    append or prepend lands on the line of a file that does not end (or start) a line there; such a merged line
-    keeps the text that was there before. A file left with nothing but whitespace is deleted; every other byte is
-    kept. Content the metrics would still find in the kept memory is a setup failure."""
+    matched over the whole file text as the metrics detect content, and the record of what was removed. A removed
+    line keeps the text a memory append or prepend was joined to only when the journal of the exposure sessions
+    shows the intervention landed on a line the file did not end (or start) there; it keeps its line terminator.
+    A file left with nothing but whitespace is deleted; every other byte is kept. Content the metrics would still
+    find in the kept memory is a setup failure."""
     catalog = intervention_catalog(events)
     kept, files, lines_by_event = {}, {}, dict.fromkeys(catalog, 0)
+    joins = defaultdict(list)
+    for entry in journal:
+        event, earlier = entry["event"], entry["before"] or ""
+        if event["method"] != "memory" or not earlier or not event["text"]:
+            continue
+        if event["operation"] == "append" and not earlier.endswith("\n"):
+            first = LINES.match(event["text"]).group(0)
+            tail = earlier.rpartition("\n")[2]
+            joins[event["path"]].append((tail + first[: len(first) - len(terminator(first))], "", tail))
+        elif event["operation"] == "prepend" and not event["text"].endswith("\n"):
+            head = LINES.match(earlier).group(0)
+            head = head[: len(head) - len(terminator(head))]
+            joins[event["path"]].append((event["text"].rpartition("\n")[2], head, head))
 
     def hits(text: str) -> list[str]:
         return [key for key, entry in catalog.items() if content_found(entry, text)]
 
     def before(path: str, line: str) -> str:
-        """The text a memory intervention's first appended or last prepended line was joined to."""
-        for event in events:
-            if event.method != "memory" or event.path != path or event.operation == "replace":
-                continue
-            parts = event.text.splitlines(keepends=True)
-            if event.operation == "append" and line.endswith(parts[0]):
-                rest = line.removesuffix(parts[0])
-            elif event.operation == "prepend" and line.startswith(parts[-1]):
-                rest = line.removeprefix(parts[-1])
-            else:
-                continue
-            if rest.strip() and not hits(rest):
-                return rest
+        """The text the journal shows a memory intervention's first appended or last prepended line joined to."""
+        content = line[: len(line) - len(terminator(line))]
+        for prefix, suffix, rest in joins[path]:
+            if content.startswith(prefix) and content.endswith(suffix) and len(content) >= len(prefix + suffix):
+                if rest.strip() and not hits(rest):
+                    return rest + terminator(line)
         return ""
 
     for path, text in sorted(memory.items()):
@@ -597,7 +609,12 @@ def run_campaign(
                 return probe(number, session, directory, memory)
             if not ablated:
                 return probe(number, session, directory, config.memory.initial())
-            memory, record = ablate(memory, events)
+            journal = [
+                entry
+                for n, s in enumerate(sessions[:exposures])
+                for entry in read(session_dir(arm_dir, n, s) / "interventions.json")
+            ]
+            memory, record = ablate(memory, events, journal)
             outcome = probe(number, session, directory, memory)
             write_atomic(directory / "ablation.json", record)
             return outcome
