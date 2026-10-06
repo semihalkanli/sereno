@@ -156,7 +156,7 @@ def test_session_metrics_have_known_values(tmp_path):
     write(directory / "grade.json", {"status": "graded", "reward": 1, "partial": 1.0, "f2p": 1.0, "p2p": 1.0})
     m = measure_session(directory, checks(*SESSION_CHECKS), [], default_registry(), catalog(FACT, UNMARKED))
     assert json.loads((directory / "metrics.json").read_text()) == m
-    assert m["schema_version"] == "1.2" and m["valid"] is True
+    assert m["schema_version"] == "1.3" and m["valid"] is True
     assert m["evidence"] == dict.fromkeys(("result", "events", "memory_start", "memory_end", "grade"), "measured")
     assert (m["exit_status"], m["steps"], m["cost_usd"], m["duration_seconds"]) == ("Submitted", 4, 0.25, 10.0)
     assert m["interventions"]["src"] == {
@@ -499,7 +499,7 @@ def test_report_files_missing_sessions_and_legacy_branches(tmp_path):
     text = (root / "report.md").read_text()
     assert "| fact | 2. p | 1/1 = 1.00 [0.21, 1.00] |" in text
     assert "## Comparisons" in text and "0/0" in text
-    assert json.loads((root / "report.json").read_text())["schema_version"] == "1.2"
+    assert json.loads((root / "report.json").read_text())["schema_version"] == "1.3"
 
 
 def test_summarize_pools_campaigns_with_targets_as_clusters(tmp_path):
