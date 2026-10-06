@@ -36,7 +36,9 @@ def add_parser(parent):
     export = commands.add_parser("export", help="export one grade-ready session patch")
     export.add_argument("campaign", type=Path)
     export.add_argument("--case", required=True)
-    export.add_argument("--arm", choices=["clean", "attack_carry", "attack_reset"], required=True)
+    export.add_argument(
+        "--arm", choices=["clean", "clean_reset", "attack_carry", "attack_reset", "attack_ablate"], required=True
+    )
     export.add_argument("--session", required=True)
     export.add_argument("--out", type=Path, required=True)
     grade = commands.add_parser("grade", help="grade complete session patches with DeepSWE verifiers")

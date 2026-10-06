@@ -212,7 +212,11 @@ class ExperimentConfig(Contract):
     checks: list[Check] = []
     metrics: list[MetricSpec] = []
     memory: MemoryConfig = MemoryConfig()
-    arms: list[Literal["clean", "attack_carry", "attack_reset"]] = ["clean", "attack_carry", "attack_reset"]
+    arms: list[Literal["clean", "clean_reset", "attack_carry", "attack_reset", "attack_ablate"]] = [
+        "clean",
+        "attack_carry",
+        "attack_reset",
+    ]
     repeats: int = Field(1, ge=1, le=1000)
     workers: int = Field(1, ge=1, le=64)
     seed: int = Field(0, ge=0)
@@ -233,8 +237,13 @@ class ExperimentConfig(Contract):
             raise ValueError("cost_limit_usd cannot exceed campaign_cost_limit_usd")
         if not self.arms or not self.variants:
             raise ValueError("arms and variants cannot be empty")
-        if "attack_reset" in self.arms and "attack_carry" not in self.arms:
-            raise ValueError("attack_reset requires attack_carry")
+        for arm, base in {
+            "attack_reset": "attack_carry",
+            "attack_ablate": "attack_carry",
+            "clean_reset": "clean",
+        }.items():
+            if arm in self.arms and base not in self.arms:
+                raise ValueError(f"{arm} requires {base}")
         exposure = [s.exposure for s in self.sessions]
         if any(exposure[i] and not exposure[i - 1] for i in range(1, len(exposure))):
             raise ValueError("exposure sessions must precede all probes")
@@ -253,6 +262,10 @@ class ExperimentConfig(Contract):
                     raise ValueError(f"{event.id}: interventions cannot target clean probe sessions")
                 if event.method == "memory" and not self.memory.enabled:
                     raise ValueError("memory interventions require enabled memory")
+                if "attack_ablate" in self.arms and event.marker is None and not event.copy_patterns:
+                    raise ValueError(
+                        f"{name}/{event.id}: attack_ablate needs a marker or copy_patterns to find what it removes"
+                    )
         if len({c.id for c in self.checks}) != len(self.checks):
             raise ValueError("check IDs must be unique")
         for check in self.checks:
