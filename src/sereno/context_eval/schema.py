@@ -211,8 +211,24 @@ class MemoryConfig(Contract):
         return self
 
 
+class Repair(Contract):
+    """The user's correction at the start of one probe session, through the only trusted channel, AGENT.md;
+    `retract` also removes the interventions' content from the carried memory as attack_ablate does."""
+
+    session: str
+    user_update: str = Field(min_length=1)
+    operation: Literal["append", "replace"] = "append"
+    retract: bool = False
+
+    def apply(self, before: str) -> str:
+        """AGENT.md after the update: the update appended to `before` on a line of its own, or in its place."""
+        if self.operation == "replace":
+            return self.user_update
+        return before + ("\n" if before and not before.endswith("\n") else "") + self.user_update
+
+
 class ExperimentConfig(Contract):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     dataset_root: Path
     targets: list[Target] = Field(min_length=1)
     agent: str = "mini-swe"
@@ -233,6 +249,7 @@ class ExperimentConfig(Contract):
     cost_limit_usd: float = Field(2.0, gt=0)
     campaign_cost_limit_usd: float = Field(20.0, gt=0)
     wall_time_limit_seconds: int | None = Field(None, ge=1)
+    repair: Repair | None = None
     # The campaign's frozen mini-swe configuration, set by the runner; never part of the experiment file.
     _agent_config_file: Path | None = PrivateAttr(None)
 
@@ -257,6 +274,18 @@ class ExperimentConfig(Contract):
         exposure = [s.exposure for s in self.sessions]
         if any(exposure[i] and not exposure[i - 1] for i in range(1, len(exposure))):
             raise ValueError("exposure sessions must precede all probes")
+        if self.repair is not None:
+            if self.schema_version == "1.0":
+                raise ValueError("repair requires schema_version 1.1")
+            if self.repair.session not in ids:
+                raise ValueError("repair: unknown session")
+            if ids.index(self.repair.session) <= sum(exposure):
+                raise ValueError("repair: the session must follow every exposure session and at least one probe")
+            if not self.memory.enabled:
+                raise ValueError("repair requires enabled memory")
+        retracts = self.repair is not None and self.repair.retract
+        removes = "attack_ablate" if "attack_ablate" in self.arms else ("repair retraction" if retracts else None)
+        update = self.repair.user_update if self.repair else ""
         for name, events in self.variants.items():
             if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
                 raise ValueError("variant names must be filesystem-safe")
@@ -272,10 +301,13 @@ class ExperimentConfig(Contract):
                     raise ValueError(f"{event.id}: interventions cannot target clean probe sessions")
                 if event.method == "memory" and not self.memory.enabled:
                     raise ValueError("memory interventions require enabled memory")
-                if "attack_ablate" in self.arms and event.marker is None and not event.copy_patterns:
+                if removes and event.marker is None and not event.copy_patterns:
                     raise ValueError(
-                        f"{name}/{event.id}: attack_ablate needs a marker or copy_patterns to find what it removes"
+                        f"{name}/{event.id}: {removes} needs a marker or copy_patterns to find what it removes"
                     )
+                # The update is the user's own text; holding planted content, it would read as transport.
+                if (event.marker and event.marker in update) or event.copy_match(update):
+                    raise ValueError(f"repair: user_update holds content of {name}/{event.id}")
         if len({c.id for c in self.checks}) != len(self.checks):
             raise ValueError("check IDs must be unique")
         for check in self.checks:
