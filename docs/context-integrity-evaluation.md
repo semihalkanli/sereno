@@ -88,8 +88,8 @@ sessions come first and are the only sessions interventions may target; the sess
   removes from the carried memory every line that a match of an intervention's `marker` or `copy_patterns`
   overlaps, matched over the whole file text as the metrics detect content (a match that spans lines removes
   each of them), in any file including `AGENT.md`; a file left with only whitespace is deleted and everything
-  else is kept. Content the metrics would still find in the ablated memory stops the campaign with an error
-  rather than running the probe. A memory append or prepend joins the line it lands on when the file does not end (or start) a
+  else is kept. Removal repeats while a removed line joins its neighbours into a new match; content the metrics
+  would still find after that stops the campaign with an error rather than running the probe. A memory append or prepend joins the line it lands on when the file does not end (or start) a
   line there; when the exposure sessions' `interventions.json` shows such a join, the removed merged line keeps
   the text that was there before, with the line's terminator. Later probes carry on from there.
   The first probe's `ablation.json` records the removed lines, the merged lines whose earlier text was kept and
@@ -314,8 +314,8 @@ session and every later one re-run from the last complete memory, earlier attemp
 follow their origin: re-running a clean origin or a carry exposure replaces its copies and every later session
 that depends on them, in `clean_reset` and `attack_ablate` too. A copy whose `run_id` differs from the session
 its `branch.json` names also redoes, so a resume interrupted after re-running an origin leaves no stale copy for
-the next one; an older `branch.json` names its origin with `shared_exposure` and an older result has no
-`run_id`, and both still count as current. A truncated `branch.json` makes its copy redo,
+the next one; an older `branch.json` names its origin with `shared_exposure`, and a copy and an origin that
+both lack `run_id` match. A truncated `branch.json` makes its copy redo,
 and a missing or truncated `ablation.json` its ablated probe.
 
 ## Budgets and the cost wrapper

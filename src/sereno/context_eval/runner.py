@@ -260,8 +260,8 @@ def ablate(memory: dict[str, str], events, journal=()) -> tuple[dict[str, str], 
     matched over the whole file text as the metrics detect content, and the record of what was removed. A removed
     line keeps the text a memory append or prepend was joined to only when the journal of the exposure sessions
     shows the intervention landed on a line the file did not end (or start) there; it keeps its line terminator.
-    A file left with nothing but whitespace is deleted; every other byte is kept. Content the metrics would still
-    find in the kept memory is a setup failure."""
+    Removal repeats while a removed line joins its neighbours into a new match. A file left with nothing but
+    whitespace is deleted; every other byte is kept. Content the metrics would still find is a setup failure."""
     catalog = intervention_catalog(events)
     kept, files, lines_by_event = {}, {}, dict.fromkeys(catalog, 0)
     joins = defaultdict(list)
@@ -291,21 +291,26 @@ def ablate(memory: dict[str, str], events, journal=()) -> tuple[dict[str, str], 
         return ""
 
     for path, text in sorted(memory.items()):
-        spans = {key: content_spans(entry, text) for key, entry in catalog.items()}
-        remaining, removed, trimmed, matched = [], 0, 0, set()
-        for match in LINES.finditer(text):
-            line, (start, end) = match.group(0), match.span()
-            found = [key for key, ranges in spans.items() if any(a < end and b > start for a, b in ranges)]
-            for key in found:
-                lines_by_event[key] += 1
-            removed += bool(found)
-            matched.update(found)
-            if not found:
-                remaining.append(line)
-            elif rest := before(path, line):
-                remaining.append(rest)
-                trimmed += 1
-        rest = "".join(remaining)
+        removed, trimmed, matched, rest = 0, 0, set(), text
+        # Removing a line can join its neighbours into a new match, so passes repeat until nothing matches.
+        while True:
+            spans = {key: content_spans(entry, rest) for key, entry in catalog.items()}
+            remaining, removed_before = [], removed
+            for match in LINES.finditer(rest):
+                line, (start, end) = match.group(0), match.span()
+                found = [key for key, ranges in spans.items() if any(a < end and b > start for a, b in ranges)]
+                for key in found:
+                    lines_by_event[key] += 1
+                removed += bool(found)
+                matched.update(found)
+                if not found:
+                    remaining.append(line)
+                elif kept_text := before(path, line):
+                    remaining.append(kept_text)
+                    trimmed += 1
+            rest = "".join(remaining)
+            if removed == removed_before:
+                break
         if rest.strip() or not removed:
             kept[path] = rest
         if removed:

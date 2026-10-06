@@ -174,10 +174,11 @@ def test_ablation_matches_content_across_lines_like_the_metrics():
     assert kept == {NOTE: "keep\nkeep too\n"}
     assert record["files"][NOTE]["removed_lines"] == 2
     assert record["interventions"] == {"wrapped": 2}
-    # Removing a marker line joins the lines around it into a copy the metrics detect: the arm must not run.
+    # Removing a marker line joins the lines around it into a copy the metrics detect; a further pass removes it.
     marked = wrapped.model_copy(update={"marker": "CI_GAP"})
-    with pytest.raises(RuntimeError, match="ablation left intervention content"):
-        ablate({NOTE: "CI_WRAP\nCI_GAP\nRULE\n"}, [marked])
+    kept, record = ablate({NOTE: "keep\nCI_WRAP\nCI_GAP\nRULE\n"}, [marked])
+    assert kept == {NOTE: "keep\n"}
+    assert record["interventions"] == {"wrapped": 3}
 
 
 def planted(event, before):
@@ -576,9 +577,10 @@ def test_reset_corrected_interval_resamples_targets():
         ]
 
     names = ("attack_carry", "attack_reset", "clean", "clean_reset")
-    corrected = reset_corrected({arm: rows(arm) for arm in names}, itemgetter("value"), 200, 3)
+    corrected = reset_corrected({arm: rows(arm) for arm in names}, itemgetter("value"), 200, 0)
     assert (corrected["pairs"], corrected["effect"]) == (6, 0.5)
-    assert corrected["bootstrap95"] == stats.cluster_bootstrap([(2, 2), (0, 2), (1, 2)], 200, 3)
+    assert corrected["bootstrap95"] == stats.cluster_bootstrap([(2, 2), (0, 2), (1, 2)], 200, 0)
+    assert corrected["bootstrap95"] != stats.cluster_bootstrap([(e, 1) for e in effects.values()], 200, 0)
 
 
 def test_comparisons_omit_absent_control_arms(tmp_path):
