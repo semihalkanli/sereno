@@ -313,6 +313,51 @@ def test_rerunning_a_clean_exposure_refreshes_clean_reset(tmp_path, fixture_worl
     assert run_ids(attacks) == attack_runs
 
 
+class Interrupted(BaseException):
+    pass
+
+
+@pytest.mark.parametrize(
+    ("origin", "copies"),
+    [
+        (
+            "cases/first--canary--r001/arms/attack_carry/sessions/001-exposure",
+            ["cases/first--canary--r001/arms/attack_reset", "cases/first--canary--r001/arms/attack_ablate"],
+        ),
+        (
+            "clean/first--r001/sessions/001-exposure",
+            [
+                "clean_reset/first--r001",
+                "cases/first--canary--r001/arms/clean",
+                "cases/first--canary--r001/arms/clean_reset",
+            ],
+        ),
+    ],
+)
+def test_a_resume_interrupted_after_an_origin_rerun_refreshes_its_copies(tmp_path, fixture_world, origin, copies):
+    _, factory, _, _ = fixture_world
+    config = arms_config(fixture_world[0])
+    root, _, _ = run(tmp_path, fixture_world, config)
+    invalidate(root / origin)
+    containers = []
+
+    def interrupted(*args, **kwargs):
+        containers.append(None)
+        if len(containers) == 2:  # The origin's exposure re-ran; its copies were not refreshed yet.
+            raise Interrupted
+        return factory(*args, **kwargs)
+
+    with pytest.raises(Interrupted):
+        run_campaign(config, root, default_registry(), env_factory=interrupted, identities=IDENTITIES, resume=True)
+    resume(fixture_world, config, root)
+    exposure = result_of(root / origin)["run_id"]
+    for arm in copies:
+        assert result_of(root / arm / "sessions" / "001-exposure")["run_id"] == exposure
+        assert read(root / arm / "sessions" / "002-probe" / "result.json")["status"] == "complete"
+    _, runs = resume(fixture_world, config, root)
+    assert runs == 0
+
+
 PROBE_GOALS = {"attack_carry": [1, 1, 0, 1], "attack_reset": [0, 1, 0, 0], "attack_ablate": [0, 0, 0, 1]}
 PROBE_REWARDS = {
     "attack_carry": [0, 0, 1, 1],

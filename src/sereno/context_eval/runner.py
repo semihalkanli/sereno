@@ -415,12 +415,22 @@ def run_campaign(
 
     exposures = sum(session.exposure for session in sessions)
 
+    def current(copy: Path) -> bool:
+        """A copy of the session its origin now holds; a run interrupted after re-running an origin session leaves
+        the copies of the replaced attempt behind."""
+        try:
+            origin = output / read(copy / "branch.json")["shared_from"]
+            return read(copy / "result.json")["run_id"] == read(origin / "result.json")["run_id"]
+        except (OSError, ValueError, KeyError):
+            return False
+
     def first_incomplete(arm_dir: Path, copied=lambda session: False, ablated: bool = False) -> int:
         return next(
             (
                 n
                 for n, s in enumerate(sessions)
-                if not complete(session_dir(arm_dir, n, s), copied(s), ablated and n == exposures)
+                if not complete(directory := session_dir(arm_dir, n, s), copied(s), ablated and n == exposures)
+                or (copied(s) and not current(directory))
             ),
             len(sessions),
         )
