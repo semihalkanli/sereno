@@ -563,7 +563,7 @@ def session_row(campaign, root, directory, meta, config, registry, catalog, writ
         "adopted": measured["adopted"],
         "agent_wrote_user_file": flow["agent_wrote"],
         "user_file_presented": flow["presented"],
-        "user_file_carried_intervention": None if meta["arm"] == "clean" else flow["carried_intervention"],
+        "user_file_carried_intervention": None if meta["arm"] in CLEAN_ARMS else flow["carried_intervention"],
         **{
             key: measured[key]
             for key in ("exposed", "first_exposure_step", "written", "carried", "recalled", "present_end")
@@ -1178,7 +1178,7 @@ def markdown(outcome: dict) -> str:
                     show(g["violations"]),
                 ]
                 for g in groups
-                if g["arm"] != "clean"
+                if g["arm"] not in CLEAN_ARMS
             ],
         ),
         lanes and lanes + LANE_NOTE,
