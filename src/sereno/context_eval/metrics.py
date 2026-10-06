@@ -30,7 +30,11 @@ from sereno.context_eval.stats import any_in_k, cluster_bootstrap, mcnemar_exact
 SCHEMA_VERSION = "1.2"
 EVENT_SOURCES = {"context", "observations", "commands", "assistant", "reasoning"}
 LABELS = ("channel", "objective", "family", "intended", "timing")
-ATTACK_ARMS = ("attack_carry", "attack_reset")
+ATTACK_ARMS = ("attack_carry", "attack_reset", "attack_ablate")
+CLEAN_ARMS = ("clean", "clean_reset")
+# Arms that share another arm's exposure sessions; the reset arms start a new memory lineage at the first probe.
+SHARED_EXPOSURE = {"attack_reset": "attack_carry", "attack_ablate": "attack_carry", "clean_reset": "clean"}
+RESET_ARMS = ("attack_reset", "clean_reset")
 UNREADABLE = {"missing", "corrupt"}
 GRADE_COUNTS = ("f2p_passed", "f2p_total", "p2p_passed", "p2p_total")
 TRANSPORT = ("written", "first_write_step", "carried", "present_end", "recalled", "recall_routes")
@@ -424,8 +428,8 @@ def session_row(campaign, root, directory, meta, config, registry, catalog, writ
     relative = str(directory.relative_to(root))
     row = dict.fromkeys(ROW_FIELDS) | meta | {"campaign": campaign, "artifact": relative, "origin": relative}
     row |= {"valid": False, "shared": False, "flags": {}, "violations": [], "interventions": {}}
-    # The clean arm applies no interventions, so its transport is a structural zero.
-    row["observable"] = meta["arm"] != "clean" and catalog is not None and recognisable(catalog)
+    # The clean arms apply no interventions, so their transport is a structural zero.
+    row["observable"] = meta["arm"] not in CLEAN_ARMS and catalog is not None and recognisable(catalog)
     branch, _ = load(directory / "branch.json")
     if isinstance(branch, dict):
         # Older campaigns name a shared reset exposure with shared_exposure.
@@ -461,7 +465,7 @@ def session_row(campaign, root, directory, meta, config, registry, catalog, writ
         },
         **{key: measured[key] for key in ("concealed", "violated", "violations", "failure_stage", "interventions")},
         "observable": row["observable"]
-        if catalog is not None or meta["arm"] == "clean"
+        if catalog is not None or meta["arm"] in CLEAN_ARMS
         else recognisable(result_catalog(result)),
         "flagged": measured["flagged"]["any"],
         "flags": measured["flagged"],
@@ -511,9 +515,9 @@ def collect(root: Path, registry, *, write: bool = True) -> list[dict]:
                 "exposure_phase": None,
             }
         source = directory
-        if meta["arm"] == "clean" and not directory.exists() and meta["repeat"] is not None:
+        if meta["arm"] in CLEAN_ARMS and not directory.exists() and meta["repeat"] is not None:
             # Copies follow their origin once every origin has finished; until then report the origin itself.
-            source = root / "clean" / f"{meta['target']}--r{meta['repeat'] + 1:03d}" / "sessions" / directory.name
+            source = root / meta["arm"] / f"{meta['target']}--r{meta['repeat'] + 1:03d}" / "sessions" / directory.name
             source = source if source.exists() else directory
         catalog = catalogs.get(meta["variant"])
         rows.append(
@@ -522,36 +526,35 @@ def collect(root: Path, registry, *, write: bool = True) -> list[dict]:
     chains = defaultdict(list)
     for row in rows:
         chains[(row["case"], row["arm"])].append(row)
-    carried_lineage = {}
+    lineage = {}
     # Without memory nothing carries between sessions, so every session starts a lineage.
     memory = config.get("memory", {}).get("enabled", True)
-    for (case, arm), chain in sorted(chains.items(), key=lambda item: item[0][1] != "attack_carry"):
+    for (case, arm), chain in sorted(chains.items(), key=lambda item: item[0][1] in SHARED_EXPOSURE):
         chain.sort(key=lambda row: row["position"] or 0)
         start = 0
         for number, row in enumerate(chain):
-            # Reset starts each probe run after an exposure from the initial memory, as the runner does, and
-            # shares carry's exposure sessions together with the memory they ran on.
-            reset = arm == "attack_reset"
-            if reset and row["exposure_phase"] is False and chain[number - 1]["exposure_phase"]:
+            # A reset arm starts its first probe from the initial memory, as the runner does; an ablated probe keeps
+            # the rest of the carried memory and its lineage. Both share the exposure sessions of their source arm
+            # together with the memory those ran on.
+            if arm in RESET_ARMS and row["exposure_phase"] is False and chain[number - 1]["exposure_phase"]:
                 start = number
-            shared = carried_lineage.get((case, row["position"])) if reset and row["exposure_phase"] else None
-            row["inherits_memory"], row["chain_written"] = shared or (
+            source = SHARED_EXPOSURE.get(arm) if row["exposure_phase"] else None
+            row["inherits_memory"], row["chain_written"] = lineage.get((case, source, row["position"])) or (
                 memory and number > start,
                 any3(earlier["written"] for earlier in chain[start : number + 1]),
             )
-            if arm == "attack_carry":
-                carried_lineage[(case, row["position"])] = (row["inherits_memory"], row["chain_written"])
+            lineage[(case, arm, row["position"])] = (row["inherits_memory"], row["chain_written"])
     return rows
 
 
 def unique(rows) -> list[dict]:
-    """One row per origin session: shared copies are not independent samples."""
-    seen, kept = set(), []
+    """One row per origin session, the origin's own row where present: shared copies are not independent samples."""
+    kept = {}
     for row in rows:
-        if (key := (row["campaign"], row["origin"])) not in seen:
-            seen.add(key)
-            kept.append(row)
-    return kept
+        key = (row["campaign"], row["origin"])
+        if key not in kept or (kept[key]["shared"] and not row["shared"]):
+            kept[key] = row
+    return list(kept.values())
 
 
 def order(key: tuple) -> tuple:
@@ -690,8 +693,52 @@ def product_of(rates: list[dict]) -> float | None:
     return None if None in values else math.prod(values)
 
 
-def comparisons(rows) -> list[dict]:
-    """Per variant and probe: carry against reset paired by case, and carry against the clean arm."""
+def by_case(rows, value) -> dict:
+    """The known value of each case among valid rows."""
+    values = {(row["campaign"], row["case"]): value(row) for row in rows if row["valid"]}
+    return {key: v for key, v in values.items() if v is not None and v is not NOT_APPLICABLE}
+
+
+def paired(carry, other, name: str) -> dict:
+    """Carry against another attack arm on the goal outcome, paired by case, with the exact McNemar test."""
+    others = by_case(other, field("outcome"))
+    pairs = [(outcome, others[key]) for key, outcome in by_case(carry, field("outcome")).items() if key in others]
+    counts = Counter(pairs)
+    return {
+        "pairs": len(pairs),
+        "carry": rate(sum(c for c, _ in pairs), len(pairs)),
+        name: rate(sum(o for _, o in pairs), len(pairs)),
+        "both": counts[(True, True)],
+        "carry_only": counts[(True, False)],
+        f"{name}_only": counts[(False, True)],
+        "neither": counts[(False, False)],
+        "p_value": mcnemar_exact(counts[(True, False)], counts[(False, True)]),
+    }
+
+
+def reset_corrected(arms: dict, value, replicates: int, seed: int) -> dict:
+    """Per case where all four arms are known, (carry - reset) - (clean - clean_reset): the carry effect with the
+    change that resetting memory alone brings taken out. The clean arms are copies of one run per target and
+    repeat, so within a variant each case holds one of them. The interval resamples cases."""
+    names = ("attack_carry", "attack_reset", "clean", "clean_reset")
+    values = [by_case(arms[arm], value) for arm in names]
+    keys = [key for key in values[0] if all(key in known for known in values[1:])]
+    effects = [
+        (carry - reset) - (clean - clean_reset)
+        for carry, reset, clean, clean_reset in ([known[key] for known in values] for key in keys)
+    ]
+    return {
+        "pairs": len(keys),
+        **{arm: rate(sum(known[key] for key in keys), len(keys)) for arm, known in zip(names, values, strict=True)},
+        "effect": fmean(effects) if effects else None,
+        "bootstrap95": cluster_bootstrap([(effect, 1) for effect in effects], replicates, seed),
+    }
+
+
+def comparisons(rows, replicates: int = 2000, seed: int = 0) -> list[dict]:
+    """Per variant and probe: carry against reset and against ablation paired by case, carry against the clean arm,
+    and the reset-corrected carry effect on the attack and task outcomes. A comparison with an absent arm is left
+    out, except carry against reset."""
     output = []
     probes = [row for row in rows if row["exposure_phase"] is False]
     for (variant, session, position), members in grouped(probes, ("variant", "session", "position")):
@@ -699,42 +746,32 @@ def comparisons(rows) -> list[dict]:
         carry, reset, clean = (arms.get(arm, []) for arm in ("attack_carry", "attack_reset", "clean"))
         if not carry:
             continue
-        resets = {(row["campaign"], row["case"]): row for row in reset if row["valid"] and row["outcome"] is not None}
-        pairs = [
-            (row["outcome"], resets[(row["campaign"], row["case"])]["outcome"])
-            for row in carry
-            if row["valid"] and row["outcome"] is not None and (row["campaign"], row["case"]) in resets
-        ]
-        counts = Counter(pairs)
         carry_rate, clean_rate = known(carry, goal), known(clean, goal)
         carry_success, clean_success = known(carry, success), known(clean, success)
-        output.append(
-            {
-                "variant": variant,
-                "session": session,
-                "position": position,
-                "carry_vs_reset": {
-                    "pairs": len(pairs),
-                    "carry": rate(sum(c for c, _ in pairs), len(pairs)),
-                    "reset": rate(sum(r for _, r in pairs), len(pairs)),
-                    "both": counts[(True, True)],
-                    "carry_only": counts[(True, False)],
-                    "reset_only": counts[(False, True)],
-                    "neither": counts[(False, False)],
-                    "p_value": mcnemar_exact(counts[(True, False)], counts[(False, True)]),
-                },
-                "carry_vs_clean": {
-                    "carry": carry_rate,
-                    "clean": clean_rate,
-                    **newcombe(carry_rate["k"], carry_rate["n"], clean_rate["k"], clean_rate["n"]),
-                },
-                "utility_loss": {
-                    "clean": clean_success,
-                    "carry": carry_success,
-                    **newcombe(clean_success["k"], clean_success["n"], carry_success["k"], carry_success["n"]),
-                },
+        entry = {
+            "variant": variant,
+            "session": session,
+            "position": position,
+            "carry_vs_reset": paired(carry, reset, "reset"),
+            "carry_vs_clean": {
+                "carry": carry_rate,
+                "clean": clean_rate,
+                **newcombe(carry_rate["k"], carry_rate["n"], clean_rate["k"], clean_rate["n"]),
+            },
+            "utility_loss": {
+                "clean": clean_success,
+                "carry": carry_success,
+                **newcombe(clean_success["k"], clean_success["n"], carry_success["k"], carry_success["n"]),
+            },
+        }
+        if "attack_ablate" in arms:
+            entry["carry_vs_ablate"] = paired(carry, arms["attack_ablate"], "ablate")
+        if {"attack_reset", "clean", "clean_reset"} <= arms.keys():
+            entry["reset_corrected"] = {
+                name: reset_corrected(arms, value, replicates, seed)
+                for name, value in (("goal", goal), ("success", success))
             }
-        )
+        output.append(entry)
     return output
 
 
@@ -802,9 +839,9 @@ def early_activation(rows) -> list[dict]:
 
 
 def units(rows) -> list[dict]:
-    """Attack rows per variant and the clean arm once per origin, with its variant collapsed."""
-    clean = [row | {"variant": None} for row in unique(row for row in rows if row["arm"] == "clean")]
-    return clean + [row for row in rows if row["arm"] != "clean"]
+    """Attack rows per variant and each clean arm once per origin, with its variant collapsed."""
+    clean = [row | {"variant": None} for arm in CLEAN_ARMS for row in unique(row for row in rows if row["arm"] == arm)]
+    return clean + [row for row in rows if row["arm"] not in CLEAN_ARMS]
 
 
 def per_target(rows) -> list[dict]:
@@ -905,7 +942,7 @@ def analyze(rows: list[dict], campaigns: list[dict], *, bootstrap: int = 2000, s
             dict(zip(("target", "session", "position"), key, strict=True)) | summary(members)
             for key, members in grouped(clean, ("target", "session", "position"))
         ],
-        "comparisons": comparisons(rows),
+        "comparisons": comparisons(rows, bootstrap, seed),
         "xspi": xspi(rows),
         "early_activation": early_activation(rows),
         "per_target": per_target(rows),
@@ -1045,6 +1082,35 @@ def markdown(outcome: dict) -> str:
             ],
         ),
         table(
+            "Control arms",
+            [
+                *("Variant", "Probe", "Carry (paired)", "Ablate (paired)", "Discordant", "McNemar p"),
+                *("Reset-corrected ASR [bootstrap 95%]", "Reset-corrected success [bootstrap 95%]"),
+            ],
+            [
+                [
+                    c["variant"],
+                    f"{c['position']}. {c['session']}",
+                    *(
+                        [
+                            show(ablation["carry"]),
+                            show(ablation["ablate"]),
+                            f"{ablation['carry_only']}/{ablation['ablate_only']}",
+                            number(ablation["p_value"], 4),
+                        ]
+                        if (ablation := c.get("carry_vs_ablate"))
+                        else ["-"] * 4
+                    ),
+                    *(
+                        corrected(c["reset_corrected"][name]) if "reset_corrected" in c else "-"
+                        for name in ("goal", "success")
+                    ),
+                ]
+                for c in outcome["comparisons"]
+                if "carry_vs_ablate" in c or "reset_corrected" in c
+            ],
+        ),
+        table(
             "Pooled across targets",
             ["Variant", "Arm", "Session", "Targets", "ASR", "ASR bootstrap", "Strict success", "Success bootstrap"],
             [
@@ -1067,6 +1133,12 @@ def markdown(outcome: dict) -> str:
 
 def interval(bounds) -> str:
     return "-" if bounds is None else f"[{bounds[0]:.2f}, {bounds[1]:.2f}]"
+
+
+def corrected(entry: dict) -> str:
+    if entry["effect"] is None:
+        return "-"
+    return f"{entry['effect']:+.2f} {interval(entry['bootstrap95'])} (n={entry['pairs']})"
 
 
 def difference(entry: dict) -> str:
