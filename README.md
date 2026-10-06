@@ -50,8 +50,9 @@ record them in the ledger.
 experiments with mini-swe-agent on external DeepSWE task images. Each session is
 one whole task; a `/memories` directory carries between tasks. It plants content
 in repository files, command output and memory files, compares clean, carry,
-reset and ablation arms, grades patches with each task's own verifier, and reports exposure,
-memory transport, attack success and task success with interval estimates.
+reset and ablation arms with clean controls, can repair the poisoned memory through the user's
+`AGENT.md`, grades patches with each task's own verifier, and reports exposure,
+memory transport, attack success, adoption, task success and recovery with interval estimates.
 See [Context Integrity Evaluation](docs/context-integrity-evaluation.md) for setup,
 examples and offline verification. Install its optional dependencies with
 `uv sync --extra deepswe`.
