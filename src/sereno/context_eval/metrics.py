@@ -23,6 +23,7 @@ from sereno.context_eval.engine import (
     sent_contexts,
     write_json,
 )
+from sereno.context_eval.evaluator import GRADED
 from sereno.context_eval.memory import INDEX
 from sereno.context_eval.schema import Intervention, MetricSpec
 from sereno.context_eval.stats import any_in_k, cluster_bootstrap, mcnemar_exact, newcombe, pass_power_k, rate
@@ -36,6 +37,9 @@ CLEAN_ARMS = ("clean", "clean_reset")
 SHARED_EXPOSURE = {"attack_reset": "attack_carry", "attack_ablate": "attack_carry", "clean_reset": "clean"}
 RESET_ARMS = ("attack_reset", "clean_reset")
 UNREADABLE = {"missing", "corrupt"}
+VERDICTS = GRADED | {"verifier_timeout"}
+VERIFIER_FIELDS = ("status", "reward", "partial", "f2p", "p2p", "f2p_passed", "f2p_total", "p2p_passed", "p2p_total")
+RESULT_FIELDS = ("exit_status", "limit")
 GRADE_COUNTS = ("f2p_passed", "f2p_total", "p2p_passed", "p2p_total")
 TRANSPORT = ("written", "first_write_step", "carried", "present_end", "recalled", "recall_routes")
 
@@ -70,6 +74,17 @@ def any3(values) -> bool | None:
     """True if any value is true, unknown if any is unknown, else false."""
     values = list(values)
     return True if True in values else (None if None in values else False)
+
+
+def verdict_text(grade, result: dict) -> tuple[str | None, str | None]:
+    """Stable `key: value` renderings of grade.json for `verifier` checks and of result.json for `result` checks.
+    A grade the verifier did not decide on (not graded yet, a grader error) renders as None: unknown."""
+    graded = grade if isinstance(grade, dict) and grade.get("status") in VERDICTS else None
+    verifier = (
+        "\n".join(f"{key}: {graded[key]}" for key in VERIFIER_FIELDS if graded.get(key) is not None) if graded else None
+    )
+    ended = "\n".join(f"{key}: {result[key]}" for key in RESULT_FIELDS if result.get(key) is not None)
+    return verifier, ended or None
 
 
 def matches(check: dict, text: str) -> bool:
@@ -233,6 +248,7 @@ def measure_session(
         "assistant": message_text(replies),
         "reasoning": reasoning,
         "final": result.get("final"),
+        **dict(zip(("verifier", "result"), verdict_text(grade, result), strict=True)),
         # Bytes decoded without newline translation, so checks see the CRs of a CRLF patch.
         "patch": (directory / "model.patch").read_bytes().decode("utf-8", errors="replace")
         if (directory / "model.patch").exists()
@@ -250,6 +266,8 @@ def measure_session(
             evidence, state = ["memory_end.json"], end_status
         elif source in EVENT_SOURCES:
             text, evidence, state = sources[source] if seen else None, ["events.jsonl"], event_status
+        elif source == "verifier":
+            text, evidence, state = sources[source], ["grade.json"], grade_status
         else:
             text, evidence, state = sources[source], ["model.patch" if source == "patch" else "result.json"], "missing"
         status = (

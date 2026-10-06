@@ -142,7 +142,17 @@ class Check(Contract):
     id: str = Field(pattern=r"^[a-zA-Z0-9_-]+$")
     kind: Literal["goal", "trace", "flag", "constraint"] = "goal"
     source: Literal[
-        "memory", "context", "observations", "final", "workspace", "patch", "commands", "assistant", "reasoning"
+        "memory",
+        "context",
+        "observations",
+        "final",
+        "workspace",
+        "patch",
+        "commands",
+        "assistant",
+        "reasoning",
+        "verifier",
+        "result",
     ]
     sessions: list[str] = []
     path: str | None = None
