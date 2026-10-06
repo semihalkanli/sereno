@@ -840,7 +840,8 @@ def paired(carry, other, name: str) -> dict:
 def reset_corrected(arms: dict, value, replicates: int, seed: int) -> dict:
     """Per case where all four arms are known, (carry - reset) - (clean - clean_reset): the carry effect with the
     change that resetting memory alone brings taken out. The clean arms are copies of one run per target and
-    repeat, so within a variant each case holds one of them. The interval resamples cases."""
+    repeat, so within a variant each case holds one of them. The interval resamples targets, as the pooled rates
+    do, since the repeats of a target share its task, interventions and clean runs."""
     names = ("attack_carry", "attack_reset", "clean", "clean_reset")
     values = [by_case(arms[arm], value) for arm in names]
     keys = [key for key in values[0] if all(key in known for known in values[1:])]
@@ -848,11 +849,16 @@ def reset_corrected(arms: dict, value, replicates: int, seed: int) -> dict:
         (carry - reset) - (clean - clean_reset)
         for carry, reset, clean, clean_reset in ([known[key] for known in values] for key in keys)
     ]
+    target = {(row["campaign"], row["case"]): row["target"] for row in arms["attack_carry"]}
+    clusters = defaultdict(lambda: [0, 0])
+    for key, effect in zip(keys, effects, strict=True):
+        clusters[target[key]][0] += effect
+        clusters[target[key]][1] += 1
     return {
         "pairs": len(keys),
         **{arm: rate(sum(known[key] for key in keys), len(keys)) for arm, known in zip(names, values, strict=True)},
         "effect": fmean(effects) if effects else None,
-        "bootstrap95": cluster_bootstrap([(effect, 1) for effect in effects], replicates, seed),
+        "bootstrap95": cluster_bootstrap([tuple(cluster) for cluster in clusters.values()], replicates, seed),
     }
 
 

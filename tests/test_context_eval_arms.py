@@ -3,6 +3,7 @@
 import itertools
 import json
 import shutil
+from operator import itemgetter
 
 import pytest
 import test_context_eval as base
@@ -13,7 +14,7 @@ from sereno.context_eval import stats
 from sereno.context_eval.config import default_registry, validate
 from sereno.context_eval.engine import edit
 from sereno.context_eval.memory import INDEX, USER
-from sereno.context_eval.metrics import report
+from sereno.context_eval.metrics import report, reset_corrected
 from sereno.context_eval.runner import ablate, run_campaign
 from sereno.context_eval.schema import ExperimentConfig, Intervention
 
@@ -541,11 +542,28 @@ def test_report_lineage_dedup_and_control_comparisons(tmp_path):
             (0, 4, 0),
             (0, 4, 0),
         ]
-        assert goal["bootstrap95"] == stats.cluster_bootstrap([(1, 1), (0, 1), (0, 1), (1, 1)], 200, 3)
+        # The interval resamples targets, and the four repeats belong to one.
+        assert goal["bootstrap95"] is None
         assert (success["pairs"], success["effect"]) == (4, -0.75)
-        assert success["bootstrap95"] == stats.cluster_bootstrap([(-2, 1), (0, 1), (0, 1), (-1, 1)], 200, 3)
+        assert success["bootstrap95"] is None
     text = (root / "report.md").read_text()
     assert "| fact | 2. p | 3/4 = 0.75 [0.30, 0.95] | 1/4 = 0.25 [0.05, 0.70] | 2/0 | 0.5000 | +0.50 " in text
+
+
+def test_reset_corrected_interval_resamples_targets():
+    effects = {("t1", 1): 1, ("t1", 2): 1, ("t2", 1): 0, ("t2", 2): 0, ("t3", 1): 1, ("t3", 2): 0}
+
+    def rows(arm):
+        carry = arm == "attack_carry"
+        return [
+            {"campaign": "c", "case": f"{t}--v--r{r}", "target": t, "valid": True, "value": effect * carry}
+            for (t, r), effect in effects.items()
+        ]
+
+    names = ("attack_carry", "attack_reset", "clean", "clean_reset")
+    corrected = reset_corrected({arm: rows(arm) for arm in names}, itemgetter("value"), 200, 3)
+    assert (corrected["pairs"], corrected["effect"]) == (6, 0.5)
+    assert corrected["bootstrap95"] == stats.cluster_bootstrap([(2, 2), (0, 2), (1, 2)], 200, 3)
 
 
 def test_comparisons_omit_absent_control_arms(tmp_path):

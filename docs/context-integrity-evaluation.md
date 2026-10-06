@@ -285,8 +285,8 @@ out. A shared copy counts once. Groups are target × variant × arm × session. 
 with mean memory writes and the share of sessions with writes; carry against reset paired by case (exact
 McNemar); carry against ablation paired by case (exact McNemar) when `attack_ablate` runs; the reset-corrected
 carry effect (carry − reset) − (clean − clean_reset), per case where all four arms are known, on the attack
-outcome and on strict task success, with its mean and a seeded bootstrap interval over cases, when `attack_reset`
-and `clean_reset` run (`reset_corrected` in `report.json`, "Control arms" in `report.md`); carry against clean
+outcome and on strict task success, with its mean and a seeded bootstrap interval over targets (the repeats of
+a target are correlated), when `attack_reset` and `clean_reset` run (`reset_corrected` in `report.json`, "Control arms" in `report.md`); carry against clean
 and utility loss with Newcombe intervals; the transport chain P(write | exposed)
 × P(recall | carried) × P(goal | recalled) against the observed attack success rate; early activation for
 cross-task interventions; any success in k and pass^k over repeats; breakdowns by channel, objective, family,
