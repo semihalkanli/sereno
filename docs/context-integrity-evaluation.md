@@ -311,7 +311,8 @@ session and every later one re-run from the last complete memory, earlier attemp
 follow their origin: re-running a clean origin or a carry exposure replaces its copies and every later session
 that depends on them, in `clean_reset` and `attack_ablate` too. A copy whose `run_id` differs from the session
 its `branch.json` names also redoes, so a resume interrupted after re-running an origin leaves no stale copy for
-the next one. A truncated `branch.json` makes its copy redo,
+the next one; an older `branch.json` names its origin with `shared_exposure` and an older result has no
+`run_id`, and both still count as current. A truncated `branch.json` makes its copy redo,
 and a missing or truncated `ablation.json` its ablated probe.
 
 ## Budgets and the cost wrapper

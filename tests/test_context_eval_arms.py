@@ -379,6 +379,21 @@ def test_rerunning_a_clean_exposure_refreshes_clean_reset(tmp_path, fixture_worl
     assert run_ids(attacks) == attack_runs
 
 
+def test_resume_keeps_copies_named_with_the_older_branch_key(tmp_path, fixture_world):
+    config = arms_config(fixture_world[0])
+    root, _, _ = run(tmp_path, fixture_world, config)
+    for arm in ("attack_reset", "attack_ablate"):
+        copy = session(root, arm, "001-exposure")
+        branch = read(copy / "branch.json")
+        (copy / "branch.json").write_text(json.dumps({"shared_exposure": branch["shared_from"], "origin": "carry"}))
+        for directory in (copy, root / branch["shared_from"]):
+            result = result_of(directory)
+            result.pop("run_id", None)
+            (directory / "result.json").write_text(json.dumps(result))
+    _, runs = resume(fixture_world, config, root)
+    assert runs == 0
+
+
 class Interrupted(BaseException):
     pass
 

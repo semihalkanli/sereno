@@ -466,10 +466,12 @@ def run_campaign(
 
     def current(copy: Path) -> bool:
         """A copy of the session its origin now holds; a run interrupted after re-running an origin session leaves
-        the copies of the replaced attempt behind."""
+        the copies of the replaced attempt behind. Older campaigns name the origin shared_exposure and older
+        results carry no run_id."""
         try:
-            origin = output / read(copy / "branch.json")["shared_from"]
-            return read(copy / "result.json")["run_id"] == read(origin / "result.json")["run_id"]
+            branch = read(copy / "branch.json")
+            origin = output / (branch.get("shared_from") or branch["shared_exposure"])
+            return read(copy / "result.json").get("run_id") == read(origin / "result.json").get("run_id")
         except (OSError, ValueError, KeyError):
             return False
 
