@@ -130,11 +130,16 @@ def result_catalog(result: dict) -> dict:
     return catalog | {key: {"marker": None} for key in result.get("untracked_interventions") or []}
 
 
+def content_spans(entry: dict, text: str) -> list[tuple[int, int]]:
+    """Where the marker and the copy patterns of one catalog entry match `text`, matched over the whole text."""
+    marker = entry.get("marker")
+    patterns = [*(entry.get("copy_patterns") or []), *([re.escape(marker)] if marker else [])]
+    return [m.span() for pattern in patterns for m in re.finditer(pattern, text)]
+
+
 def content_found(entry: dict, text: str) -> set[str]:
     """The marker and the copy-pattern matches of one catalog entry that occur in `text`."""
-    marker = entry.get("marker")
-    copies = {m.group(0) for pattern in entry.get("copy_patterns") or [] for m in re.finditer(pattern, text)}
-    return copies | ({marker} if marker and marker in text else set())
+    return {text[start:end] for start, end in content_spans(entry, text)}
 
 
 def lane_of(entry: dict) -> str | None:

@@ -163,6 +163,21 @@ def test_ablation_removes_only_matching_lines():
     )
 
 
+def test_ablation_matches_content_across_lines_like_the_metrics():
+    wrapped = Intervention(
+        id="wrapped", method="file", path="/app/a.md", sessions=["e"], text="x", copy_patterns=[r"CI_WRAP\s+RULE"]
+    )
+    memory = {NOTE: "keep\nalways CI_WRAP\nRULE before pushing\nkeep too\n"}
+    kept, record = ablate(memory, [wrapped])
+    assert kept == {NOTE: "keep\nkeep too\n"}
+    assert record["files"][NOTE]["removed_lines"] == 2
+    assert record["interventions"] == {"wrapped": 2}
+    # Removing a marker line joins the lines around it into a copy the metrics detect: the arm must not run.
+    marked = wrapped.model_copy(update={"marker": "CI_GAP"})
+    with pytest.raises(RuntimeError, match="ablation left intervention content"):
+        ablate({NOTE: "CI_WRAP\nCI_GAP\nRULE\n"}, [marked])
+
+
 def test_ablation_keeps_the_text_a_memory_intervention_was_joined_to():
     def event(operation, text):
         return Intervention(

@@ -17,6 +17,7 @@ from sereno.context_eval.agents import action_timeout, mini_swe_config
 from sereno.context_eval.config import fingerprint, validate
 from sereno.context_eval.dataset import image_identity, load_task, provenance
 from sereno.context_eval.engine import (
+    LINES,
     EventLog,
     InterventionEngine,
     Runtime,
@@ -27,7 +28,7 @@ from sereno.context_eval.engine import (
 )
 from sereno.context_eval.environment import DockerEnvironment
 from sereno.context_eval.memory import FileMemory, MemoryViolation, agent_violation, instructions
-from sereno.context_eval.metrics import report
+from sereno.context_eval.metrics import content_found, content_spans, report
 from sereno.context_eval.schema import AgentOutcome
 
 COMPLETE = {"Submitted", "LimitsExceeded", "TimeExceeded", "RepeatedFormatError", "MemoryViolation", "script_complete"}
@@ -250,14 +251,16 @@ def complete(directory: Path, copy: bool = False, ablated: bool = False) -> bool
 
 
 def ablate(memory: dict[str, str], events) -> tuple[dict[str, str], dict]:
-    """Carried memory without the lines that hold an intervention's marker or match one of its copy patterns, and
-    the record of what was removed. A memory append or prepend lands on the line of a file that does not end (or
-    start) a line there; such a merged line keeps the text that was there before. A file left with nothing but
-    whitespace is deleted; every other byte is kept."""
-    kept, files, lines_by_event = {}, {}, dict.fromkeys((event.id for event in events), 0)
+    """Carried memory without every line that a match of an intervention's marker or copy patterns overlaps,
+    matched over the whole file text as the metrics detect content, and the record of what was removed. A memory
+    append or prepend lands on the line of a file that does not end (or start) a line there; such a merged line
+    keeps the text that was there before. A file left with nothing but whitespace is deleted; every other byte is
+    kept. Content the metrics would still find in the kept memory is a setup failure."""
+    catalog = intervention_catalog(events)
+    kept, files, lines_by_event = {}, {}, dict.fromkeys(catalog, 0)
 
-    def hits(line: str) -> list[str]:
-        return [e.id for e in events if (e.marker and e.marker in line) or e.copy_match(line) is not None]
+    def hits(text: str) -> list[str]:
+        return [key for key, entry in catalog.items() if content_found(entry, text)]
 
     def before(path: str, line: str) -> str:
         """The text a memory intervention's first appended or last prepended line was joined to."""
@@ -276,9 +279,11 @@ def ablate(memory: dict[str, str], events) -> tuple[dict[str, str], dict]:
         return ""
 
     for path, text in sorted(memory.items()):
+        spans = {key: content_spans(entry, text) for key, entry in catalog.items()}
         remaining, removed, trimmed, matched = [], 0, 0, set()
-        for line in text.splitlines(keepends=True):
-            found = hits(line)
+        for match in LINES.finditer(text):
+            line, (start, end) = match.group(0), match.span()
+            found = [key for key, ranges in spans.items() if any(a < end and b > start for a, b in ranges)]
             for key in found:
                 lines_by_event[key] += 1
             removed += bool(found)
@@ -298,6 +303,8 @@ def ablate(memory: dict[str, str], events) -> tuple[dict[str, str], dict]:
                 "deleted": path not in kept,
                 "interventions": sorted(matched),
             }
+    if residue := {path: found for path, text in kept.items() if (found := hits(text))}:
+        raise RuntimeError(f"ablation left intervention content the metrics detect: {residue}")
     record = {
         "removed_lines": sum(entry["removed_lines"] for entry in files.values()),
         "removed_files": sorted(path for path, entry in files.items() if entry["deleted"]),

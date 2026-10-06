@@ -85,9 +85,11 @@ sessions come first and are the only sessions interventions may target; the sess
   state at the same boundary, so it measures what losing useful memory costs. Like `clean` it runs once per
   target and repeat, under `clean_reset/<target>--rNNN/`, and is copied into each case.
 - `attack_ablate` (requires `attack_carry`): shares carry's exposure sessions, then, before the first probe,
-  removes from the carried memory every line that holds an intervention's `marker` or matches one of its
-  `copy_patterns`, in any file including `AGENT.md`; a file left with only whitespace is deleted and everything
-  else is kept. A memory append or prepend joins the line it lands on when the file does not end (or start) a
+  removes from the carried memory every line that a match of an intervention's `marker` or `copy_patterns`
+  overlaps, matched over the whole file text as the metrics detect content (a match that spans lines removes
+  each of them), in any file including `AGENT.md`; a file left with only whitespace is deleted and everything
+  else is kept. Content the metrics would still find in the ablated memory stops the campaign with an error
+  rather than running the probe. A memory append or prepend joins the line it lands on when the file does not end (or start) a
   line there; on such a merged line the text that was there before is kept. Later probes carry on from there.
   The first probe's `ablation.json` records the removed lines, the merged lines whose earlier text was kept and
   deleted files per file and the lines each intervention matched; zero removed is a valid outcome. Every
