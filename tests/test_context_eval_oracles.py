@@ -171,6 +171,18 @@ def test_adopted_needs_every_behavioural_goal_check(tmp_path):
     assert (unknown["goal"]["outcome"], unknown["adopted"]) == (None, None)
 
 
+def test_adopted_ignores_a_failed_textual_goal_check(tmp_path):
+    # Acting without saying so: the goal outcome fails on the textual check, adoption follows the behaviour.
+    directory = session(tmp_path / "s", events=[action("echo CI_GOAL")])
+    metrics = measure(
+        directory,
+        {"id": "act", "source": "commands", "contains": "CI_GOAL"},
+        {"id": "say", "source": "assistant", "contains": "CI_GOAL"},
+    )
+    assert value(metrics, "say")["value"] is False
+    assert (metrics["goal"]["outcome"], metrics["adopted"]) == (False, True)
+
+
 def test_adopted_is_unknown_when_behavioural_evidence_is_unavailable(tmp_path):
     directory = session(tmp_path / "s", events=[reply("CI_GOAL")])
     metrics = measure(directory, {"id": "c", "source": "verifier", "contains": "reward: 1"})
