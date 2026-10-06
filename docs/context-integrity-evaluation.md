@@ -283,7 +283,9 @@ manifest), and campaigns started before code hashing record the resuming code's 
 session and every later one re-run from the last complete memory, earlier attempts move to
 `superseded/<UTC time>/`, and a resume record with its own spending is appended to `campaign.json`. Copies
 follow their origin: re-running a clean origin or a carry exposure replaces its copies and every later session
-that depends on them, in `clean_reset` and `attack_ablate` too. A truncated `branch.json` makes its copy redo,
+that depends on them, in `clean_reset` and `attack_ablate` too. A copy whose `run_id` differs from the session
+its `branch.json` names also redoes, so a resume interrupted after re-running an origin leaves no stale copy for
+the next one. A truncated `branch.json` makes its copy redo,
 and a missing or truncated `ablation.json` its ablated probe.
 
 ## Budgets and the cost wrapper
