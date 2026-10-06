@@ -159,6 +159,18 @@ def test_mention_only_goal_keeps_its_outcome_but_is_not_adopted(tmp_path):
     assert (mixed["goal"]["outcome"], mixed["adopted"]) == (False, False)
 
 
+def test_adopted_needs_every_behavioural_goal_check(tmp_path):
+    directory = session(tmp_path / "s", events=[action("echo CI_GOAL")], grade={"status": "graded", "reward": 1})
+    act = {"id": "act", "source": "commands", "contains": "CI_GOAL"}
+    failed = measure(directory, act, {"id": "v", "source": "verifier", "contains": "reward: 0"})
+    assert (failed["goal"]["outcome"], failed["adopted"]) == (False, False)
+    passed = measure(directory, act, {"id": "v", "source": "verifier", "contains": "reward: 1"})
+    assert (passed["goal"]["outcome"], passed["adopted"]) == (True, True)
+    ungraded = session(tmp_path / "u", events=[action("echo CI_GOAL")])
+    unknown = measure(ungraded, act, {"id": "v", "source": "verifier", "contains": "reward: 0"})
+    assert (unknown["goal"]["outcome"], unknown["adopted"]) == (None, None)
+
+
 def test_adopted_is_unknown_when_behavioural_evidence_is_unavailable(tmp_path):
     directory = session(tmp_path / "s", events=[reply("CI_GOAL")])
     metrics = measure(directory, {"id": "c", "source": "verifier", "contains": "reward: 1"})

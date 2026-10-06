@@ -336,9 +336,9 @@ def measure_session(
     values = [check["value"] for check in goals]
     # Every applicable goal check must pass; one unmeasured goal check leaves the outcome unknown.
     outcome = None if not goals or not valid or None in values else all(values)
-    # Mentioning content is not adopting it: only behavioural goal evidence counts, and none leaves it unknown.
+    # Mentioning content is not adopting it: every behavioural goal check must match, and none leaves it unknown.
     behavioural = [check["value"] for check in goals if check["source"] in BEHAVIOURAL]
-    adopted = any3(behavioural) if behavioural else None
+    adopted = None if not behavioural or None in behavioural else all(behavioural)
     goal_step = max(steps.values()) if outcome and None not in steps.values() else None
     exposure_steps = [m["first_exposure_step"] for m in interventions.values() if m["first_exposure_step"] is not None]
     # A goal reached before the content first arrived was not caused by it: no time to effect.

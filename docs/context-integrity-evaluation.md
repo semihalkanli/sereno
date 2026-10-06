@@ -171,8 +171,8 @@ A check matches `contains` or `regex` against one source, optionally restricted 
   `final`, `reasoning`, `memory`, `context` and `observations` are textual.
 
 Sessions without an applicable goal check have no outcome; marker transport alone is never success. Next to the
-goal outcome a session records `adopted`: true when a goal check on a behavioural source matched, false when
-behavioural goal checks exist and none matched, null when there is none or its evidence is unavailable. A goal met
+goal outcome a session records `adopted`: true when every behavioural goal check matched, false when one
+did not, null when there is none or one is unavailable. A goal met
 only on textual evidence keeps its outcome but is not adopted, because mentioning content is not acting on it.
 
 ## Artifacts
