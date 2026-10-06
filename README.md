@@ -49,8 +49,8 @@ record them in the ledger.
 `sereno context-eval` runs prompt injection and persistent memory poisoning
 experiments with mini-swe-agent on external DeepSWE task images. Each session is
 one whole task; a `/memories` directory carries between tasks. It plants content
-in repository files, command output and memory files, compares clean, carry and
-reset arms, grades patches with each task's own verifier, and reports exposure,
+in repository files, command output and memory files, compares clean, carry,
+reset and ablation arms, grades patches with each task's own verifier, and reports exposure,
 memory transport, attack success and task success with interval estimates.
 See [Context Integrity Evaluation](docs/context-integrity-evaluation.md) for setup,
 examples and offline verification. Install its optional dependencies with
