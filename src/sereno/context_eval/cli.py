@@ -1,4 +1,4 @@
-"""CLI for catalogs, validated campaign matrices, offline reports and patch export."""
+"""CLI for catalogs, validated campaign matrices, offline reports, patch export and DeepSWE grading."""
 
 import argparse
 import json
@@ -20,16 +20,35 @@ def add_parser(parent):
         command.add_argument("config", type=Path)
         command.add_argument("--plugin", action="append", default=[], help="explicit trusted Python module")
         if name == "run":
-            command.add_argument("--out", type=Path, required=True, help="new campaign directory")
+            command.add_argument("--out", type=Path, required=True, help="campaign directory, new unless --resume")
+            command.add_argument(
+                "--resume", action="store_true", help="continue the interrupted campaign in --out with the same config"
+            )
     report = commands.add_parser("report", help="recompute metrics from saved artifacts")
     report.add_argument("campaign", type=Path)
-    report.add_argument("--plugin", action="append", default=[])
+    summarize = commands.add_parser("summarize", help="pool several campaigns into one report")
+    summarize.add_argument("campaigns", type=Path, nargs="+")
+    summarize.add_argument("--out", type=Path, required=True, help="new directory for the pooled report")
+    for command in (report, summarize):
+        command.add_argument("--plugin", action="append", default=[])
+        command.add_argument("--bootstrap", type=int, default=2000, help="cluster bootstrap replicates over targets")
+        command.add_argument("--seed", type=int, default=0, help="bootstrap seed")
     export = commands.add_parser("export", help="export one grade-ready session patch")
     export.add_argument("campaign", type=Path)
     export.add_argument("--case", required=True)
     export.add_argument("--arm", choices=["clean", "attack_carry", "attack_reset"], required=True)
     export.add_argument("--session", required=True)
     export.add_argument("--out", type=Path, required=True)
+    grade = commands.add_parser("grade", help="grade complete session patches with DeepSWE verifiers")
+    grade.add_argument("campaign", type=Path)
+    grade.add_argument("--workers", type=int, default=1)
+    grade.add_argument("--force", action="store_true", help="regrade sessions that already have grade.json")
+    grade.add_argument("--dataset", type=Path, help="DeepSWE checkout (default: the campaign's dataset_root)")
+    check = commands.add_parser("grade-check", help="grade gold and empty patches to validate the verifiers")
+    check.add_argument("--dataset", type=Path, required=True)
+    check.add_argument("task_ids", nargs="+")
+    check.add_argument("--out", type=Path, help="new output directory")
+    check.add_argument("--workers", type=int, default=1)
     schema = commands.add_parser("schema", help="print the experiment JSON Schema")
     schema.add_argument("--out", type=Path)
     return parser
@@ -59,12 +78,28 @@ def execute(args) -> int:
             from sereno.context_eval.runner import export_submission
 
             result = {"exported": str(export_submission(args.campaign, args.case, args.arm, args.session, args.out))}
+        elif command == "grade":
+            from sereno.context_eval.evaluator import grade_campaign
+
+            result = grade_campaign(args.campaign, dataset=args.dataset, workers=args.workers, force=args.force)
+        elif command == "grade-check":
+            from sereno.context_eval.evaluator import grade_check
+
+            result = grade_check(args.dataset, args.task_ids, out=args.out, workers=args.workers)
         else:
+            from sereno.context_eval.metrics import overview
+
             registry = default_registry(args.plugin)
             if command == "report":
                 from sereno.context_eval.metrics import report
 
-                result = report(args.campaign, registry)
+                outcome = report(args.campaign, registry, bootstrap=args.bootstrap, seed=args.seed)
+                result = overview(args.campaign, outcome)
+            elif command == "summarize":
+                from sereno.context_eval.metrics import summarize
+
+                outcome = summarize(args.campaigns, args.out, registry, bootstrap=args.bootstrap, seed=args.seed)
+                result = overview(args.out, outcome)
             else:
                 config = load_config(args.config)
                 if command == "validate":
@@ -72,10 +107,15 @@ def execute(args) -> int:
                 else:
                     from sereno.context_eval.runner import run_campaign
 
-                    result = run_campaign(config, args.out, registry)
+                    outcome = run_campaign(config, args.out, registry, resume=args.resume)
+                    result = {"campaign": str(args.out.resolve())} | overview(args.out, outcome, groups=False)
         print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
         if command == "run":
-            return int(any(s["status"] != "complete" for s in result["sessions"]))
+            return int(any(s["status"] != "complete" for s in outcome["sessions"]))
+        if command == "grade":
+            return int(result["statuses"].get("grader_error", 0) > 0 or result["unreadable"] > 0)
+        if command == "grade-check":
+            return int(not result["passed"])
         return 0
     except ModuleNotFoundError as error:
         print(f"Missing dependency {error.name}; install the project extra with: uv sync --extra deepswe")

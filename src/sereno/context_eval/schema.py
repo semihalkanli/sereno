@@ -4,7 +4,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 
 class Contract(BaseModel, extra="forbid"):
@@ -35,7 +35,7 @@ class Session(Contract):
     exposure: bool = False
     instruction: str | None = None
     script: list[ScriptAction] = []
-    max_steps: int = Field(100, ge=1)
+    max_steps: int = Field(0, ge=0)
 
 
 class Intervention(Contract):
@@ -50,17 +50,26 @@ class Intervention(Contract):
     text: str | None = None
     payload_file: Path | None = None
     parameters: dict[str, str] = {}
-    marker: str | None = None
+    # Observations reach the model JSON-encoded, so a marker must survive escaping unchanged.
+    marker: str | None = Field(None, pattern=r"^[A-Za-z0-9_:.-]+$")
     command_contains: str | None = None
     output_contains: str | None = None
+    min_step: int | None = Field(None, ge=1)
+    max_step: int | None = Field(None, ge=1)
     max_fires: int = Field(1, ge=1, le=1000)
+    copy_patterns: list[str] = []
+    objective: Literal["fact", "preference", "action", "persistence"] | None = None
+    family: str | None = None
+    intended: Literal["in_task", "cross_task"] | None = None
+    git: Literal["commit", "worktree"] | None = None
+    _copy_regexes: list[re.Pattern] = PrivateAttr(default_factory=list)
 
     @model_validator(mode="after")
     def coherent(self):
         if (self.text is None) == (self.payload_file is None):
             raise ValueError("provide exactly one of text or payload_file")
-        if self.text == "" or self.marker == "" or self.old_text == "":
-            raise ValueError("text, marker and old_text cannot be empty")
+        if self.text == "" or self.old_text == "":
+            raise ValueError("text and old_text cannot be empty")
         if self.method == "output" and self.phase != "after_observation":
             raise ValueError("output interventions require after_observation")
         if self.method != "output":
@@ -71,11 +80,51 @@ class Intervention(Contract):
             raise ValueError("action filters require an action phase")
         if self.output_contains and self.phase != "after_observation":
             raise ValueError("output_contains requires after_observation")
+        if (self.min_step or self.max_step) and self.phase not in {"before_action", "after_observation"}:
+            raise ValueError("min_step and max_step require an action phase")
+        if self.min_step and self.max_step and self.min_step > self.max_step:
+            raise ValueError("min_step cannot exceed max_step")
         if self.old_text is not None and self.operation != "replace":
             raise ValueError("old_text requires replace")
         if self.strategy == "once" and self.max_fires != 1:
             raise ValueError("once requires max_fires=1; use repeat or sequence")
+        self._copy_regexes = [compile_pattern(pattern) for pattern in self.copy_patterns]
+        if any(pattern.search("") for pattern in self._copy_regexes):
+            raise ValueError("copy patterns cannot match empty text")
+        if self.git is not None and self.method != "file":
+            raise ValueError("git placement applies only to file interventions")
+        if self.git == "commit" and self.phase != "session_start":
+            raise ValueError("git commit placement requires session_start; action phases change the worktree")
         return self
+
+    @property
+    def placement(self) -> str | None:
+        """Effective git placement of a file intervention: session_start files are committed by default."""
+        if self.method != "file":
+            return None
+        return self.git or ("commit" if self.phase == "session_start" else "worktree")
+
+    @property
+    def channel(self) -> str:
+        from sereno.context_eval.memory import INDEX, USER
+
+        if self.method != "memory":
+            return "repo_file" if self.method == "file" else "command_output"
+        return {USER: "user_file", INDEX: "memory_index"}.get(self.path, "memory_topic")
+
+    def copy_match(self, text: str) -> str | None:
+        """The first text a copy pattern recognises as a verbatim or paraphrased copy of this content."""
+        for pattern in self._copy_regexes:
+            if match := pattern.search(text):
+                return match.group(0)
+        return None
+
+
+def compile_pattern(pattern: str) -> re.Pattern:
+    try:
+        return re.compile(pattern)
+    except re.error as error:
+        raise ValueError(f"invalid regex {pattern!r}: {error}") from None
 
 
 def validate_path(path: str, root: str) -> str:
@@ -88,8 +137,13 @@ def validate_path(path: str, root: str) -> str:
 
 
 class Check(Contract):
+    """A deterministic assertion. Only goal checks decide the outcome; a constraint match is a violation."""
+
     id: str = Field(pattern=r"^[a-zA-Z0-9_-]+$")
-    source: Literal["memory", "context", "observations", "final", "workspace", "patch"]
+    kind: Literal["goal", "trace", "flag", "constraint"] = "goal"
+    source: Literal[
+        "memory", "context", "observations", "final", "workspace", "patch", "commands", "assistant", "reasoning"
+    ]
     sessions: list[str] = []
     path: str | None = None
     contains: str | None = None
@@ -102,7 +156,7 @@ class Check(Contract):
         if self.contains == "":
             raise ValueError("contains cannot be empty")
         if self.regex is not None:
-            re.compile(self.regex)
+            compile_pattern(self.regex)
         if self.source == "workspace":
             validate_path(self.path or "", "/app")
         elif self.path is not None:
@@ -121,6 +175,7 @@ class MemoryConfig(Contract):
     enabled: bool = True
     seed: dict[str, str] = {}
     user: str | None = None
+    instructions_file: Path | None = None
     max_files: int = Field(100, ge=1, le=10000)
     max_bytes: int = Field(1_000_000, ge=25000)
 
@@ -139,8 +194,8 @@ class MemoryConfig(Contract):
         if USER in self.seed:
             raise ValueError(f"{USER} is user-written; set memory.user instead of seeding it")
         files = self.initial()
-        if not self.enabled and files:
-            raise ValueError("disabled memory cannot have seed or user files")
+        if not self.enabled and (files or self.instructions_file):
+            raise ValueError("disabled memory cannot have seed, user or instructions files")
         if len(files) > self.max_files or sum(len(t.encode()) for t in files.values()) > self.max_bytes:
             raise ValueError("seed exceeds memory limits")
         return self
@@ -163,7 +218,9 @@ class ExperimentConfig(Contract):
     seed: int = Field(0, ge=0)
     cost_limit_usd: float = Field(2.0, gt=0)
     campaign_cost_limit_usd: float = Field(20.0, gt=0)
-    wall_time_limit_seconds: int = Field(10800, ge=1)
+    wall_time_limit_seconds: int | None = Field(None, ge=1)
+    # The campaign's frozen mini-swe configuration, set by the runner; never part of the experiment file.
+    _agent_config_file: Path | None = PrivateAttr(None)
 
     @model_validator(mode="after")
     def coherent(self):
@@ -172,6 +229,8 @@ class ExperimentConfig(Contract):
             raise ValueError("session IDs and arms must be unique")
         if len({t.task_id for t in self.targets}) != len(self.targets):
             raise ValueError("target task IDs must be unique")
+        if self.cost_limit_usd > self.campaign_cost_limit_usd:
+            raise ValueError("cost_limit_usd cannot exceed campaign_cost_limit_usd")
         if not self.arms or not self.variants:
             raise ValueError("arms and variants cannot be empty")
         if "attack_reset" in self.arms and "attack_carry" not in self.arms:

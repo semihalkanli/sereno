@@ -26,6 +26,8 @@ def load_config(path: Path) -> ExperimentConfig:
     config.dataset_root = resolve(root, config.dataset_root)
     if config.model_config_file:
         config.model_config_file = resolve(root, config.model_config_file)
+    if config.memory.instructions_file:
+        config.memory.instructions_file = resolve(root, config.memory.instructions_file)
     for events in config.variants.values():
         for event in events:
             if event.payload_file:
@@ -73,6 +75,7 @@ def default_registry(plugins: list[str] = ()) -> Registry:
 
 def validate(config: ExperimentConfig, registry: Registry) -> dict:
     from sereno.context_eval.dataset import load_task
+    from sereno.context_eval.memory import instructions
 
     # Python callers can modify a config after construction; validate the complete current contract again.
     config = ExperimentConfig.model_validate(config.model_dump())
@@ -81,6 +84,8 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
         raise ValueError(f"unknown agent adapter: {config.agent}")
     if config.agent == "mini-swe" and not config.model_config_file:
         raise ValueError("mini-swe requires model_config_file")
+    if config.memory.enabled and not instructions(config.memory).strip():
+        raise ValueError("memory instructions cannot be empty")
     if config.model_config_file:
         import yaml
 

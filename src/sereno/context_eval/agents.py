@@ -1,38 +1,92 @@
-"""mini-swe-agent adapter and a deterministic fixture oracle using the same runtime hooks."""
+"""mini-swe-agent adapter and a deterministic fixture oracle using the same runtime hooks and memory prompt."""
 
 import json
 import time
+from pathlib import Path
+
+from sereno.context_eval.environment import DEFAULT_ACTION_TIMEOUT
+from sereno.context_eval.memory import instructions
+
+
+def mini_swe_config(model_config_file: Path) -> dict:
+    """mini-swe's built-in mini.yaml merged with the experiment's model config."""
+    import yaml
+    from minisweagent.config import builtin_config_dir
+    from minisweagent.utils.serialize import recursive_merge
+
+    return recursive_merge(
+        yaml.safe_load((builtin_config_dir / "mini.yaml").read_text()),
+        yaml.safe_load(model_config_file.read_text()),
+    )
+
+
+def agent_config(config) -> dict:
+    """The mini-swe configuration a session runs with: the campaign's frozen copy once the runner set one."""
+    import yaml
+
+    frozen = getattr(config, "_agent_config_file", None)
+    return yaml.safe_load(frozen.read_text()) if frozen else mini_swe_config(config.model_config_file)
+
+
+def action_timeout(config) -> int:
+    """Seconds an action may run: environment.timeout of the merged mini-swe config, else the default."""
+    if config.agent != "mini-swe" or config.model_config_file is None:
+        return DEFAULT_ACTION_TIMEOUT
+    return int((agent_config(config).get("environment") or {}).get("timeout") or DEFAULT_ACTION_TIMEOUT)
 
 
 def rendered_output(output: dict) -> dict:
     text = output["output"]
+    rendered = {"returncode": output["returncode"]}
     if len(text) <= 10000:
-        return {"returncode": output["returncode"], "output": text}
-    return {
-        "returncode": output["returncode"],
-        "output_head": text[:5000],
-        "output_tail": text[-5000:],
-        "elided_chars": len(text) - 10000,
-    }
+        rendered["output"] = text
+    else:
+        rendered |= {"output_head": text[:5000], "output_tail": text[-5000:], "elided_chars": len(text) - 10000}
+    return rendered | ({"exception_info": output["exception_info"]} if output.get("exception_info") else {})
+
+
+def format_error_reply(error) -> dict:
+    """The model reply a mini-swe FormatError carries: the provider message when the response has one."""
+    extra = dict((error.messages[0] if error.messages else {}).get("extra") or {})
+    response = extra.get("response")
+    choices = (response.get("choices") if isinstance(response, dict) else None) or [{}]
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    return {"role": "assistant", "content": "", **(message if isinstance(message, dict) else {}), "extra": extra}
 
 
 class ScriptedAdapter:
     def run(self, runtime, instruction, memory_context, config, session):
-        messages = [{"role": "user", "content": instruction + "\n" + memory_context}]
+        # The memory text mini-swe would see: instructions as the system message, the reminder before the task.
+        if config.memory.enabled:
+            messages = [
+                {"role": "system", "content": instructions(config.memory)},
+                {"role": "user", "content": f"{memory_context}\n\n{instruction}"},
+            ]
+        else:
+            messages = [{"role": "user", "content": instruction}]
+        runtime.initial_messages = list(messages)
         started = time.monotonic()
         steps, final = 0, ""
         exit_status = "script_complete"
         for action in session.script:
-            if steps >= session.max_steps or time.monotonic() - started >= config.wall_time_limit_seconds:
-                exit_status = "session_boundary"
+            # The same caps and exit statuses as mini-swe; max_steps 0 means no step cap.
+            if 0 < session.max_steps <= steps:
+                exit_status = "LimitsExceeded"
+                break
+            if time.monotonic() - started >= config.wall_time_limit_seconds:
+                exit_status = "TimeExceeded"
                 break
             seen = "\n".join(str(m.get("content", "")) for m in messages if m.get("role") != "assistant")
             if action.if_contains is not None and action.if_contains not in seen:
                 continue
             runtime.context_sent(messages)
-            messages.append({"role": "assistant", "content": action.command})
-            output = runtime.execute(action.command)
+            reply = {"role": "assistant", "content": action.command}
+            runtime.log.emit("model_result", session_id=runtime.session.id, cost_usd=0.0, message=reply)
+            messages.append(reply)
             steps += 1
+            # Counted before the action runs, as mini-swe counts a model call, for runs that end in an error.
+            runtime.partial_agent_result = {"steps": steps, "cost_usd": 0.0}
+            output = runtime.execute(action.command)
             final = runtime.last_output
             if output["submitted"]:
                 exit_status = "Submitted"
@@ -45,17 +99,11 @@ class ScriptedAdapter:
 
 class MiniSweAdapter:
     def run(self, runtime, instruction, memory_context, config, session):
-        import yaml
         from minisweagent.agents.default import DefaultAgent
-        from minisweagent.config import builtin_config_dir
-        from minisweagent.exceptions import Submitted
+        from minisweagent.exceptions import FormatError, Submitted
         from minisweagent.models import get_model
-        from minisweagent.utils.serialize import recursive_merge
 
-        merged = recursive_merge(
-            yaml.safe_load((builtin_config_dir / "mini.yaml").read_text()),
-            yaml.safe_load(config.model_config_file.read_text()),
-        )
+        merged = agent_config(config)
         merged["model"]["cost_tracking"] = "default"
         # env settings from model configs must not forward host credentials or mount host paths.
         environment_vars = merged.get("environment", {}).get("env", {})
@@ -86,7 +134,18 @@ class MiniSweAdapter:
         class ModelProxy:
             def query(self, messages):
                 runtime.context_sent(messages)
-                message = model.query(messages)
+                try:
+                    message = model.query(messages)
+                except FormatError as error:
+                    reply = format_error_reply(error)
+                    runtime.log.emit(
+                        "model_result",
+                        session_id=runtime.session.id,
+                        cost_usd=reply["extra"].get("cost"),
+                        message=reply,
+                        format_error=True,
+                    )
+                    raise
                 runtime.log.emit(
                     "model_result",
                     session_id=runtime.session.id,
@@ -108,6 +167,14 @@ class MiniSweAdapter:
         # The built-in shell environment already defines useful display settings; keep them container-local.
         runtime.env.action_env = {k: str(v) for k, v in environment_vars.items()}
         agent_kwargs = dict(merged["agent"])
+        variables = {}
+        if config.memory.enabled:
+            # Template variables, never template text: memory files are data, not Jinja.
+            agent_kwargs["system_template"] = (
+                agent_kwargs["system_template"].rstrip("\n") + "\n\n{{memory_instructions}}"
+            )
+            agent_kwargs["instance_template"] = "{{memory_reminder}}\n\n" + agent_kwargs["instance_template"]
+            variables = {"memory_instructions": instructions(config.memory), "memory_reminder": memory_context}
         agent_kwargs.update(
             step_limit=session.max_steps,
             cost_limit=config.cost_limit_usd,
@@ -117,10 +184,11 @@ class MiniSweAdapter:
         agent = InstrumentedAgent(ModelProxy(), EnvironmentProxy(), **agent_kwargs)
         info = {}
         try:
-            info = agent.run(instruction + "\n\n" + memory_context)
+            info = agent.run(instruction, **variables)
         finally:
             runtime.agent_trajectory = agent.serialize()
             runtime.partial_agent_result = {"steps": agent.n_calls, "cost_usd": agent.cost}
+            runtime.initial_messages = agent.messages[:2]
         status = info.get("exit_status", "unknown")
         return {
             "exit_status": status,

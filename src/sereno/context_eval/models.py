@@ -42,3 +42,13 @@ class TrackedOpenRouterModel(OpenRouterModel):
             return response.json()
         except json.JSONDecodeError as error:
             raise OpenRouterAPIError("OpenRouter returned invalid JSON") from error
+
+    def _calculate_cost(self, response) -> dict:
+        """OpenRouter's billed cost; when a response reports 0 but names a positive upstream inference cost,
+        that upstream cost is counted instead, so budget accounting stays conservative."""
+        usage = response.get("usage") or {}
+        cost = usage.get("cost") or 0.0
+        upstream = (usage.get("cost_details") or {}).get("upstream_inference_cost") or 0.0
+        if cost <= 0 and upstream > 0:
+            return {"cost": float(upstream), "cost_source": "upstream"}
+        return super()._calculate_cost(response | {"usage": usage | {"cost": cost}})

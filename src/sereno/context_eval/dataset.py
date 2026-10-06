@@ -15,6 +15,7 @@ class Task:
     instruction: str
     language: str
     repository: str
+    agent_timeout_seconds: int
 
 
 def load_task(root: Path, task_id: str) -> Task:
@@ -28,6 +29,7 @@ def load_task(root: Path, task_id: str) -> Task:
         (directory / "instruction.md").read_text(),
         metadata.get("language", ""),
         metadata.get("repository_url", ""),
+        int(spec.get("agent", {}).get("timeout_sec", 10800)),
     )
 
 
