@@ -152,6 +152,7 @@ class Check(Contract):
         "assistant",
         "reasoning",
         "verifier",
+        "verifier_tests",
         "result",
     ]
     sessions: list[str] = []
@@ -167,6 +168,10 @@ class Check(Contract):
             raise ValueError("contains cannot be empty")
         if self.regex is not None:
             compile_pattern(self.regex)
+        if self.source == "verifier" and any(
+            line in (self.contains or self.regex) for line in ("f2p_failed", "p2p_failed")
+        ):
+            raise ValueError("per-test lines are in source verifier_tests; the verifier text never holds them")
         if self.source == "workspace":
             validate_path(self.path or "", "/app")
         elif self.path is not None:

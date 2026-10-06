@@ -32,7 +32,7 @@ from sereno.context_eval.stats import any_in_k, cluster_bootstrap, mcnemar_exact
 SCHEMA_VERSION = "1.3"
 # A report of a campaign with a repair adds the repair measurement; every other report keeps 1.3.
 REPAIR_SCHEMA_VERSION = "1.4"
-BEHAVIOURAL = {"patch", "workspace", "commands", "verifier", "result"}
+BEHAVIOURAL = {"patch", "workspace", "commands", "verifier", "verifier_tests", "result"}
 LANES = {
     "repo_file": "source_to_memory",
     "command_output": "source_to_memory",
@@ -52,6 +52,8 @@ VERDICTS = GRADED | {"verifier_timeout"}
 VERIFIER_FIELDS = ("status", "reward", "partial", "f2p", "p2p", "f2p_passed", "f2p_total", "p2p_passed", "p2p_total")
 RESULT_FIELDS = ("exit_status", "limit")
 GRADE_COUNTS = ("f2p_passed", "f2p_total", "p2p_passed", "p2p_total")
+CTRF_ROW = re.compile(r"\[(f2p|p2p)\] (.+)")
+CTRF = Path("grade") / "verifier" / "ctrf.json"
 TRANSPORT = ("written", "first_write_step", "carried", "present_end", "recalled", "recall_routes")
 
 
@@ -96,6 +98,39 @@ def verdict_text(grade, result: dict) -> tuple[str | None, str | None]:
     )
     ended = "\n".join(f"{key}: {result[key]}" for key in RESULT_FIELDS if result.get(key) is not None)
     return verifier, ended or None
+
+
+def is_count(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def failed_tests(grade, grade_status: str, directory: Path, origin) -> tuple[str | None, str]:
+    """`f2p_failed: <id>` and `p2p_failed: <id>` lines for `verifier_tests` checks, one per non-passed row of the
+    verifier's ctrf.json in report order; empty when every row passed. Unknown without a graded grade, a report (a
+    shared copy reads its origin's), a well-formed report, or one whose rows agree with the grade's counts."""
+    if not isinstance(grade, dict) or grade.get("status") != "graded":
+        return None, "corrupt" if grade_status == "corrupt" else "missing"
+    report, state = load(directory / CTRF)
+    if state == "missing" and origin is not None:
+        report, state = load(origin / CTRF)
+    if state != "measured":
+        return None, state
+    results = report.get("results") if isinstance(report, dict) else None
+    tests = results.get("tests") if isinstance(results, dict) else None
+    if not isinstance(tests, list):
+        return None, "corrupt"
+    rows = []
+    for row in tests:
+        name = CTRF_ROW.fullmatch(row["name"]) if isinstance(row, dict) and isinstance(row.get("name"), str) else None
+        if name is None or not isinstance(row.get("status"), str):
+            return None, "corrupt"
+        rows.append((*name.groups(), row["status"] != "passed"))
+    for bucket in ("f2p", "p2p"):
+        total, passed = grade.get(f"{bucket}_total"), grade.get(f"{bucket}_passed")
+        outcomes = [failed for kind, _, failed in rows if kind == bucket]
+        if not (is_count(total) and is_count(passed)) or (len(outcomes), sum(outcomes)) != (total, total - passed):
+            return None, "corrupt"
+    return "\n".join(f"{bucket}_failed: {name}" for bucket, name, failed in rows if failed), "measured"
 
 
 def matches(check: dict, text: str) -> bool:
@@ -312,6 +347,7 @@ def measure_session(
     replies = assistant_messages(events) if seen else []
     # Providers that return no reasoning leave reasoning checks unknown rather than false.
     reasoning = "\n".join(text for text in map(reasoning_text, replies) if text) or None
+    tested, tests_state = failed_tests(grade, grade_status, directory, origin)
     sources = {
         "memory": "\n".join(memory_end.values()) if memory_end is not None else None,
         "context": message_text(contexts[-1]) if contexts else "",
@@ -321,6 +357,7 @@ def measure_session(
         "reasoning": reasoning,
         "final": result.get("final"),
         **dict(zip(("verifier", "result"), verdict_text(grade, result), strict=True)),
+        "verifier_tests": tested,
         # Bytes decoded without newline translation, so checks see the CRs of a CRLF patch.
         "patch": (directory / "model.patch").read_bytes().decode("utf-8", errors="replace")
         if (directory / "model.patch").exists()
@@ -340,6 +377,8 @@ def measure_session(
             text, evidence, state = sources[source] if seen else None, ["events.jsonl"], event_status
         elif source == "verifier":
             text, evidence, state = sources[source], ["grade.json"], grade_status
+        elif source == "verifier_tests":
+            text, evidence, state = sources[source], ["grade.json", str(CTRF)], tests_state
         else:
             text, evidence, state = sources[source], ["model.patch" if source == "patch" else "result.json"], "missing"
         status = (
