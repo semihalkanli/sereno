@@ -1,4 +1,4 @@
-"""Run isolated clean/carry/reset arms and retain reproducible, grade-ready artifacts."""
+"""Run isolated clean, carry, reset and ablation arms and retain reproducible, grade-ready artifacts."""
 
 import hashlib
 import itertools
@@ -236,16 +236,45 @@ def read(path: Path):
     return json.loads(path.read_text())
 
 
-def complete(directory: Path, copy: bool = False) -> bool:
-    """A finished session. A copy is finished once its branch.json, written after the copy, parses."""
+def complete(directory: Path, copy: bool = False, ablated: bool = False) -> bool:
+    """A finished session. A copy is finished once its branch.json, written after the copy, parses, and a session
+    that started from ablated memory once its ablation.json, written after the session, does."""
     try:
         status = read(directory / "result.json")["status"]
-        if copy:
-            read(directory / "branch.json")
+        for name in ("branch.json",) * copy + ("ablation.json",) * ablated:
+            read(directory / name)
     except (OSError, ValueError):
         # Missing, or cut short when the campaign was interrupted mid-write.
         return False
     return status == "complete"
+
+
+def ablate(memory: dict[str, str], events) -> tuple[dict[str, str], dict]:
+    """Carried memory without the lines that hold an intervention's marker or match one of its copy patterns, and
+    the record of what was removed. A file left with nothing but whitespace is deleted; every other byte is kept."""
+    kept, files, lines_by_event = {}, {}, dict.fromkeys((event.id for event in events), 0)
+    for path, text in sorted(memory.items()):
+        remaining, removed, matched = [], 0, set()
+        for line in text.splitlines(keepends=True):
+            hits = [e.id for e in events if (e.marker and e.marker in line) or e.copy_match(line) is not None]
+            for key in hits:
+                lines_by_event[key] += 1
+            removed += bool(hits)
+            matched.update(hits)
+            if not hits:
+                remaining.append(line)
+        rest = "".join(remaining)
+        if rest.strip() or not removed:
+            kept[path] = rest
+        if removed:
+            files[path] = {"removed_lines": removed, "deleted": path not in kept, "interventions": sorted(matched)}
+    record = {
+        "removed_lines": sum(entry["removed_lines"] for entry in files.values()),
+        "removed_files": sorted(path for path, entry in files.items() if entry["deleted"]),
+        "files": files,
+        "interventions": lines_by_event,
+    }
+    return kept, record
 
 
 def write_atomic(path: Path, value) -> None:
@@ -384,9 +413,16 @@ def run_campaign(
         written.append(str(directory.relative_to(output)))
         return directory
 
-    def first_incomplete(arm_dir: Path, copied=lambda session: False) -> int:
+    exposures = sum(session.exposure for session in sessions)
+
+    def first_incomplete(arm_dir: Path, copied=lambda session: False, ablated: bool = False) -> int:
         return next(
-            (n for n, s in enumerate(sessions) if not complete(session_dir(arm_dir, n, s), copied(s))), len(sessions)
+            (
+                n
+                for n, s in enumerate(sessions)
+                if not complete(session_dir(arm_dir, n, s), copied(s), ablated and n == exposures)
+            ),
+            len(sessions),
         )
 
     def engine_for(events, arm_dir: Path, start: int, **options) -> InterventionEngine:
@@ -496,16 +532,46 @@ def run_campaign(
                     write_json(skipped_dir / "memory_end.json", memory)
                 break
 
-    def origin(target, repeat) -> Path:
-        return output / "clean" / f"{target.task_id}--r{repeat + 1:03d}"
+    def branch(arm_dir: Path, target, source: Path, source_arm: str, source_start: int, events, ablated, **options):
+        """Run an arm that shares the exposure sessions of `source`, then starts its first probe from the initial
+        memory or, `ablated`, from the carried memory without the interventions' content. It re-runs from its own
+        first incomplete session, or from the first copy whose source this run re-runs; returns where it began."""
+        start = min(
+            first_incomplete(arm_dir, lambda session: session.exposure, ablated),
+            source_start if source_start < exposures else len(sessions),
+        )
+        exposure = share(source, source_arm)
+        probe = run(target, engine_for(events, arm_dir, start, **options))
+
+        def step(number, session, directory, memory):
+            if session.exposure:
+                return exposure(number, session, directory, memory)
+            if number != exposures:
+                return probe(number, session, directory, memory)
+            if not ablated:
+                return probe(number, session, directory, config.memory.initial())
+            memory, record = ablate(memory, events)
+            outcome = probe(number, session, directory, memory)
+            write_atomic(directory / "ablation.json", record)
+            return outcome
+
+        advance(arm_dir, target, step, start)
+        return start
+
+    def origin(target, repeat, arm="clean") -> Path:
+        return output / arm / f"{target.task_id}--r{repeat + 1:03d}"
 
     def run_origin(item):
         target, repeat = item
-        # Without interventions the clean arm is identical across variants: one run per target and repeat.
+        # Without interventions the clean arms are identical across variants: one run per target and repeat.
         arm_dir = origin(target, repeat)
         start = first_incomplete(arm_dir)
         advance(arm_dir, target, run(target, engine_for([], arm_dir, start, enabled=False)), start)
-        return (target.task_id, repeat), start
+        starts = {"clean": start}
+        if "clean_reset" in config.arms:
+            reset_dir = origin(target, repeat, "clean_reset")
+            starts["clean_reset"] = branch(reset_dir, target, arm_dir, "clean", start, [], False, enabled=False)
+        return (target.task_id, repeat), starts
 
     def run_case(item):
         target, (variant, events), repeat = item
@@ -518,40 +584,36 @@ def run_campaign(
                 case_dir / "case.json",
                 {"target": target.task_id, "variant": variant, "repeat": repeat, "seed": config.seed + repeat},
             )
-        if "clean" in config.arms:
-            copy = share(origin(target, repeat), "clean")
+        for arm in ("clean", "clean_reset"):
+            if arm not in config.arms:
+                continue
             # A copy follows its origin: re-running an origin session replaces its copy and every later one.
-            start = min(first_incomplete(arms / "clean", lambda session: True), origin_starts[(target.task_id, repeat)])
+            start = min(
+                first_incomplete(arms / arm, lambda session: True), origin_starts[(target.task_id, repeat)][arm]
+            )
             for number, session in enumerate(sessions[start:], start=start):
+                # A clean_reset exposure copy names the clean session it shares, so it counts and grades once.
+                source = arm if not session.exposure else "clean"
                 try:
-                    copy(number, session, redo(session_dir(arms / "clean", number, session)), None)
+                    share(origin(target, repeat, source), source)(
+                        number, session, redo(session_dir(arms / arm, number, session)), None
+                    )
                 except NotStarted:
-                    stop(arms / "clean", number + 1)
+                    stop(arms / arm, number + 1)
                     break
-        carry_start = len(sessions)
+        carry_start, seed = len(sessions), config.seed + repeat
         if "attack_carry" in config.arms:
             carry_start = first_incomplete(arms / "attack_carry")
-            carry = engine_for(events, arms / "attack_carry", carry_start, seed=config.seed + repeat)
+            carry = engine_for(events, arms / "attack_carry", carry_start, seed=seed)
             advance(arms / "attack_carry", target, run(target, carry), carry_start)
-        if "attack_reset" in config.arms:
-            # Reset shares carry's exact exposure artifacts rather than resampling them, so re-running a carry
-            # exposure session replaces reset's copy of it and every reset session after it.
-            exposures = sum(session.exposure for session in sessions)
-            start = min(
-                first_incomplete(arms / "attack_reset", lambda session: session.exposure),
-                carry_start if carry_start < exposures else len(sessions),
-            )
-            exposure = share(arms / "attack_carry", "attack_carry")
-            probe = run(target, engine_for(events, arms / "attack_reset", start, seed=config.seed + repeat))
-
-            def reset(number, session, directory, memory):
-                if session.exposure:
-                    return exposure(number, session, directory, memory)
-                if number == 0 or sessions[number - 1].exposure:
-                    memory = config.memory.initial()
-                return probe(number, session, directory, memory)
-
-            advance(arms / "attack_reset", target, reset, start)
+        # Reset and ablation share carry's exact exposure artifacts rather than resampling them, so re-running a
+        # carry exposure session replaces their copy of it and every session after it.
+        for arm in ("attack_reset", "attack_ablate"):
+            if arm in config.arms:
+                ablated = arm == "attack_ablate"
+                branch(
+                    arms / arm, target, arms / "attack_carry", "attack_carry", carry_start, events, ablated, seed=seed
+                )
         return case_id
 
     with ThreadPoolExecutor(max_workers=config.workers) as pool:
