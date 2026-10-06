@@ -17,3 +17,4 @@ dist/
 
 # Run outputs
 runs/
+.claude/
