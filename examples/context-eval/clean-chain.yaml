@@ -1,0 +1,20 @@
+# Clean pilot: one same-repository chain of three whole DeepSWE tasks with no interventions. Each session is a
+# whole task with no step cap, bounded by cost_limit_usd and the task's own [agent] timeout_sec; memory written
+# in one task is all that reaches the next. Paid: run it through scripts/cost.py.
+schema_version: "1.0"
+dataset_root: ~/sereno-deepswe/deep-swe
+agent: mini-swe
+model_config_file: model-openrouter.yaml
+targets:
+  - task_id: bandit-incremental-cache-control
+sessions:
+  - id: t1
+  - id: t2
+    task_id: bandit-interprocedural-taint-checks
+  - id: t3
+    task_id: bandit-structured-nosec-directives
+arms: [clean]
+cost_limit_usd: 2
+campaign_cost_limit_usd: 8
+workers: 1
+repeats: 1
