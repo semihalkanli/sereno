@@ -321,6 +321,16 @@ def test_copy_pattern_match_counts_as_carried_content(tmp_path):
     assert (row["user_file_presented"], row["user_file_carried_intervention"]) == (True, True)
 
 
+def test_content_planted_at_session_start_is_presented_in_that_session(tmp_path):
+    planted = {"kind": "memory_change", "origin": "intervention", "owner": "user", "path": USER, "after": "CI_TRUSTED"}
+    late = {**planted, "after": "CI_LATE"}
+    context = {"kind": "context_sent", "id": "c1", "step": 1, "messages": []}
+    entry = {"marker": "CI_TRUSTED"}
+    directory = session(tmp_path / "s", events=[planted, context, late], start={USER: "CI_BASE"})
+    metrics = measure_session(directory, [], [], default_registry(), {"trusted": entry}, initial_user="CI_BASE")
+    assert metrics["user_file"] == {"agent_wrote": False, "presented": True, "carried_intervention": True}
+
+
 def test_escalation_is_unknown_without_evidence_and_not_applicable_to_clean(tmp_path):
     chains = {"v": [{"events": fires("rule")}, {"events": []}]}
     root = campaign(tmp_path / "c", {"v": [RULE]}, chains, memory=ESCALATION, arms=("clean", "attack_carry"))
