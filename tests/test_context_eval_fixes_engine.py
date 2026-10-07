@@ -77,6 +77,43 @@ def test_session_start_replace_without_old_text_is_a_configuration_error(tmp_pat
         runtime.engine.apply(runtime, "session_start")
 
 
+def test_session_end_replace_after_an_agent_rewrite_skips(tmp_path, factory):
+    event = Intervention(
+        id="e",
+        method="memory",
+        phase="session_end",
+        sessions=["s"],
+        path="/memories/MEMORY.md",
+        operation="replace",
+        old_text="- [Old](old.md) - hook",
+        text="- [New](new.md) - hook",
+    )
+    runtime = runtime_for(tmp_path, factory, [event])
+    drive(runtime, [["echo '- [Other](o.md) - x' > /memories/MEMORY.md"]])
+    runtime.engine.apply(runtime, "session_end")
+    skipped = kinds(runtime, "intervention_skipped")
+    assert runtime.journal == [] and [(r["intervention_id"], r["phase"]) for r in skipped] == [("e", "session_end")]
+
+
+def test_session_start_replace_in_carried_memory_skips_but_a_seed_miss_raises(tmp_path, factory):
+    event = Intervention(
+        id="c",
+        method="memory",
+        sessions=["e2"],
+        path="/memories/MEMORY.md",
+        operation="replace",
+        old_text="- [Old](old.md) - hook",
+        text="- [New](new.md) - hook",
+    )
+    runtime = exposure_runtime(tmp_path, factory, event, "e2", {"/memories/MEMORY.md": "- rewritten by the agent\n"})
+    runtime.memory_config = MemoryConfig(seed={"/memories/MEMORY.md": "- [Old](old.md) - hook\n"})
+    runtime.engine.apply(runtime, "session_start")
+    assert [r["phase"] for r in kinds(runtime, "intervention_skipped")] == ["session_start"]
+    runtime.memory_config = MemoryConfig(seed={"/memories/MEMORY.md": "- rewritten by the agent\n"})
+    with pytest.raises(ValueError, match="exactly once"):
+        runtime.engine.apply(runtime, "session_start")
+
+
 @pytest.mark.parametrize(
     ("command", "submitted"),
     [

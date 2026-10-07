@@ -182,8 +182,10 @@ and the file's `owner` (`agent` or `user`).
 - Methods: `file` (a canonical path below `/app`, outside `.git`), `output` (the command output the model sees;
   the raw output is kept and injected text cannot trigger submission) and `memory` (a path below `/memories`).
   Operations: `append`, `prepend`, `replace` (with `old_text`, which must match exactly once, or the whole file).
-  At `session_start` a missing `old_text` is a configuration error; in an action phase the fire is skipped and
-  logged as `intervention_skipped` with the reason, and session metrics count skipped fires beside applied ones.
+  At `session_start` a missing `old_text` in configured content is a configuration error; in an action phase, at
+  `session_end`, or at `session_start` in a memory file that differs from its seed (memory the agent carried in),
+  the fire is skipped and logged as `intervention_skipped` with the reason, and session metrics count skipped fires
+  beside applied ones.
 - Channel, derived: `repo_file`, `command_output`, `user_file` (`/memories/AGENT.md`), `memory_index`
   (`/memories/MEMORY.md`) or `memory_topic`.
 - Phases: `session_start`, `before_action`, `after_observation` (required for output) and `session_end`. Action

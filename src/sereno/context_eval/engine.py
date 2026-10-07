@@ -14,7 +14,6 @@ from sereno.context_eval.environment import commit_planted
 from sereno.context_eval.memory import MemoryViolation, owner
 
 MEMORY_ROOT = re.compile(r"/memories(?![\w.-])")
-ACTION_PHASES = {"before_action", "after_observation"}
 SUBMIT = "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
 # Lines as git splits them: only at "\n", so CR, form feed and Unicode separators stay inside a line.
 LINES = re.compile(r"[^\n]*\n|[^\n]+")
@@ -197,8 +196,12 @@ class InterventionEngine:
                 before = output["output"] if event.method == "output" else runtime.env.read(event.path)
                 after = edit(before, event)
             except (ValueError, RuntimeError) as error:
-                # Text the agent changed or an output without old_text must not invalidate a paid session.
-                if phase not in ACTION_PHASES:
+                # Only configured content without old_text is a configuration error; text the agent changed (any
+                # later phase, or memory carried from an earlier session) must not invalidate a paid session.
+                carried = event.method == "memory" and runtime.memory.get(event.path) != (
+                    runtime.memory_config.initial().get(event.path)
+                )
+                if phase == "session_start" and not carried:
                     raise
                 runtime.emit("intervention_skipped", intervention_id=event.id, phase=phase, reason=str(error))
                 continue
