@@ -469,7 +469,7 @@ def test_lane_follows_the_intervention_channel():
     assert Intervention.model_validate(TRUSTED).channel == "user_file"
 
 
-ESCALATION = {"enabled": True, "user": "CI_BASE rule"}
+ESCALATION = {"user": "CI_BASE rule"}
 WRITE = {
     "kind": "memory_change",
     "step": 2,

@@ -309,7 +309,7 @@ def mini_swe(tmp_path, model_class, outputs=()):
         yaml.safe_dump({"model": {"model_class": model_class, "model_name": "deterministic", "outputs": list(outputs)}})
     )
     return SimpleNamespace(
-        model_config_file=model, memory=MemoryConfig(enabled=False), cost_limit_usd=1.0, wall_time_limit_seconds=60
+        model_config_file=model, memory=MemoryConfig(), cost_limit_usd=1.0, wall_time_limit_seconds=60
     )
 
 
@@ -344,9 +344,14 @@ def test_valid_marker_charset_survives_tojson():
 def test_scripted_adapter_logs_every_reply(tmp_path, factory):
     runtime = runtime_for(tmp_path, factory, [])
     session = Session(
-        id="s", script=[{"command": "echo one"}, {"command": "echo two"}, {"command": "echo three", "if_contains": "x"}]
+        id="s",
+        script=[
+            {"command": "echo one"},
+            {"command": "echo two"},
+            {"command": "echo three", "if_contains": "CI_ABSENT"},
+        ],
     )
-    config = SimpleNamespace(memory=MemoryConfig(enabled=False), wall_time_limit_seconds=60)
+    config = SimpleNamespace(memory=MemoryConfig(), wall_time_limit_seconds=60)
     ScriptedAdapter().run(runtime, "task", "", config, session)
     results = kinds(runtime, "model_result")
     assert [(r["step"], r["message"]["content"]) for r in results] == [(1, "echo one"), (2, "echo two")]
@@ -447,7 +452,7 @@ def test_scripted_session_continues_after_a_timed_out_action(tmp_path, factory):
         environment.action_result(command, "partial\n", 137, 300) if "slow" in command else execute(command)
     )
     session = Session(id="s", script=[{"command": "slow"}, {"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}])
-    config = SimpleNamespace(memory=MemoryConfig(enabled=False), wall_time_limit_seconds=60)
+    config = SimpleNamespace(memory=MemoryConfig(), wall_time_limit_seconds=60)
     outcome = ScriptedAdapter().run(runtime, "task", "", config, session)
     assert (outcome["exit_status"], outcome["steps"]) == ("Submitted", 2)
     observation = json.loads(kinds(runtime, "observation")[0]["messages"][0]["content"])

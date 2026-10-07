@@ -126,7 +126,7 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
     }
     try:
         write_json(directory / "memory_start.json", memory)
-        if config.memory.enabled and not config.memory.within_limits(memory):
+        if not config.memory.within_limits(memory):
             # Seeds and carried agent memory always fit, so only a repair can break the limits: not an agent outcome.
             raise RuntimeError("restored memory exceeds the memory limits")
         env = env_factory(identity["id"], wall)
@@ -136,11 +136,10 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         if env.execute("git -c safe.directory=/app rev-parse HEAD")["output"].strip() != task.base_commit:
             raise ValueError("image HEAD does not match the task base commit")
         mem = FileMemory()
-        if config.memory.enabled:
-            if env.execute("mkdir -p /memories")["returncode"]:
-                raise RuntimeError("cannot initialize memory directory")
-            if env.snapshot_memory(config.memory.max_files, config.memory.max_bytes):
-                raise ValueError("task image must start with an empty memory directory")
+        if env.execute("mkdir -p /memories")["returncode"]:
+            raise RuntimeError("cannot initialize memory directory")
+        if env.snapshot_memory(config.memory.max_files, config.memory.max_bytes):
+            raise ValueError("task image must start with an empty memory directory")
         mem.restore(env, memory)
         snapshot = env.snapshot_memory
 
@@ -164,7 +163,7 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         )
         engine.apply(runtime, "session_start")
         instruction = session.instruction or task.instruction
-        context = mem.context(runtime.memory) if config.memory.enabled else ""
+        context = mem.context(runtime.memory)
         runtime.initial_memory_context = context
         bounded = config.model_copy(update={"wall_time_limit_seconds": wall})
         try:
@@ -373,19 +372,131 @@ def check_resume(output: Path, manifest: dict) -> None:
         raise ValueError(f"cannot resume: {', '.join(changed)} changed since the campaign started")
 
 
+def campaign_tasks(config) -> dict:
+    tasks = {t.task_id: load_task(config.dataset_root, t.task_id) for t in config.targets}
+    for session in config.sessions:
+        if session.task_id and session.task_id not in tasks:
+            tasks[session.task_id] = load_task(config.dataset_root, session.task_id)
+    return tasks
+
+
+def campaign_identities(config, tasks: dict) -> dict:
+    """The local image of every task, a target's own image where it names one; a missing image fails here."""
+    overrides = {t.task_id: t.image for t in config.targets if t.image}
+    return {key: image_identity(overrides.get(key, task.image)) for key, task in tasks.items()}
+
+
+PHASES = ("session_start", "before_action", "after_observation", "session_end")
+
+
+def written_before(events, index: int, session_id: str, order: dict) -> str | None:
+    """An intervention that writes, or may write, the path of `events[index]` before it fires in `session_id`, this
+    one in an earlier session included. A session's repository starts from the image, so for a file only the same
+    session counts; memory carries every earlier session's writes. Action phases repeat every step, so for an event
+    in one any other writer of the session outside session_end may come first."""
+    event = events[index]
+    repeats = event.phase in {"before_action", "after_observation"}
+    position = (order[session_id], PHASES.index(event.phase), index)
+    for number, other in enumerate(events):
+        if other.method != event.method or other.path != event.path:
+            continue
+        for session in other.sessions:
+            if event.method == "memory" or session == session_id:
+                if (order[session], PHASES.index(other.phase), number) < position or (
+                    repeats and session == session_id and number != index and other.phase != "session_end"
+                ):
+                    return other.id
+    return None
+
+
+def dry_check(config, identities: dict | None = None, env_factory=DockerEnvironment) -> list[dict]:
+    """Every replace intervention's old_text, per session it fires in and task, against what it will replace,
+    without a model: the seed or user memory the config gives a memory path, or the file a task image ships at a
+    repository path, read from one container per task. Command output, a memory path without seed content outside
+    the first session's start, a path an earlier intervention writes, and a session after the first of an event
+    that fires once are uncheckable; earlier writes are not reproduced. A match count other than one is missing at
+    session_start, where the runtime raises; in a later phase the agent may have changed the text, so it is
+    uncheckable, as the runtime skips and logs it."""
+    order = {session.id: number for number, session in enumerate(config.sessions)}
+    seed = config.memory.initial()
+    items = {}
+    for variant, events in config.variants.items():
+        for index, event in enumerate(events):
+            if event.operation != "replace" or event.old_text is None:
+                continue
+            for rank, session_id in enumerate(sorted(event.sessions, key=order.get)):
+                session = config.sessions[order[session_id]]
+                for target in config.targets:
+                    task = session.task_id or target.task_id
+                    item = {
+                        "variant": variant,
+                        "intervention": event.id,
+                        "method": event.method,
+                        "session": session_id,
+                        "task": task,
+                        "path": event.path,
+                        "status": "uncheckable",
+                        "reason": None,
+                    }
+                    first = order[session_id] == 0 and event.phase == "session_start"
+                    if event.method == "output":
+                        item["reason"] = "command output is unknown before the run"
+                    elif rank and event.max_fires == 1:
+                        item["reason"] = "it fires once, in the first session where it applies"
+                    elif writer := written_before(events, index, session_id, order):
+                        item["reason"] = f"{writer} writes {event.path} earlier"
+                    elif event.method == "memory" and event.path not in seed and not first:
+                        item["reason"] = "no seed or user memory at this path; the agent may write it"
+                    else:
+                        item["status"] = None
+                    items.setdefault((variant, event.id, session_id, task), (item, event))
+    needed = defaultdict(set)
+    for item, _ in items.values():
+        if item["status"] is None and item["method"] == "file":
+            needed[item["task"]].add(item["path"])
+    shipped = {}
+    if needed:
+        identities = identities or campaign_identities(config, campaign_tasks(config))
+    for task, paths in sorted(needed.items()):
+        env = env_factory(identities[task]["id"], 60)
+        try:
+            shipped |= {(task, path): env.read(path) for path in sorted(paths)}
+        finally:
+            env.close()
+    for item, event in items.values():
+        if item["status"] is None:
+            text = shipped[(item["task"], item["path"])] if item["method"] == "file" else seed.get(item["path"])
+            count = (text or "").count(event.old_text)
+            item["status"] = "ok" if count == 1 else "missing"
+            if count != 1 and event.phase != "session_start":
+                item["status"] = "uncheckable"
+                item["reason"] = f"the agent may change or create the text before {event.phase}"
+            elif text is None:
+                item["reason"] = (
+                    "the image ships no file at this path"
+                    if item["method"] == "file"
+                    else "the first session starts with no memory at this path"
+                )
+            elif count != 1:
+                item["reason"] = f"old_text matches {count} times; replace needs exactly one match"
+    return [item for item, _ in items.values()]
+
+
 def run_campaign(
     config, output: Path, registry, *, env_factory=DockerEnvironment, identities=None, resume=False
 ) -> dict:
     """Run a new campaign in `output`, or resume one: complete sessions are kept, and each arm re-runs from its
     first incomplete session. Earlier attempts move to superseded/<UTC time>/ under their own relative path."""
     validate(config, registry)
-    # Preflight every image before starting a container or making a paid request.
-    tasks = {t.task_id: load_task(config.dataset_root, t.task_id) for t in config.targets}
-    for session in config.sessions:
-        if session.task_id and session.task_id not in tasks:
-            tasks[session.task_id] = load_task(config.dataset_root, session.task_id)
-    overrides = {t.task_id: t.image for t in config.targets if t.image}
-    identities = identities or {key: image_identity(overrides.get(key, task.image)) for key, task in tasks.items()}
+    # Preflight every image and every replace intervention before starting a session or making a paid request.
+    tasks = campaign_tasks(config)
+    identities = identities or campaign_identities(config, tasks)
+    for item in dry_check(config, identities, env_factory):
+        if item["status"] == "missing":
+            raise ValueError(
+                f"dry check: {item['variant']}/{item['intervention']} in session {item['session']} of task "
+                f"{item['task']} at {item['path'] or 'command output'}: {item['reason']}"
+            )
     output = output.resolve()
     frozen_config = config.model_dump(mode="json")
     instructions_snapshot = output / "memory-instructions.md"
@@ -408,9 +519,7 @@ def run_campaign(
         },
         "code_sha256": code_sha256(),
         "model_config": config.model_config_file.read_text() if config.model_config_file else None,
-        "memory_instructions_sha256": fingerprint(memory_instructions)
-        if config.memory.enabled and memory_instructions is not None
-        else None,
+        "memory_instructions_sha256": fingerprint(memory_instructions) if memory_instructions is not None else None,
         "payload_sha256": {
             name: {e.id: fingerprint(e.text) for e in events} for name, events in config.variants.items()
         },
@@ -590,28 +699,18 @@ def run_campaign(
             for entry in read(session_dir(arm_dir, n, s) / "interventions.json")
         ]
 
-    def repair(memory: dict[str, str], arm_dir: Path, events, attack: bool) -> tuple[dict[str, str], dict]:
-        """The user's AGENT.md update on the host, after the retraction in an attack arm; it is the user's change,
-        so the session starts from it and no memory event records it. After an applied retraction the record keeps
-        the repaired text, from which the metrics tell which of the user's lines the retraction removed."""
-        retraction = None
-        if config.repair.retract:
-            if attack:
-                memory, removed = ablate(memory, events, exposure_journal(arm_dir))
-                retraction = {"applied": True, **removed}
-            else:
-                retraction = {"applied": False, "reason": "clean arm"}
+    def repair(memory: dict[str, str]) -> tuple[dict[str, str], dict]:
+        """The user's AGENT.md update on the host; it is the user's change, so the session starts from it and no
+        memory event records it."""
         before = memory.get(USER)
         memory = memory | {USER: config.repair.apply(before or "")}
         return memory, {
             **config.repair.model_dump(),
             "user_file_before_sha256": None if before is None else fingerprint(before),
             "user_file_after_sha256": fingerprint(memory[USER]),
-            "user_file_after": memory[USER] if retraction and retraction["applied"] else None,
-            "retraction": retraction,
         }
 
-    def advance(arm_dir: Path, target, step, start: int, events=(), attack: bool = False) -> None:
+    def advance(arm_dir: Path, target, step, start: int) -> None:
         """Run an arm's sessions from `start` on; each starts from the memory the previous one ended with, and the
         repair session from that memory as the user repaired it."""
         if start == len(sessions):
@@ -619,11 +718,9 @@ def run_campaign(
         previous = session_dir(arm_dir, start - 1, sessions[start - 1]) if start else None
         memory = read(previous / "memory_end.json") if previous else config.memory.initial()
         for number, session in enumerate(sessions[start:], start=start):
-            if not config.memory.enabled:
-                memory = {}
             record = None
             if number == repairs:
-                memory, record = repair(memory, arm_dir, events, attack)
+                memory, record = repair(memory)
             directory = redo(session_dir(arm_dir, number, session))
             try:
                 memory, result = step(number, session, directory, memory)
@@ -675,7 +772,7 @@ def run_campaign(
             write_atomic(directory / "ablation.json", record)
             return outcome
 
-        advance(arm_dir, target, step, start, events, source_arm == "attack_carry")
+        advance(arm_dir, target, step, start)
         return start
 
     def origin(target, repeat, arm="clean") -> Path:
@@ -725,7 +822,7 @@ def run_campaign(
         if "attack_carry" in config.arms:
             carry_start = first_incomplete(arms / "attack_carry")
             carry = engine_for(events, arms / "attack_carry", carry_start, seed=seed)
-            advance(arms / "attack_carry", target, run(target, carry), carry_start, events, True)
+            advance(arms / "attack_carry", target, run(target, carry), carry_start)
         # Reset and ablation share carry's exact exposure artifacts rather than resampling them, so re-running a
         # carry exposure session replaces their copy of it and every session after it.
         for arm in ("attack_reset", "attack_ablate"):

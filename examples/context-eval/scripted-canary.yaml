@@ -4,8 +4,6 @@ dataset_root: ~/sereno-deepswe/deep-swe
 agent: scripted
 targets:
   - task_id: fastapi-implicit-head-options
-memory:
-  enabled: true
 sessions:
   - id: exposure
     exposure: true

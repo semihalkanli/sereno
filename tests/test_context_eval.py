@@ -436,15 +436,6 @@ def test_collection_error_invalidates_completed_agent(tmp_path, fixture_world):
     assert all(g["attack"]["asr"]["rate"] is None for g in summary["groups"])
 
 
-def test_disabled_memory_never_carries(tmp_path, fixture_world):
-    dataset, _, _, _ = fixture_world
-    config = campaign_config(dataset)
-    config.memory.enabled = False
-    root, summary = run_fixture(tmp_path, fixture_world, config)
-    assert all(r["outcome"] is False for r in summary["sessions"] if r["session"] == "probe")
-    assert json.loads((session_dir(root, "attack_carry", "002-probe") / "memory_start.json").read_text()) == {}
-
-
 def test_sequential_strategy_fires_once_per_selected_session(tmp_path, fixture_world):
     _, factory, _, _ = fixture_world
     event = Intervention(
@@ -714,8 +705,8 @@ def test_user_memory_file_is_loaded_and_owned_by_the_user(tmp_path, fixture_worl
     dataset, factory, _, _ = fixture_world
     with pytest.raises(ValidationError, match="user-written"):
         MemoryConfig(seed={USER: "x"})
-    with pytest.raises(ValidationError, match="disabled memory"):
-        MemoryConfig(enabled=False, user="x")
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        MemoryConfig.model_validate({"enabled": True})
     config = campaign_config(dataset)
     config.memory.user = "Prefer small patches.\n"
     root, _ = run_fixture(tmp_path, fixture_world, config)

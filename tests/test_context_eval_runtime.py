@@ -10,7 +10,6 @@ from types import SimpleNamespace
 import pytest
 import test_context_eval as base
 import yaml
-from pydantic import ValidationError
 
 from sereno.context_eval import agents
 from sereno.context_eval.config import default_registry, load_config, validate
@@ -232,10 +231,9 @@ def test_both_adapters_open_with_the_same_memory_prompt(tmp_path, fixture_world)
     from minisweagent.config import builtin_config_dir
 
     records = {}
-    for name, settings in (("official", {"enabled": False}), ("memory", MEMORY)):
-        config = mini_swe_config(tmp_path, fixture_world[0], [output(SUBMIT)], **settings)
-        root, _ = base.run_fixture(tmp_path / name, fixture_world, config)
-        records[name] = opening(base.session_dir(root, "clean", "001-task"))
+    config = mini_swe_config(tmp_path, fixture_world[0], [output(SUBMIT)], **MEMORY)
+    root, _ = base.run_fixture(tmp_path / "memory", fixture_world, config)
+    records["memory"] = opening(base.session_dir(root, "clean", "001-task"))
     scripted = base.campaign_config(fixture_world[0])
     scripted.arms, scripted.memory = ["clean"], MemoryConfig(**MEMORY)
     root, _ = base.run_fixture(tmp_path / "scripted", fixture_world, scripted)
@@ -247,8 +245,6 @@ def test_both_adapters_open_with_the_same_memory_prompt(tmp_path, fixture_world)
         Template(template[k], undefined=StrictUndefined).render(**variables)
         for k in ("system_template", "instance_template")
     ]
-    assert contents(records["official"]) == official
-    assert records["official"]["memory"] == ""
     memory_reminder = reminder(MemoryConfig(**MEMORY).initial())
     assert records["memory"]["memory"] == records["scripted"]["memory"] == memory_reminder
     assert contents(records["memory"]) == [
@@ -263,15 +259,6 @@ def test_both_adapters_open_with_the_same_memory_prompt(tmp_path, fixture_world)
     directory = base.session_dir(root, "clean", "001-exposure")
     first = next(e for e in events_at(directory) if e["kind"] == "context_sent")
     assert first["messages"] == [m["message"] for m in records["scripted"]["messages"]]
-
-
-def test_scripted_prompt_without_memory_is_the_task_alone(tmp_path, fixture_world):
-    config = base.campaign_config(fixture_world[0])
-    config.arms, config.memory = ["clean"], MemoryConfig(enabled=False)
-    root, _ = base.run_fixture(tmp_path, fixture_world, config)
-    record = opening(base.session_dir(root, "clean", "001-exposure"))
-    assert [m["message"] for m in record["messages"]] == [{"role": "user", "content": TASK}]
-    assert (record["instruction"], record["memory"]) == (TASK, "")
 
 
 def test_opening_messages_are_recorded_when_the_agent_fails(tmp_path, fixture_world):
@@ -313,8 +300,6 @@ def test_instructions_file_overrides_the_default_and_is_frozen(tmp_path, fixture
     default = read(default_root / "manifest.json")["memory_instructions_sha256"]
     assert default == hashlib.sha256(INSTRUCTIONS.encode()).hexdigest()
     assert not (default_root / "memory-instructions.md").exists()
-    with pytest.raises(ValidationError, match="disabled memory"):
-        MemoryConfig(enabled=False, instructions_file="memory.md")
     source.write_text(" \n")
     with pytest.raises(ValueError, match="cannot be empty"):
         validate(config, default_registry())

@@ -87,7 +87,7 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
         raise ValueError(f"unknown agent adapter: {config.agent}")
     if config.agent == "mini-swe" and not config.model_config_file:
         raise ValueError("mini-swe requires model_config_file")
-    if config.memory.enabled and not instructions(config.memory).strip():
+    if not instructions(config.memory).strip():
         raise ValueError("memory instructions cannot be empty")
     if config.model_config_file:
         try:

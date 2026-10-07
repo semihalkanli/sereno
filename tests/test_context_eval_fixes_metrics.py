@@ -231,17 +231,13 @@ def test_reset_exposures_after_a_probe_follow_the_carry_lineage(tmp_path, monkey
     assert lineage[("attack_carry", 4)] == (True, True)
 
 
-def test_without_memory_every_session_starts_its_own_lineage(tmp_path):
+def test_a_saved_config_with_the_removed_memory_switch_still_reports(tmp_path):
     root = build_campaign(tmp_path / "campaign", targets=("t1",), variants=("fact",), repeats=1)
+    expected = report(root, default_registry(), bootstrap=10)["sessions"]
     manifest = json.loads((root / "manifest.json").read_text())
-    write(root / "manifest.json", {"config": manifest["config"] | {"memory": {"enabled": False}}})
-    probe = root / "cases" / "t1--fact--r001" / "arms" / "attack_carry" / "sessions" / "002-p"
-    write_session(probe, "p", [context(1)], exposure=False, start={}, end={})
-    summary = report(root, default_registry(), bootstrap=10)
-    row = find(summary["sessions"], arm="attack_carry", session="p")
-    assert (row["inherits_memory"], row["chain_written"]) == (False, False)
-    carry = find(summary["groups"], arm="attack_carry", session="p")
-    assert counts(carry["transport"]["persistence"]) == (0, 0, 0)  # Was 0/1: the exposure write could not carry.
+    write(root / "manifest.json", {"config": manifest["config"] | {"memory": {"enabled": True}}})
+    assert report(root, default_registry(), bootstrap=10)["sessions"] == expected
+    summarize([root], tmp_path / "pooled", default_registry(), bootstrap=10)
 
 
 def test_an_invalid_exposure_session_leaves_the_chain_write_unknown():

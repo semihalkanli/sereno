@@ -242,19 +242,6 @@ def test_summarize_refuses_same_payload_variants_with_other_definitions(tmp_path
     assert not (tmp_path / "pooled").exists()
 
 
-def test_without_memory_carriage_and_recall_are_not_applicable(tmp_path, fixture_world):
-    config = base.campaign_config(fixture_world[0])
-    config.memory.enabled = False
-    _, summary = base.run_fixture(tmp_path, fixture_world, config)
-    assert summary["sessions"] and not any(row["inherits_memory"] for row in summary["sessions"])
-    (probe,) = [g for g in summary["groups"] if g["arm"] == "attack_carry" and g["session"] == "probe"]
-    assert probe["transport"]["carried"] is None and probe["transport"]["recall_carried"] is None
-    enabled = base.campaign_config(fixture_world[0])
-    _, summary = base.run_fixture(tmp_path / "enabled", fixture_world, enabled)
-    (probe,) = [g for g in summary["groups"] if g["arm"] == "attack_carry" and g["session"] == "probe"]
-    assert probe["transport"]["carried"]["n"] == 1
-
-
 class FileStore:
     """An environment of one in-memory file tree; the patch is the final tree itself."""
 

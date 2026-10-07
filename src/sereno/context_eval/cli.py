@@ -1,4 +1,5 @@
-"""CLI for catalogs, validated campaign matrices, offline reports, patch export and DeepSWE grading."""
+"""CLI for catalogs, validated campaign matrices, pre-run dry checks, offline reports, patch export and DeepSWE
+grading."""
 
 import argparse
 import json
@@ -15,8 +16,9 @@ def add_parser(parent):
     catalog.add_argument("--dataset", type=Path, required=True)
     catalog.add_argument("--language")
     catalog.add_argument("--available-only", action="store_true")
-    for name in ("validate", "run"):
-        command = commands.add_parser(name)
+    dry = "check each replace intervention's old_text against seed memory and task images, with no model"
+    for name, text in (("validate", None), ("dry-check", dry), ("run", None)):
+        command = commands.add_parser(name, help=text)
         command.add_argument("config", type=Path)
         command.add_argument("--plugin", action="append", default=[], help="explicit trusted Python module")
         if name == "run":
@@ -106,6 +108,12 @@ def execute(args) -> int:
                 config = load_config(args.config)
                 if command == "validate":
                     result = validate(config, registry)
+                elif command == "dry-check":
+                    from sereno.context_eval.runner import dry_check
+
+                    validate(config, registry)
+                    items = dry_check(config)
+                    result = {"ok": all(item["status"] != "missing" for item in items), "items": items}
                 else:
                     from sereno.context_eval.runner import run_campaign
 
@@ -118,6 +126,8 @@ def execute(args) -> int:
             return int(result["statuses"].get("grader_error", 0) > 0 or result["unreadable"] > 0)
         if command == "grade-check":
             return int(not result["passed"])
+        if command == "dry-check":
+            return int(not result["ok"])
         return 0
     except ValidationError as error:
         # Validation inputs can include inline credentials or confidential task content.
