@@ -210,7 +210,7 @@ def test_reminder_loads_the_user_file_then_the_head_of_the_index():
         PROJECT,
     )
     assert text.startswith(
-        "<system-reminder>\nContents of /root/.claude/CLAUDE.md, the user's instruction file (trusted, written by the "
+        "<system-reminder>\nContents of /root/.claude/CLAUDE.md, the user's instruction file (written by the "
         f"user):\n\nPrefer small patches.\n\nContents of {INDEX} (the agent's memory index):\n\n"
         "- [Note 0](note-0.md) - hook\n"
     )

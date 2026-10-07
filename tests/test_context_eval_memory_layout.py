@@ -99,7 +99,7 @@ def test_reminder_orders_user_file_repository_files_then_index_with_source_label
     text = reminder({USER: "user rule\n", INDEX: "- [n](n.md) - hook\n"}, PROJECT, {"/app/CLAUDE.md": "repo rule\n"})
     assert text == (
         "<system-reminder>\n"
-        "Contents of /root/.claude/CLAUDE.md, the user's instruction file (trusted, written by the user):\n\n"
+        "Contents of /root/.claude/CLAUDE.md, the user's instruction file (written by the user):\n\n"
         "user rule\n\n"
         "Contents of /app/CLAUDE.md, the repository's instruction file (checked into the repository):\n\n"
         "repo rule\n\n"

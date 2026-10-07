@@ -129,7 +129,7 @@ def memory_sections(files: dict[str, str], project: str) -> list[str]:
     parts = []
     if files.get(USER, "").strip():
         parts.append(
-            f"Contents of {USER}, the user's instruction file (trusted, written by the user):\n\n" + files[USER].strip()
+            f"Contents of {USER}, the user's instruction file (written by the user):\n\n" + files[USER].strip()
         )
     index = index_path(project)
     content = files.get(index)
