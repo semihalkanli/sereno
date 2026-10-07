@@ -393,7 +393,12 @@ def run_campaign(
     identities = identities or {key: image_identity(overrides.get(key, task.image)) for key, task in tasks.items()}
     output = output.resolve()
     frozen_config = config.model_dump(mode="json")
-    memory_instructions = instructions(config.memory)
+    instructions_snapshot = output / "memory-instructions.md"
+    if resume and config.memory.instructions_file:
+        # Resumed sessions read the frozen copy, so it, not the source file, must match the manifest.
+        memory_instructions = instructions_snapshot.read_text() if instructions_snapshot.exists() else None
+    else:
+        memory_instructions = instructions(config.memory)
     manifest = {
         "schema_version": "1.0",
         "config": frozen_config,
@@ -408,7 +413,9 @@ def run_campaign(
         },
         "code_sha256": code_sha256(),
         "model_config": config.model_config_file.read_text() if config.model_config_file else None,
-        "memory_instructions_sha256": fingerprint(memory_instructions) if config.memory.enabled else None,
+        "memory_instructions_sha256": fingerprint(memory_instructions)
+        if config.memory.enabled and memory_instructions is not None
+        else None,
         "payload_sha256": {
             name: {e.id: fingerprint(e.text) for e in events} for name, events in config.variants.items()
         },
@@ -440,7 +447,6 @@ def run_campaign(
             model_snapshot.write_text(manifest["model_config"])
         config = config.model_copy(update={"model_config_file": model_snapshot})
     if config.memory.instructions_file:
-        instructions_snapshot = output / "memory-instructions.md"
         if not resume:
             instructions_snapshot.write_text(memory_instructions)
         config = config.model_copy(

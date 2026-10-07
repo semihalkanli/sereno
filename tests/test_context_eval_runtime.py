@@ -328,6 +328,30 @@ def test_instructions_file_overrides_the_default_and_is_frozen(tmp_path, fixture
         validate(config, default_registry())
 
 
+def test_resume_checks_the_frozen_instructions_not_their_source(tmp_path, fixture_world):
+    import yaml
+
+    dataset = fixture_world[0]
+    source = tmp_path / "memory.md"
+    source.write_text("# Memory\n\nFixture instructions for the memory directory.\n")
+    raw = base.campaign_config(dataset).model_dump(mode="json")
+    raw.update(arms=["clean"], memory={"instructions_file": "memory.md"})
+    (tmp_path / "experiment.yaml").write_text(yaml.safe_dump(raw))
+    config = load_config(tmp_path / "experiment.yaml")
+    root, _ = base.run_fixture(tmp_path, fixture_world, config)
+    frozen = root / "memory-instructions.md"
+    original = frozen.read_text()
+    probe = root / "clean" / "first--r001" / "sessions" / "002-probe"
+    invalidate(probe)
+    frozen.write_text("Edited frozen instructions.\n")
+    with pytest.raises(ValueError, match="memory_instructions_sha256 changed"):
+        resume(fixture_world, config, root)
+    frozen.write_text(original)
+    source.write_text("Changed after the campaign started.\n")
+    _, runs = resume(fixture_world, config, root)
+    assert runs == 1 and contents(opening(probe))[0] == original
+
+
 def test_clean_arm_runs_once_per_target_and_repeat(tmp_path, fixture_world):
     dataset, _, created, _ = fixture_world
     config = base.campaign_config(dataset)

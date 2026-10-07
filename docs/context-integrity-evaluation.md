@@ -414,7 +414,7 @@ phase, sessions, windows and the rest) or checks differ between campaigns, and c
 ## Resume
 
 `run --resume --out CAMPAIGN` continues an interrupted campaign with the same config, tasks, images, memory
-instructions, versions, plugins, `sereno.context_eval` source code (`code_sha256`) and frozen
+instructions (the frozen `memory-instructions.md`, not its source file), versions, plugins, `sereno.context_eval` source code (`code_sha256`) and frozen
 `mini-swe-config.yaml`; anything else, including an edited frozen file, is refused. Campaigns started before the
 agent configuration was frozen are frozen on their first resume (`agent_config_frozen_on_resume` in the
 manifest), and campaigns started before code hashing record the resuming code's hash on their first resume
