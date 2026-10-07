@@ -47,8 +47,9 @@ def rendered_output(output: dict) -> dict:
 
 
 def final_text(messages: list[dict]) -> str:
-    """The agent's closing statement: the text of its last reply, the same for both adapters."""
-    return message_text([m for m in messages if m.get("role") == "assistant"][-1:])
+    """The agent's closing statement: its last reply with visible text; a bare tool-call reply does not replace it."""
+    texts = [message_text([m]) for m in messages if m.get("role") == "assistant"]
+    return next((text for text in reversed(texts) if text.strip()), "")
 
 
 def format_error_reply(error) -> dict:
@@ -143,12 +144,17 @@ class MiniSweAdapter:
             model = get_model(config=merged["model"])
 
         class ModelProxy:
+            def __init__(self):
+                # Every reply, including the ones a FormatError keeps out of agent.messages.
+                self.replies = []
+
             def query(self, messages):
                 runtime.context_sent(messages)
                 try:
                     message = model.query(messages)
                 except FormatError as error:
                     reply = format_error_reply(error)
+                    self.replies.append(reply)
                     runtime.log.emit(
                         "model_result",
                         session_id=runtime.session.id,
@@ -157,6 +163,7 @@ class MiniSweAdapter:
                         format_error=True,
                     )
                     raise
+                self.replies.append(message)
                 runtime.log.emit(
                     "model_result",
                     session_id=runtime.session.id,
@@ -192,7 +199,8 @@ class MiniSweAdapter:
             wall_time_limit_seconds=config.wall_time_limit_seconds,
             output_path=None,
         )
-        agent = InstrumentedAgent(ModelProxy(), EnvironmentProxy(), **agent_kwargs)
+        proxy = ModelProxy()
+        agent = InstrumentedAgent(proxy, EnvironmentProxy(), **agent_kwargs)
         info = {}
         try:
             info = agent.run(instruction, **variables)
@@ -205,6 +213,6 @@ class MiniSweAdapter:
             "exit_status": status,
             "steps": agent.n_calls,
             "cost_usd": agent.cost,
-            "final": final_text(agent.messages),
+            "final": final_text(proxy.replies),
             "messages": agent.messages,
         }

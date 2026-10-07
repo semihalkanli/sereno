@@ -354,6 +354,26 @@ def test_final_is_the_last_reply_in_both_adapters(tmp_path, factory, max_steps, 
     assert (outcome["exit_status"], outcome["final"]) == (exit_status, commands[last])
 
 
+class ProseThenSubmitModel(DeterministicModel):
+    """Closing prose without a tool call raises FormatError; the next reply submits with the configured content."""
+
+    def query(self, messages, **kwargs):
+        self.current_index += 1
+        if self.current_index == 0:
+            reply = {"role": "assistant", "content": "All done CI_TRACE_NOTE"}
+            extra = {"interrupt_type": "FormatError", "cost": 0.01, "response": {"choices": [{"message": reply}]}}
+            raise FormatError({"role": "user", "content": "Tool call error: no tool calls", "extra": extra})
+        submit = [{"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}]
+        return make_output(self.config.outputs[0]["content"], submit, cost=0.01)
+
+
+@pytest.mark.parametrize(("content", "final"), [("", "All done CI_TRACE_NOTE"), ("done", "done")])
+def test_final_keeps_closing_prose_from_a_format_error_reply(tmp_path, factory, content, final):
+    config = mini_swe(tmp_path, f"{__name__}.ProseThenSubmitModel", [{"content": content}])
+    outcome = MiniSweAdapter().run(runtime_for(tmp_path, factory, []), "task", "", config, Session(id="s"))
+    assert (outcome["exit_status"], outcome["final"]) == ("Submitted", final)
+
+
 def docker_free(monkeypatch, returncode, timeout=0, has_timeout=True):
     calls = []
 
