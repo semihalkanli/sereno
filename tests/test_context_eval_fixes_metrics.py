@@ -276,3 +276,14 @@ def test_a_missing_clean_origin_counts_once_across_variants(tmp_path):
     summary = report(root, default_registry(), bootstrap=10)
     reference = find(summary["clean_reference"], target="t1", session="p")
     assert (reference["n_total"], reference["n_missing"]) == (1, 1)  # Was 2 and 2, one per variant.
+
+
+def test_planted_user_file_content_is_not_applicable_in_the_clean_arm(tmp_path):
+    root = build_campaign(tmp_path / "campaign", targets=("t1",), repeats=1)
+    summary = report(root, default_registry(), bootstrap=10)
+    for variant, arm in (("fact", "clean"), ("other", "attack_carry")):
+        group = find(summary["groups"], variant=variant, arm=arm, session="p")
+        assert group["user_file"]["user_file_carried_intervention"] is None  # Was 0/0 with every session unknown.
+        assert counts(group["user_file"]["user_file_presented"]) == (0, 1, 0)
+    carry = find(summary["groups"], variant="fact", arm="attack_carry", session="p")
+    assert counts(carry["user_file"]["user_file_carried_intervention"]) == (0, 1, 0)
