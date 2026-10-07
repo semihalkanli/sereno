@@ -124,7 +124,8 @@ def test_interrupted_run_still_appends_its_ledger_row(tmp_path: Path, monkeypatc
 def test_run_passes_the_repository_env_file_to_the_command(tmp_path: Path, monkeypatch) -> None:
     cost = load_cost()
     (tmp_path / ".env").write_text("SERENO_COST_FIXTURE=from-dotenv\n")
-    monkeypatch.delenv("SERENO_COST_FIXTURE", raising=False)
+    monkeypatch.setenv("SERENO_COST_FIXTURE", "unset")
+    monkeypatch.delenv("SERENO_COST_FIXTURE")
     seen = {}
 
     def run(command, env):
