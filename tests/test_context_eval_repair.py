@@ -540,3 +540,13 @@ def test_campaigns_without_a_repair_report_nothing_new(tmp_path):
     repaired = repair_campaign(tmp_path / "repaired", True)
     with pytest.raises(ValueError, match="differ in their repair"):
         summarize([root, repaired], tmp_path / "pooled", default_registry())
+
+
+def test_a_repair_past_the_memory_limits_is_a_configuration_failure(tmp_path, fixture_world):
+    config = repair_config(fixture_world[0]).model_dump(mode="json")
+    config["memory"] |= {"user": None, "max_files": 1}
+    config = ExperimentConfig.model_validate(config | {"arms": ["clean"]})
+    root, _ = base.run_fixture(tmp_path, fixture_world, config)
+    recovery = read(base.session_dir(root, "clean", "003-recovery") / "result.json")
+    assert (recovery["status"], recovery["limit"], recovery["steps"]) == ("invalid", None, 0)
+    assert recovery["error"].startswith("restored memory breaks the memory rules") and "memory_error" not in recovery

@@ -170,8 +170,8 @@ Memory is limited to 100 files and 1 MB by default (`max_files`, `max_bytes`); s
 `.git` are rejected. When the agent's memory content breaks these rules, the task ends as complete with exit
 status `MemoryViolation`, limit `memory`, the reason in `memory_error` and a `memory_violation` event; its patch
 is graded and the arm continues from the last valid snapshot, and `session_end` interventions are skipped in such
-a session. A memory intervention that pushes memory past these rules, in any phase, is a configuration failure:
-the session is invalid with the reason in `error`, never a `MemoryViolation` of the agent. Every `memory_change`
+a session. A memory intervention that pushes memory past these rules, in any phase, or a repair that does, is a
+configuration failure: the session is invalid with the reason in `error`, never a `MemoryViolation` of the agent. Every `memory_change`
 event records its `origin` (`agent` or `intervention`; `harness` is reserved for a future harness-written file)
 and the file's `owner` (`agent` or `user`).
 

@@ -138,6 +138,14 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
                 raise ValueError("task image must start with an empty memory directory")
         mem.restore(env, memory)
         snapshot = env.snapshot_memory
+        if config.memory.enabled:
+            try:
+                snapshot(config.memory.max_files, config.memory.max_bytes)
+            except Exception as error:
+                if agent_violation(error):
+                    # Carried agent memory always fits, so the user's repair broke the rules: not an agent outcome.
+                    raise RuntimeError(f"restored memory breaks the memory rules: {error}") from error
+                raise
 
         def checked_snapshot(max_files: int, max_bytes: int) -> dict[str, str]:
             try:
