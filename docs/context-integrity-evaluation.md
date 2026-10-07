@@ -483,9 +483,10 @@ asks for `display: summarized`, which changes visibility only, so each reply car
 `reasoning_content` and checks with source `reasoning` read that summary. `model-openrouter.yaml` keeps the
 earlier GLM 5.3 Flash setup on OpenRouter, pinned to Z.AI without fallback. Keys come from `ANTHROPIC_API_KEY` or
 `OPENROUTER_API_KEY` in the host environment, or from the repository's `.env`, which the cost wrapper loads into
-the run's environment, and model configs must not contain credentials. The wrapper's ledger records only
-OpenRouter calls, so for Haiku runs the spending in `campaign.json` and `result.json` is the cost record. Paid runs
-go through the cost wrapper:
+the run's environment, and model configs must not contain credentials. The wrapper's ledger records OpenRouter's
+billed cost per call and prices Anthropic calls from their token usage with the table in
+`scripts/cost_hook/sitecustomize.py` (official prices, prompt-length tier, cache reads and writes, US inference);
+a model missing from the table is reported as unpriced, not counted as free. Paid runs go through the cost wrapper:
 
 ```sh
 uv run scripts/cost.py run --label context-eval -- \

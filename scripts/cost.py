@@ -1,11 +1,12 @@
-"""Record what each run costs on OpenRouter.
+"""Record what each run costs on OpenRouter and the Anthropic API.
 
     uv run scripts/cost.py run --label <label> -- <command> [args...]
     uv run scripts/cost.py report [--label <label>]
 
 `run` executes the command with the hook in `scripts/cost_hook` loaded and the
 repository's `.env` in its environment (a variable already set wins). The hook
-logs the usage OpenRouter returns with every completion. When the command
+logs the usage OpenRouter or Anthropic returns with every completion (for
+Anthropic, priced from the hook's table). When the command
 exits, the calls are summed and one row is appended to the ledger
 (`runs/cost/ledger.jsonl` by default). The wrapped command may use any Python
 environment.
@@ -13,7 +14,8 @@ environment.
 Per-call costs are the source of truth because OpenRouter's account total lags
 by minutes. `report` prints the ledger and compares its sum with that account
 total so a gap (calls the hook could not see, such as streamed responses) shows
-up.
+up; Anthropic spending has no such check here, since its usage report needs an
+Admin API key.
 """
 
 import argparse
@@ -63,6 +65,7 @@ def openrouter_get(path: str) -> dict | None:
 def summarize_calls(calls_path: Path) -> dict:
     calls = read_jsonl(calls_path) if calls_path.exists() else []
     billed = [c for c in calls if c["cost"] is not None]
+    unpriced = [c for c in calls if c.get("unpriced")]
     by_model: dict[str, dict] = defaultdict(lambda: {"calls": 0, "cost_usd": 0.0, "providers": set()})
     for call in billed:
         entry = by_model[call["model"]]
@@ -71,7 +74,9 @@ def summarize_calls(calls_path: Path) -> dict:
         entry["providers"].add(call["provider"])
     return {
         "calls": len(billed),
-        "failed_calls": len(calls) - len(billed),
+        "failed_calls": len(calls) - len(billed) - len(unpriced),
+        "unpriced_calls": len(unpriced),
+        "unpriced_models": sorted({str(c["model"]) for c in unpriced}),
         "prompt_tokens": sum(c["prompt_tokens"] or 0 for c in billed),
         "completion_tokens": sum(c["completion_tokens"] or 0 for c in billed),
         "cost_usd": round(sum(c["cost"] for c in billed), 8),
@@ -123,6 +128,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         f"{row['prompt_tokens']}+{row['completion_tokens']} tokens, USD {row['cost_usd']:.6f}",
         file=sys.stderr,
     )
+    if row["unpriced_calls"]:
+        print(
+            f"[cost] {row['unpriced_calls']} calls to models without a price are not in the total: "
+            f"{', '.join(row['unpriced_models'])}; add them to ANTHROPIC_PRICES in scripts/cost_hook/sitecustomize.py",
+            file=sys.stderr,
+        )
     return exit_code
 
 
@@ -156,7 +167,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER)
     sub = parser.add_subparsers(dest="action", required=True)
-    run = sub.add_parser("run", help="run a command and record its OpenRouter cost")
+    run = sub.add_parser("run", help="run a command and record its model API cost")
     run.add_argument("--label", required=True)
     run.add_argument("command", nargs=argparse.REMAINDER)
     report = sub.add_parser("report", help="print the ledger and the account balance")

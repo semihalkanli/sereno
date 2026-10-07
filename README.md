@@ -38,9 +38,9 @@ uv run ruff format . && uv run ruff check .
 
 ## Cost tracking
 
-Every paid run goes through the cost wrapper, which records the usage OpenRouter
-returns with each completion and appends one row per run to
-`runs/cost/ledger.jsonl`:
+Every paid run goes through the cost wrapper, which records the cost of each
+OpenRouter or Anthropic completion (Anthropic calls are priced from their token
+usage) and appends one row per run to `runs/cost/ledger.jsonl`:
 
 ```sh
 uv run scripts/cost.py run --label <label> -- <command> [args...]
