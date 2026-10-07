@@ -4,7 +4,7 @@
 schema_version: "1.0"
 dataset_root: ~/sereno-deepswe/deep-swe
 agent: mini-swe
-model_config_file: model-openrouter.yaml
+model_config_file: model-anthropic-haiku.yaml
 targets:
   - task_id: fastapi-implicit-head-options
 sessions:

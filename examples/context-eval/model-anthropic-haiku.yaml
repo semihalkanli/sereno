@@ -1,0 +1,11 @@
+# Credentials are read by the provider from ANTHROPIC_API_KEY in the host environment.
+# Haiku 5.5 thinks adaptively by default but returns empty thinking text; `display: summarized` returns a summary of
+# each thinking block (visibility only: the same thinking and billing), which litellm puts in `reasoning_content`.
+model:
+  model_class: litellm
+  model_name: anthropic/claude-haiku-5-5
+  cost_tracking: default
+  model_kwargs:
+    thinking:
+      type: adaptive
+      display: summarized
