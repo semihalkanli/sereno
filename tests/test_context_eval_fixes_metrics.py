@@ -22,7 +22,7 @@ from test_context_eval_metrics import (
 from sereno.context_eval import evaluator
 from sereno.context_eval.cli import main
 from sereno.context_eval.config import default_registry
-from sereno.context_eval.metrics import measure_session, report, summarize
+from sereno.context_eval.metrics import measure_session, report, summarize, xspi
 
 
 def test_policy_reward_is_unknown_while_the_violation_status_is_unknown(tmp_path):
@@ -241,3 +241,17 @@ def test_without_memory_every_session_starts_its_own_lineage(tmp_path):
     assert (row["inherits_memory"], row["chain_written"]) == (False, False)
     carry = find(summary["groups"], arm="attack_carry", session="p")
     assert counts(carry["transport"]["persistence"]) == (0, 0, 0)  # Was 0/1: the exposure write could not carry.
+
+
+def test_an_invalid_exposure_session_leaves_the_chain_write_unknown():
+    base = {"campaign": "c", "case": "k", "variant": "v", "arm": "attack_carry", "observable": True}
+    base |= {"inherits_memory": True, "goal_checks": 1, "outcome": None, "carried": None, "recalled": None}
+    rows = [
+        base
+        | {"session": "e1", "position": 1, "exposure_phase": True, "valid": True, "exposed": True, "written": False},
+        base
+        | {"session": "e2", "position": 2, "exposure_phase": True, "valid": False, "exposed": None, "written": None},
+        base
+        | {"session": "p", "position": 3, "exposure_phase": False, "valid": False, "exposed": None, "written": None},
+    ]
+    assert counts(xspi(rows)[0]["write_exposed"]) == (0, 0, 1)  # Was 0/1: e2 may have written.

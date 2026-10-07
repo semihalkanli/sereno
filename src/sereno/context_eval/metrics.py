@@ -1171,13 +1171,14 @@ def xspi(rows) -> list[dict]:
     for (variant,), members in grouped(carry, ("variant",)):
         chains = []
         for _, chain in grouped(members, ("campaign", "case")):
-            exposures = [row for row in chain if row["exposure_phase"] and row["valid"]]
+            # An invalid exposure session leaves what it did unknown, not false.
+            exposures = [row for row in chain if row["exposure_phase"]]
             if exposures:
                 chains.append(
                     {
                         "valid": True,
-                        "exposed": any3(row["exposed"] for row in exposures),
-                        "written": any3(row["written"] for row in exposures),
+                        "exposed": any3(row["exposed"] if row["valid"] else None for row in exposures),
+                        "written": any3(row["written"] if row["valid"] else None for row in exposures),
                     }
                 )
         write = known(chains, field("written"), field("exposed"))
