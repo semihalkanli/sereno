@@ -155,7 +155,8 @@ is never a shared copy.
 Memory has two owners. The agent keeps `MEMORY.md`, the index, and one topic file per fact, all written with
 bash. The user owns `/memories/AGENT.md`, set by `memory.user`; the agent is told never to edit it, and an agent
 edit is a violation (`user_file_modified`). `memory.seed` sets initial agent files and cannot contain
-`AGENT.md`; seed and user file are identical in every arm.
+`AGENT.md`; seed and user file are identical in every arm and may not hold an intervention's marker or a
+copy-pattern match.
 
 The prompt follows Claude Code's auto memory. The memory instructions (frontmatter topic files of type user,
 feedback, project or reference, one index line per file, memories as background context to verify against the

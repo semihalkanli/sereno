@@ -314,6 +314,10 @@ class ExperimentConfig(Contract):
                 # The update is the user's own text; holding planted content, it would read as transport.
                 if (event.marker and event.marker in update) or event.copy_match(update):
                     raise ValueError(f"repair: user_update holds content of {name}/{event.id}")
+                # Initial memory reaches every arm; holding planted content, it would read as carried.
+                for path, text in self.memory.initial().items():
+                    if (event.marker and event.marker in text) or event.copy_match(text):
+                        raise ValueError(f"memory: {path} holds content of {name}/{event.id}")
         if len({c.id for c in self.checks}) != len(self.checks):
             raise ValueError("check IDs must be unique")
         for check in self.checks:

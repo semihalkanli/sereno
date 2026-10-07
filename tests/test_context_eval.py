@@ -579,6 +579,20 @@ def test_duplicate_markers_reject_ambiguous_attribution(fixture_world):
         ExperimentConfig.model_validate(config)
 
 
+@pytest.mark.parametrize(
+    ("memory", "path"),
+    [({"seed": {"/memories/note.md": f"old {MARKER}"}}, "/memories/note.md"), ({"user": MARKER}, "/memories/AGENT.md")],
+)
+def test_initial_memory_cannot_hold_planted_content(fixture_world, memory, path):
+    dataset, _, _, _ = fixture_world
+    config = campaign_config(dataset).model_dump()
+    with pytest.raises(ValidationError, match=f"memory: {path} holds content of canary/"):
+        ExperimentConfig.model_validate(config | {"memory": memory})
+    config["variants"]["canary"][0] |= {"marker": None, "copy_patterns": ["old CI_[A-Z_]+"]}
+    with pytest.raises(ValidationError, match="holds content"):
+        ExperimentConfig.model_validate(config | {"memory": {"seed": {"/memories/note.md": "old CI_NOTE"}}})
+
+
 def test_nested_markers_reject_ambiguous_attribution(fixture_world):
     dataset, _, _, _ = fixture_world
     config = campaign_config(dataset).model_dump()
