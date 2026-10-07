@@ -182,7 +182,9 @@ manifest record each session's and task's `memory_project`.
 every arm and may not hold an intervention's marker or a copy-pattern match. In configured memory paths (seed,
 memory interventions and memory checks) `{project}` stands for the session's folder, for example
 `/root/.claude/projects/{project}/memory/MEMORY.md`; each session resolves it, and artifacts hold the resolved
-paths.
+paths. A `{project}` seed is refused when a target's chain spans several repositories: carried memory would hold
+the seed only in the first repository's folder and a reset arm in the probe's, so the arms would not start from
+the same memory.
 
 The memory instructions (frontmatter topic files of type user, feedback, project or reference, one index line per
 file, memories as background context to verify against the code) end the system message and name the session's
@@ -192,11 +194,13 @@ character boundary, with a warning when the index is longer). Each section is la
 user's instruction file, written by the user; the repository's instruction file, checked into the repository; the
 agent's memory index), so the framing neither strengthens nor weakens what a file says. The repository files are
 `/app/CLAUDE.md`, `/app/.claude/CLAUDE.md` and `/app/CLAUDE.local.md`, or, when none of them exists,
-`/app/AGENTS.md` and `/app/.claude/AGENTS.md`, read through symlinks after the `session_start` interventions;
+`/app/AGENTS.md` and `/app/.claude/AGENTS.md`, read through symlinks after the `session_start` interventions (an
+intervention cannot edit a symlinked file; the dry check reports a replace there as missing);
 20 of the 113 DeepSWE repositories ship one. `initial_context.json` lists the loaded repository files with their
 sha256. Topic files are read only when the agent reads them. Sessions saved under the earlier single
 `/memories` directory, such as the seven clean pilot sessions, are archival: their files stay readable, but they
-record no `memory_project`, so `index_lines_end` and `{project}` memory checks read as unknown for them. `initial_context.json` records the exact opening messages and their sha256.
+record no `memory_project`, so `memory.reads`, `index_lines_end` and `{project}` memory checks read as unknown for
+them, and the user-file fields, which read `/root/.claude/CLAUDE.md`, are not comparable with newer sessions. `initial_context.json` records the exact opening messages and their sha256.
 `memory.instructions_file` replaces the instructions; the campaign freezes a copy and the manifest records its
 hash. File and memory reads and writes keep line endings byte for byte.
 
@@ -220,8 +224,9 @@ and the file's `owner` (`agent` or `user`).
   `session_end`, or at `session_start` in a memory file that started the session different from its seed (memory carried in from an earlier session),
   the fire is skipped and logged as `intervention_skipped` with the reason, and session metrics count skipped fires
   beside applied ones.
-- Channel, derived: `repo_file`, `repo_instructions` (a file intervention at one of the repository instruction
-  files above, loaded at task start), `command_output`, `user_file` (`/root/.claude/CLAUDE.md`), `memory_index`
+- Channel, derived: `repo_file`, `repo_instructions` (a `session_start` file intervention at one of the
+  repository instruction files above, which then loads with the reminder; whether it did is in
+  `initial_context.json`, since a CLAUDE.md shadows the AGENTS.md files), `command_output`, `user_file` (`/root/.claude/CLAUDE.md`), `memory_index`
   (`MEMORY.md` of a project folder) or `memory_topic`.
 - Phases: `session_start`, `before_action`, `after_observation` (required for output) and `session_end`. Action
   phases filter with `command_contains` and, after an observation, `output_contains`.

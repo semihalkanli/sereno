@@ -168,3 +168,74 @@ def test_memory_sections_leave_the_repository_file_in_fresh_text(tmp_path, fixtu
     (row,) = [json.loads(line) for line in (tmp_path / "e.jsonl").read_text().splitlines() if '"context_sent"' in line]
     assert row["matched_interventions"] == ["f"]
     assert row["memory_recall"] == {"m": {"startup": "marker"}}
+
+
+def other_repository(dataset):
+    """Move task `second` to another repository, so a cross-task chain changes project folder."""
+    toml = dataset / "tasks" / "second" / "task.toml"
+    toml.write_text(toml.read_text().replace("github.com/ci/fixture", "github.com/ci/other"))
+
+
+def test_a_chain_into_another_repository_carries_the_tree_but_loads_its_own_folder(tmp_path, fixture_world):
+    other_repository(fixture_world[0])
+    config = base.campaign_config(fixture_world[0], method="memory", cross_task=True)
+    config.arms = ["attack_carry"]
+    root, _ = base.run_fixture(tmp_path, fixture_world, config)
+    probe = base.session_dir(root, "attack_carry", "002-probe")
+    assert read(probe / "result.json")["memory_project"] == "-root-other"
+    assert MARKER in read(probe / "memory_start.json")[INDEX]
+    opening = read(probe / "initial_context.json")["memory"]
+    other = index_path("-root-other")
+    assert f"Contents of {other}: the memory directory has no index yet." in opening and MARKER not in opening
+
+
+def test_a_project_seed_is_refused_in_a_chain_over_several_repositories(tmp_path, fixture_world):
+    other_repository(fixture_world[0])
+    config = base.campaign_config(fixture_world[0], cross_task=True)
+    config.memory = MemoryConfig(seed={"/root/.claude/projects/{project}/memory/MEMORY.md": "- seed\n"})
+    with pytest.raises(ValueError, match=r"memory.seed names \{project\}, but the chain of first spans"):
+        base.run_fixture(tmp_path, fixture_world, config)
+
+
+def test_an_instruction_file_counts_as_loaded_only_when_planted_at_session_start():
+    common = {"id": "f", "method": "file", "sessions": ["e"], "path": "/app/CLAUDE.md", "text": MARKER}
+    assert Intervention(**common).channel == "repo_instructions"
+    assert Intervention(**common, phase="before_action").channel == "repo_file"
+    assert Intervention(**common | {"path": "/app/docs/CLAUDE.md"}).channel == "repo_file"
+
+
+def test_dry_check_reports_an_instruction_file_the_bridge_cannot_edit(fixture_world):
+    from sereno.context_eval.runner import dry_check
+
+    dataset, factory, _, _ = fixture_world
+
+    class SymlinkedClaude(factory):
+        def read(self, path):
+            if path == "/app/CLAUDE.md":
+                raise RuntimeError("bridge read failed: ValueError: symlink paths are unsupported")
+            return super().read(path)
+
+    config = base.campaign_config(dataset)
+    event = config.variants["canary"][0]
+    event.path, event.operation, event.old_text = "/app/CLAUDE.md", "replace", "rule"
+    (item,) = dry_check(config, {"first": {"id": "fixture"}}, SymlinkedClaude)
+    assert item["status"] == "missing" and "symlink paths are unsupported" in item["reason"]
+
+
+def test_sessions_from_the_earlier_layout_leave_project_measures_unknown(tmp_path):
+    from sereno.context_eval.metrics import measure_session
+
+    directory = tmp_path / "session"
+    directory.mkdir()
+    result = {"status": "complete", "session_id": "s", "task_id": "t", "exposure_phase": False, "markers": {}}
+    (directory / "result.json").write_text(json.dumps(result))
+    action = {"kind": "action", "command": "cat /memories/MEMORY.md", "step": 1, "session_id": "s"}
+    (directory / "events.jsonl").write_text(json.dumps(action) + "\n")
+    for name in ("memory_start.json", "memory_end.json"):
+        (directory / name).write_text(json.dumps({"/memories/MEMORY.md": "- CI_X\n"}))
+    check = {"id": "seeded", "kind": "goal", "source": "memory", "contains": "CI_X"}
+    check["path"] = "/root/.claude/projects/{project}/memory/MEMORY.md"
+    metrics = measure_session(directory, [check], [], default_registry(), {}, write=False)
+    (row,) = metrics["checks"]
+    assert (row["value"], row["status"]) == (None, "missing")
+    assert metrics["memory"]["reads"] is None and metrics["memory"]["index_lines_end"] is None

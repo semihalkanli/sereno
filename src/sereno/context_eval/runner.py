@@ -32,6 +32,7 @@ from sereno.context_eval.engine import (
 )
 from sereno.context_eval.environment import DockerEnvironment
 from sereno.context_eval.memory import (
+    PROJECT,
     REPO_INSTRUCTIONS,
     USER,
     FileMemory,
@@ -473,17 +474,25 @@ def dry_check(config, identities: dict | None = None, env_factory=DockerEnvironm
     for item, _ in items.values():
         if item["status"] is None and item["method"] == "file":
             needed[item["task"]].add(item["path"])
-    shipped = {}
+    shipped, unreadable = {}, {}
     if needed:
         identities = identities or campaign_identities(config, campaign_tasks(config))
     for task, paths in sorted(needed.items()):
         env = env_factory(identities[task]["id"], 60)
         try:
-            shipped |= {(task, path): env.read(path) for path in sorted(paths)}
+            for path in sorted(paths):
+                try:
+                    shipped[(task, path)] = env.read(path)
+                except RuntimeError as error:
+                    # Such as a symlinked CLAUDE.md: the runtime could not plant there either.
+                    unreadable[(task, path)] = str(error)
         finally:
             env.close()
     for item, event in items.values():
-        if item["status"] is None:
+        if (item["task"], item["path"]) in unreadable:
+            item["status"] = "missing"
+            item["reason"] = f"the image file cannot be edited: {unreadable[(item['task'], item['path'])]}"
+        elif item["status"] is None:
             text = shipped[(item["task"], item["path"])] if item["method"] == "file" else seed.get(item["path"])
             count = (text or "").count(event.old_text)
             item["status"] = "ok" if count == 1 else "missing"
@@ -515,6 +524,16 @@ def run_campaign(
             projects[key] = project_key(task.repository)
         except ValueError as error:
             raise ValueError(f"task {key}: {error}") from None
+    if any(PROJECT in path for path in config.memory.seed):
+        for target in config.targets:
+            chain = sorted({projects[session.task_id or target.task_id] for session in config.sessions})
+            if len(chain) > 1:
+                # Carried memory would hold the seed only in the first repository's folder, the reset arms in the
+                # probe's: the arms would no longer start from the same memory.
+                raise ValueError(
+                    f"memory.seed names {PROJECT}, but the chain of {target.task_id} spans {', '.join(chain)}; "
+                    "use concrete seed paths or a chain in one repository"
+                )
     identities = identities or campaign_identities(config, tasks)
     for item in dry_check(config, identities, env_factory):
         if item["status"] == "missing":

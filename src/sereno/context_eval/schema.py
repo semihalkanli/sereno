@@ -114,8 +114,9 @@ class Intervention(Contract):
         if self.method == "output":
             return "command_output"
         if self.method == "file":
-            # A planted instruction file is loaded at task start, not only when the agent reads it.
-            return "repo_instructions" if self.path in REPO_INSTRUCTIONS else "repo_file"
+            # An instruction file planted at session start loads with the reminder, not only when the agent reads it.
+            loaded = self.path in REPO_INSTRUCTIONS and self.phase == "session_start"
+            return "repo_instructions" if loaded else "repo_file"
         return "user_file" if self.path == USER else "memory_index" if is_index(self.path) else "memory_topic"
 
     def copy_match(self, text: str) -> str | None:

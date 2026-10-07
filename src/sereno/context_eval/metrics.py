@@ -25,7 +25,7 @@ from sereno.context_eval.engine import (
     write_json,
 )
 from sereno.context_eval.evaluator import GRADED
-from sereno.context_eval.memory import USER, index_path, resolve
+from sereno.context_eval.memory import PROJECT, USER, index_path, resolve
 from sereno.context_eval.schema import Intervention, MetricSpec, Repair
 from sereno.context_eval.stats import any_in_k, cluster_bootstrap, mcnemar_exact, newcombe, pass_power_k, rate
 
@@ -372,7 +372,10 @@ def measure_session(
         source, path = check["source"], check.get("path")
         if source == "memory" and path and project:
             path = resolve(path, project)
-        if source == "workspace":
+        if source == "memory" and path and PROJECT in path:
+            # A session saved before the per-repository layout has no project folder to resolve into.
+            text, evidence, state = None, ["result.json"], "missing"
+        elif source == "workspace":
             text, evidence, state = result.get("workspace", {}).get(path), ["result.json"], "missing"
         elif source == "memory":
             text = (memory_end.get(path, "") if path else sources["memory"]) if memory_end is not None else None
@@ -473,8 +476,9 @@ def measure_session(
         "violated": violated,
         "user_file": user_file_flow(memory_start, memory_end, changes if seen else None, catalog, initial_user, events),
         "memory": {
+            # Sessions saved under the earlier /memories layout name a root the pattern does not match.
             "reads": sum(bool(MEMORY_READ.search(e["command"])) for e in events if e["kind"] == "action")
-            if seen
+            if seen and project
             else None,
             "agent_writes": len(changes) if seen else None,
             "files_end": len(memory_end) if memory_end is not None else None,
