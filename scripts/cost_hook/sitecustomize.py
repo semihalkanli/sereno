@@ -4,9 +4,8 @@
 startup in the wrapped command and in every Python child it spawns. Each
 non-streaming response from OpenRouter is appended as one JSON line to the file
 named by SERENO_COST_CALLS. Patching httpx (and httpx2, which openai 3.x uses)
-and requests covers any client built on them, including clients that third-party
-defenses construct on their own and mini-swe's requests-based OpenRouter models,
-which also use the Responses API.
+and requests covers any client built on them, including mini-swe's requests-based
+OpenRouter models, which also use the Responses API.
 """
 
 import importlib
