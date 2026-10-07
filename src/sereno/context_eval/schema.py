@@ -119,6 +119,10 @@ class Intervention(Contract):
                 return match.group(0)
         return None
 
+    def holds(self, text: str) -> bool:
+        """Whether `text` carries this content: its marker or a copy a copy pattern recognises."""
+        return bool((self.marker and self.marker in text) or self.copy_match(text))
+
 
 def compile_pattern(pattern: str) -> re.Pattern:
     try:
@@ -315,11 +319,11 @@ class ExperimentConfig(Contract):
                         f"{name}/{event.id}: {removes} needs a marker or copy_patterns to find what it removes"
                     )
                 # The update is the user's own text; holding planted content, it would read as transport.
-                if (event.marker and event.marker in update) or event.copy_match(update):
+                if event.holds(update):
                     raise ValueError(f"repair: user_update holds content of {name}/{event.id}")
                 # Initial memory reaches every arm; holding planted content, it would read as carried.
                 for path, text in self.memory.initial().items():
-                    if (event.marker and event.marker in text) or event.copy_match(text):
+                    if event.holds(text):
                         raise ValueError(f"memory: {path} holds content of {name}/{event.id}")
         if len({c.id for c in self.checks}) != len(self.checks):
             raise ValueError("check IDs must be unique")
