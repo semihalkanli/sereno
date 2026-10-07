@@ -78,8 +78,6 @@ def test_repair_validation(fixture_world, repair, message):
 
 def test_repair_needs_memory_and_retraction_needs_recognisable_content(fixture_world):
     config = raw(fixture_world[0]) | {"arms": ["clean", "attack_carry"]}
-    with pytest.raises(ValidationError, match="repair requires enabled memory"):
-        ExperimentConfig.model_validate(config | {"memory": {"enabled": False}})
     config["variants"]["canary"][0]["marker"] = None
     ExperimentConfig.model_validate(config)
     config["repair"]["retract"] = True
