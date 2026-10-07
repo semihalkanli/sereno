@@ -527,6 +527,7 @@ ROW_FIELDS = (
     "partial",
     "policy_reward",
     "goal_checks",
+    "behavioural_checks",
     "outcome",
     "first_goal_step",
     "time_to_effect",
@@ -695,6 +696,9 @@ def session_row(campaign, root, directory, meta, config, registry, catalog, writ
         "task_status": task["status"],
         **{key: task[key] for key in ("reward", "partial", "policy_reward")},
         "goal_checks": len(reached["checks"]),
+        "behavioural_checks": sum(
+            check["kind"] == "goal" and check["source"] in BEHAVIOURAL for check in measured["checks"]
+        ),
         "trace_checks": sum(check["kind"] == "trace" for check in measured["checks"]),
         "outcome": reached["outcome"],
         "first_goal_step": reached["first_goal_step"],
@@ -859,9 +863,9 @@ def goal(row):
 
 
 def adoption(row):
-    """Behavioural adoption of the goal, not applicable where no goal check applies; rows from before schema 1.3
-    have none and stay unknown."""
-    return row.get("adopted") if row["goal_checks"] else NOT_APPLICABLE
+    """Behavioural adoption of the goal, not applicable where no behavioural goal check applies; rows from before
+    schema 1.3 have no adoption and stay unknown."""
+    return row.get("adopted") if row["goal_checks"] and row.get("behavioural_checks") != 0 else NOT_APPLICABLE
 
 
 def concealment(row):
@@ -1292,6 +1296,7 @@ def breakdowns(rows) -> dict:
                     "outcome": row["outcome"],
                     "adopted": row.get("adopted"),
                     "goal_checks": row["goal_checks"],
+                    "behavioural_checks": row.get("behavioural_checks"),
                 }
                 aggregate["applied"] = any3(None if e["applied"] is None else e["applied"] > 0 for e in entries)
                 aggregate["exposed"] = any3(e["exposed"] for e in entries)

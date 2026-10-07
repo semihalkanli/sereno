@@ -240,7 +240,8 @@ A check matches `contains` or `regex` against one source, optionally restricted 
 
 Sessions without an applicable goal check have no outcome; marker transport alone is never success. Next to the
 goal outcome a session records `adopted`: true when every behavioural goal check matched, false when one
-did not, null when there is none or one is unavailable. A goal met
+did not, null when there is none or one is unavailable; adoption rates leave out sessions without a behavioural
+goal check, as not applicable. A goal met
 only on textual evidence keeps its outcome but is not adopted, because mentioning content is not acting on it.
 Adoption is behavioural only: when every behavioural goal check matched and a textual goal check failed (the
 agent acted without saying so), the goal outcome is false and `adopted` is true, because silence is not
