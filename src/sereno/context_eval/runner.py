@@ -372,19 +372,120 @@ def check_resume(output: Path, manifest: dict) -> None:
         raise ValueError(f"cannot resume: {', '.join(changed)} changed since the campaign started")
 
 
+def campaign_tasks(config) -> dict:
+    tasks = {t.task_id: load_task(config.dataset_root, t.task_id) for t in config.targets}
+    for session in config.sessions:
+        if session.task_id and session.task_id not in tasks:
+            tasks[session.task_id] = load_task(config.dataset_root, session.task_id)
+    return tasks
+
+
+def campaign_identities(config, tasks: dict) -> dict:
+    """The local image of every task, a target's own image where it names one; a missing image fails here."""
+    overrides = {t.task_id: t.image for t in config.targets if t.image}
+    return {key: image_identity(overrides.get(key, task.image)) for key, task in tasks.items()}
+
+
+PHASES = ("session_start", "before_action", "after_observation", "session_end")
+
+
+def written_before(events, index: int, session_id: str, order: dict) -> str | None:
+    """An intervention that writes the path of `events[index]` before it fires in `session_id`, this one in an
+    earlier session included. A session's repository starts from the image, so for a file only the same session
+    counts; memory carries every earlier session's writes."""
+    event = events[index]
+    position = (order[session_id], PHASES.index(event.phase), index)
+    for number, other in enumerate(events):
+        if other.method != event.method or other.path != event.path:
+            continue
+        for session in other.sessions:
+            if event.method == "memory" or session == session_id:
+                if (order[session], PHASES.index(other.phase), number) < position:
+                    return other.id
+    return None
+
+
+def dry_check(config, identities: dict | None = None, env_factory=DockerEnvironment) -> list[dict]:
+    """Every replace intervention's old_text, per session it fires in and task, against what it will replace,
+    without a model: the seed or user memory the config gives a memory path, or the file a task image ships at a
+    repository path, read from one container per task. Command output, a memory path without seed content outside
+    the first session's start, and a path an earlier intervention writes are uncheckable; earlier writes are not
+    reproduced. A match count other than one is missing, as the runtime's replace requires."""
+    order = {session.id: number for number, session in enumerate(config.sessions)}
+    seed = config.memory.initial()
+    items = {}
+    for variant, events in config.variants.items():
+        for index, event in enumerate(events):
+            if event.operation != "replace" or event.old_text is None:
+                continue
+            for session_id in sorted(event.sessions, key=order.get):
+                session = config.sessions[order[session_id]]
+                for target in config.targets:
+                    task = session.task_id or target.task_id
+                    item = {
+                        "variant": variant,
+                        "intervention": event.id,
+                        "method": event.method,
+                        "session": session_id,
+                        "task": task,
+                        "path": event.path,
+                        "status": "uncheckable",
+                        "reason": None,
+                    }
+                    first = order[session_id] == 0 and event.phase == "session_start"
+                    if event.method == "output":
+                        item["reason"] = "command output is unknown before the run"
+                    elif writer := written_before(events, index, session_id, order):
+                        item["reason"] = f"{writer} writes {event.path} earlier"
+                    elif event.method == "memory" and event.path not in seed and not first:
+                        item["reason"] = "no seed or user memory at this path; the agent may write it"
+                    else:
+                        item["status"] = None
+                    items.setdefault((variant, event.id, session_id, task), (item, event.old_text))
+    needed = defaultdict(set)
+    for item, _ in items.values():
+        if item["status"] is None and item["method"] == "file":
+            needed[item["task"]].add(item["path"])
+    shipped = {}
+    if needed:
+        identities = identities or campaign_identities(config, campaign_tasks(config))
+    for task, paths in sorted(needed.items()):
+        env = env_factory(identities[task]["id"], 60)
+        try:
+            shipped |= {(task, path): env.read(path) for path in sorted(paths)}
+        finally:
+            env.close()
+    for item, old_text in items.values():
+        if item["status"] is None:
+            text = shipped[(item["task"], item["path"])] if item["method"] == "file" else seed.get(item["path"])
+            count = (text or "").count(old_text)
+            item["status"] = "ok" if count == 1 else "missing"
+            if text is None:
+                item["reason"] = (
+                    "the image ships no file at this path"
+                    if item["method"] == "file"
+                    else "the first session starts with no memory at this path"
+                )
+            elif count != 1:
+                item["reason"] = f"old_text matches {count} times; replace needs exactly one match"
+    return [item for item, _ in items.values()]
+
+
 def run_campaign(
     config, output: Path, registry, *, env_factory=DockerEnvironment, identities=None, resume=False
 ) -> dict:
     """Run a new campaign in `output`, or resume one: complete sessions are kept, and each arm re-runs from its
     first incomplete session. Earlier attempts move to superseded/<UTC time>/ under their own relative path."""
     validate(config, registry)
-    # Preflight every image before starting a container or making a paid request.
-    tasks = {t.task_id: load_task(config.dataset_root, t.task_id) for t in config.targets}
-    for session in config.sessions:
-        if session.task_id and session.task_id not in tasks:
-            tasks[session.task_id] = load_task(config.dataset_root, session.task_id)
-    overrides = {t.task_id: t.image for t in config.targets if t.image}
-    identities = identities or {key: image_identity(overrides.get(key, task.image)) for key, task in tasks.items()}
+    # Preflight every image and every replace intervention before starting a session or making a paid request.
+    tasks = campaign_tasks(config)
+    identities = identities or campaign_identities(config, tasks)
+    for item in dry_check(config, identities, env_factory):
+        if item["status"] == "missing":
+            raise ValueError(
+                f"dry check: {item['variant']}/{item['intervention']} in session {item['session']} of task "
+                f"{item['task']} at {item['path'] or 'command output'}: {item['reason']}"
+            )
     output = output.resolve()
     frozen_config = config.model_dump(mode="json")
     instructions_snapshot = output / "memory-instructions.md"
