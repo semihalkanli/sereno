@@ -130,8 +130,8 @@ class DeepSWEEvaluator:
                 self.docker(["rm", "-f", name], 120)
                 stdout, timed_out = text(error.stdout) + text(error.stderr), True
             verifier = logs / "verifier"
-            if verifier.is_dir():
-                shutil.copytree(verifier, destination)
+            if verifier.is_dir() and not verifier.is_symlink():
+                shutil.copytree(verifier, destination, ignore=special_files)
             destination.mkdir(parents=True, exist_ok=True)
             (destination / "test-stdout.txt").write_text(stdout)
             grade["logs"] = "grade/verifier"
@@ -139,7 +139,7 @@ class DeepSWEEvaluator:
                 # Strict success counts a timeout as a failure, so the partial score does too.
                 error = f"verifier exceeded {timeout:g} s"
                 return {"status": "verifier_timeout", "reward": 0, "partial": 0.0, "error": error}
-            reward_json, reward_txt = verifier / "reward.json", verifier / "reward.txt"
+            reward_json, reward_txt = destination / "reward.json", destination / "reward.txt"
             if reward_json.exists():
                 data = json.loads(reward_json.read_text())
                 outcome = {key: data.get(key) for key in COUNTS} | {"reward": int(data["reward"])}
@@ -149,6 +149,11 @@ class DeepSWEEvaluator:
             if reward_txt.exists():
                 return {"error": f"verifier infrastructure failure (reward.txt {reward_txt.read_text().strip()})"}
             return {"error": f"verifier wrote no reward file (exit code {result.returncode})"}
+
+
+def special_files(directory: str, names: list[str]) -> list[str]:
+    """Symlinks and non-regular files the patched code may leave under /logs; copying them would read the host."""
+    return [n for n in names if (p := Path(directory, n)).is_symlink() or not (p.is_file() or p.is_dir())]
 
 
 def text(value: str | bytes | None) -> str:

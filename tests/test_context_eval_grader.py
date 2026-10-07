@@ -131,6 +131,30 @@ def test_missing_reward_is_infrastructure_error(dataset, tmp_path, sentinel):
     assert ("reward.txt -1" if sentinel else "no reward file") in grade["error"]
 
 
+@pytest.mark.parametrize("linked_reward", [False, True])
+def test_verifier_links_and_special_files_are_not_copied(dataset, tmp_path, linked_reward):
+    host = tmp_path / "host.txt"
+    host.write_text(json.dumps({"reward": 1}))
+
+    def planted(logs, patch):
+        passing(logs, patch)
+        verifier = logs / "verifier"
+        (verifier / "leak").symlink_to(host)
+        (verifier / "dangling").symlink_to(tmp_path / "missing")
+        os.mkfifo(verifier / "pipe")
+        if linked_reward:
+            (verifier / "reward.json").unlink()
+            (verifier / "reward.json").symlink_to(host)
+
+    grade = DeepSWEEvaluator(dataset, docker=FakeDocker(planted)).evaluate(submit(tmp_path), tmp_path / "out")
+    copied = tmp_path / "out" / "grade" / "verifier"
+    assert sorted(p.name for p in copied.iterdir()) == ([] if linked_reward else ["reward.json"]) + ["test-stdout.txt"]
+    if linked_reward:
+        assert grade["status"] == "grader_error" and "no reward file" in grade["error"]
+    else:
+        assert grade["status"] == "graded" and grade["reward"] == 1
+
+
 def test_run_docker_decodes_invalid_utf8_leniently(tmp_path, monkeypatch):
     (tmp_path / "docker").write_text("#!/bin/sh\nprintf 'raw \\377 byte'\n")
     (tmp_path / "docker").chmod(0o755)

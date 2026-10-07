@@ -290,7 +290,8 @@ uv run sereno context-eval grade-check --dataset DIR TASK_ID ... [--out DIR] [--
 the agent used (checked by immutable image ID, cached per `tests/` content), run in a fresh container with no
 network under the task's verifier timeout. `grade.json` has status `graded`, `apply_failed` (reward 0),
 `verifier_timeout` (reward 0, partial 0.0, f2p and p2p null), `grader_error` (reward null, not an agent failure) or
-`not_gradable`, with reward, f2p, p2p, partial and test counts; logs go to `grade/verifier/`, where a `graded`
+`not_gradable`, with reward, f2p, p2p, partial and test counts; logs go to `grade/verifier/` (regular files and
+directories only: symlinks and special files are dropped, and the grade is read from that copy), where a `graded`
 session's `ctrf.json` holds the per-test results (one row per whitelisted test, pass-to-pass rows first). Shared
 sessions are graded once and their copies record `shared_from`. Existing grades are kept unless `--force`. Sessions
 whose `result.json` or `grade.json` cannot be read are skipped and counted as `unreadable`; the exit code is 1 when
