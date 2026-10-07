@@ -761,9 +761,9 @@ def collect(root: Path, registry, *, write: bool = True) -> list[dict]:
             }
         source = directory
         if meta["arm"] in CLEAN_ARMS and not directory.exists() and meta["repeat"] is not None:
-            # Copies follow their origin once every origin has finished; until then report the origin itself.
+            # Copies follow their origin once every origin has finished; until then report the origin itself, which
+            # keys every variant's copy of a missing origin to one session.
             source = root / meta["arm"] / f"{meta['target']}--r{meta['repeat'] + 1:03d}" / "sessions" / directory.name
-            source = source if source.exists() else directory
         catalog = catalogs.get(meta["variant"])
         rows.append(
             session_row(root.name, root, source, meta, config, registry, catalog, write and source == directory)

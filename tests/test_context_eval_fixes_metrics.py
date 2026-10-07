@@ -1,6 +1,7 @@
 """Review fixes in session metrics, campaign statistics, grading and report output."""
 
 import json
+import shutil
 
 import pytest
 import test_context_eval_metrics as metric_tests
@@ -265,3 +266,13 @@ def test_an_unknown_flag_leaves_the_exposure_stage_unknown(tmp_path):
     assert (m["flagged"]["any"], m["failure_stage"]) == (None, None)  # Was exposed_no_effect.
     m = measure_session(directory, checks(GOAL), [], default_registry(), catalog(FACT))
     assert (m["flagged"]["any"], m["failure_stage"]) == (None, "exposed_no_effect")
+
+
+def test_a_missing_clean_origin_counts_once_across_variants(tmp_path):
+    root = build_campaign(tmp_path / "campaign", targets=("t1",), repeats=1)
+    shutil.rmtree(root / "clean")
+    for case in ("t1--fact--r001", "t1--other--r001"):
+        shutil.rmtree(root / "cases" / case / "arms" / "clean")
+    summary = report(root, default_registry(), bootstrap=10)
+    reference = find(summary["clean_reference"], target="t1", session="p")
+    assert (reference["n_total"], reference["n_missing"]) == (1, 1)  # Was 2 and 2, one per variant.
