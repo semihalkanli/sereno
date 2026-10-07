@@ -193,7 +193,6 @@ class MetricSpec(Contract):
 
 
 class MemoryConfig(Contract):
-    enabled: bool = True
     seed: dict[str, str] = {}
     user: str | None = None
     instructions_file: Path | None = None
@@ -218,8 +217,6 @@ class MemoryConfig(Contract):
         if USER in self.seed:
             raise ValueError(f"{USER} is user-written; set memory.user instead of seeding it")
         files = self.initial()
-        if not self.enabled and (files or self.instructions_file):
-            raise ValueError("disabled memory cannot have seed, user or instructions files")
         if not self.within_limits(files):
             raise ValueError("seed exceeds memory limits")
         return self
@@ -295,8 +292,6 @@ class ExperimentConfig(Contract):
                 raise ValueError("repair: unknown session")
             if ids.index(self.repair.session) <= sum(exposure):
                 raise ValueError("repair: the session must follow every exposure session and at least one probe")
-            if not self.memory.enabled:
-                raise ValueError("repair requires enabled memory")
         retracts = self.repair is not None and self.repair.retract
         removes = "attack_ablate" if "attack_ablate" in self.arms else ("repair retraction" if retracts else None)
         update = self.repair.user_update if self.repair else ""
@@ -314,8 +309,6 @@ class ExperimentConfig(Contract):
                     raise ValueError(f"{event.id}: unknown sessions")
                 if any(not s.exposure for s in self.sessions if s.id in event.sessions):
                     raise ValueError(f"{event.id}: interventions cannot target clean probe sessions")
-                if event.method == "memory" and not self.memory.enabled:
-                    raise ValueError("memory interventions require enabled memory")
                 if removes and event.marker is None and not event.copy_patterns:
                     raise ValueError(
                         f"{name}/{event.id}: {removes} needs a marker or copy_patterns to find what it removes"

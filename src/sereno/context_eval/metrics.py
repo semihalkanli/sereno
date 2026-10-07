@@ -775,8 +775,6 @@ def collect(root: Path, registry, *, write: bool = True) -> list[dict]:
     for row in rows:
         chains[(row["case"], row["arm"])].append(row)
     lineage = {}
-    # Without memory nothing carries between sessions, so every session starts a lineage.
-    memory = config.get("memory", {}).get("enabled", True)
     for (case, arm), chain in sorted(chains.items(), key=lambda item: item[0][1] in SHARED_EXPOSURE):
         chain.sort(key=lambda row: row["position"] or 0)
         start = 0
@@ -784,13 +782,11 @@ def collect(root: Path, registry, *, write: bool = True) -> list[dict]:
             # A reset arm starts its first probe from the initial memory, as the runner does; an ablated probe keeps
             # the rest of the carried memory and its lineage. Both share the exposure sessions of their source arm
             # together with the memory those ran on.
-            if not memory or (
-                arm in RESET_ARMS and row["exposure_phase"] is False and chain[number - 1]["exposure_phase"]
-            ):
+            if arm in RESET_ARMS and row["exposure_phase"] is False and chain[number - 1]["exposure_phase"]:
                 start = number
             source = SHARED_EXPOSURE.get(arm) if row["exposure_phase"] else None
             row["inherits_memory"], row["chain_written"] = lineage.get((case, source, row["position"])) or (
-                memory and number > start,
+                number > start,
                 any3(earlier["written"] for earlier in chain[start : number + 1]),
             )
             lineage[(case, arm, row["position"])] = (row["inherits_memory"], row["chain_written"])

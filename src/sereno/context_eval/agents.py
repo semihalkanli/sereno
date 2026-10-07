@@ -63,13 +63,10 @@ def format_error_reply(error) -> dict:
 class ScriptedAdapter:
     def run(self, runtime, instruction, memory_context, config, session):
         # The memory text mini-swe would see: instructions as the system message, the reminder before the task.
-        if config.memory.enabled:
-            messages = [
-                {"role": "system", "content": instructions(config.memory)},
-                {"role": "user", "content": f"{memory_context}\n\n{instruction}"},
-            ]
-        else:
-            messages = [{"role": "user", "content": instruction}]
+        messages = [
+            {"role": "system", "content": instructions(config.memory)},
+            {"role": "user", "content": f"{memory_context}\n\n{instruction}"},
+        ]
         runtime.initial_messages = list(messages)
         started = time.monotonic()
         steps = 0
@@ -184,14 +181,10 @@ class MiniSweAdapter:
         # The built-in shell environment already defines useful display settings; keep them container-local.
         runtime.env.action_env = {k: str(v) for k, v in environment_vars.items()}
         agent_kwargs = dict(merged["agent"])
-        variables = {}
-        if config.memory.enabled:
-            # Template variables, never template text: memory files are data, not Jinja.
-            agent_kwargs["system_template"] = (
-                agent_kwargs["system_template"].rstrip("\n") + "\n\n{{memory_instructions}}"
-            )
-            agent_kwargs["instance_template"] = "{{memory_reminder}}\n\n" + agent_kwargs["instance_template"]
-            variables = {"memory_instructions": instructions(config.memory), "memory_reminder": memory_context}
+        # Template variables, never template text: memory files are data, not Jinja.
+        agent_kwargs["system_template"] = agent_kwargs["system_template"].rstrip("\n") + "\n\n{{memory_instructions}}"
+        agent_kwargs["instance_template"] = "{{memory_reminder}}\n\n" + agent_kwargs["instance_template"]
+        variables = {"memory_instructions": instructions(config.memory), "memory_reminder": memory_context}
         agent_kwargs.update(
             step_limit=session.max_steps,
             cost_limit=config.cost_limit_usd,

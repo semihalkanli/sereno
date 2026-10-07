@@ -126,7 +126,7 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
     }
     try:
         write_json(directory / "memory_start.json", memory)
-        if config.memory.enabled and not config.memory.within_limits(memory):
+        if not config.memory.within_limits(memory):
             # Seeds and carried agent memory always fit, so only a repair can break the limits: not an agent outcome.
             raise RuntimeError("restored memory exceeds the memory limits")
         env = env_factory(identity["id"], wall)
@@ -136,11 +136,10 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         if env.execute("git -c safe.directory=/app rev-parse HEAD")["output"].strip() != task.base_commit:
             raise ValueError("image HEAD does not match the task base commit")
         mem = FileMemory()
-        if config.memory.enabled:
-            if env.execute("mkdir -p /memories")["returncode"]:
-                raise RuntimeError("cannot initialize memory directory")
-            if env.snapshot_memory(config.memory.max_files, config.memory.max_bytes):
-                raise ValueError("task image must start with an empty memory directory")
+        if env.execute("mkdir -p /memories")["returncode"]:
+            raise RuntimeError("cannot initialize memory directory")
+        if env.snapshot_memory(config.memory.max_files, config.memory.max_bytes):
+            raise ValueError("task image must start with an empty memory directory")
         mem.restore(env, memory)
         snapshot = env.snapshot_memory
 
@@ -164,7 +163,7 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         )
         engine.apply(runtime, "session_start")
         instruction = session.instruction or task.instruction
-        context = mem.context(runtime.memory) if config.memory.enabled else ""
+        context = mem.context(runtime.memory)
         runtime.initial_memory_context = context
         bounded = config.model_copy(update={"wall_time_limit_seconds": wall})
         try:
@@ -408,9 +407,7 @@ def run_campaign(
         },
         "code_sha256": code_sha256(),
         "model_config": config.model_config_file.read_text() if config.model_config_file else None,
-        "memory_instructions_sha256": fingerprint(memory_instructions)
-        if config.memory.enabled and memory_instructions is not None
-        else None,
+        "memory_instructions_sha256": fingerprint(memory_instructions) if memory_instructions is not None else None,
         "payload_sha256": {
             name: {e.id: fingerprint(e.text) for e in events} for name, events in config.variants.items()
         },
@@ -619,8 +616,6 @@ def run_campaign(
         previous = session_dir(arm_dir, start - 1, sessions[start - 1]) if start else None
         memory = read(previous / "memory_end.json") if previous else config.memory.initial()
         for number, session in enumerate(sessions[start:], start=start):
-            if not config.memory.enabled:
-                memory = {}
             record = None
             if number == repairs:
                 memory, record = repair(memory, arm_dir, events, attack)
