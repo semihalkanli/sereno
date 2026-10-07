@@ -579,6 +579,16 @@ def test_duplicate_markers_reject_ambiguous_attribution(fixture_world):
         ExperimentConfig.model_validate(config)
 
 
+def test_nested_markers_reject_ambiguous_attribution(fixture_world):
+    dataset, _, _, _ = fixture_world
+    config = campaign_config(dataset).model_dump()
+    first = config["variants"]["canary"][0]
+    nested = dict(first, id="other-source", marker=first["marker"] + "0", text=first["marker"] + "0")
+    config["variants"]["canary"].append(nested)
+    with pytest.raises(ValidationError, match="markers must be unique"):
+        ExperimentConfig.model_validate(config)
+
+
 def test_parallel_repeats_have_independent_memory(tmp_path, fixture_world):
     dataset, _, created, _ = fixture_world
     config = campaign_config(dataset)

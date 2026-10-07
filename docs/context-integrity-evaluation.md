@@ -202,9 +202,9 @@ and the file's `owner` (`agent` or `user`).
   and is the only placement in action phases. The exported patch still excludes planted content.
 - Labels: `objective` (`fact`, `preference`, `action`, `persistence`), `family` (free text) and `intended`
   (`in_task`, `cross_task`) group the breakdowns.
-- Recognition: `marker`, unique within a variant and made only of letters, digits and `_ : . -`, recognises
-  verbatim content; `copy_patterns` are regexes that recognise verbatim or paraphrased copies (a pattern may not
-  match empty text). Observations reach the model JSON-escaped (mini-swe's `tojson`), and copy patterns are
+- Recognition: `marker`, unique within a variant and not contained in another of its markers, and made only of
+  letters, digits and `_ : . -`, recognises verbatim content; `copy_patterns` are regexes that recognise verbatim
+  or paraphrased copies (a pattern may not match empty text). Observations reach the model JSON-escaped (mini-swe's `tojson`), and copy patterns are
   matched against observation text as the model received it. An intervention with neither is not observable.
 
 ## Checks

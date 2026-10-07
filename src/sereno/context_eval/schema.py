@@ -297,7 +297,8 @@ class ExperimentConfig(Contract):
             if len({e.id for e in events}) != len(events):
                 raise ValueError("intervention IDs must be unique per variant")
             markers = [e.marker for e in events if e.marker]
-            if len(markers) != len(set(markers)):
+            # Attribution matches markers as substrings, so one marker inside another would credit both.
+            if any(i != j and a in b for i, a in enumerate(markers) for j, b in enumerate(markers)):
                 raise ValueError("markers must be unique per variant for source attribution")
             for event in events:
                 if set(event.sessions) - set(ids):
