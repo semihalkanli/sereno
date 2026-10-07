@@ -483,5 +483,6 @@ enters the patch.
 - Recall evidence relies on commands that name the `/memories` root and on the startup reminder; it is not full
   taint tracking. A read through a variable or a script that never names the root can stay unattributed.
 - Markers and copy patterns recognise text. They cannot prove a semantic paraphrase or the agent's intent, and an
-  intervention without a marker that fired has unknown exposure, not no exposure, unless a copy pattern
-  matched; one without either is not observable for transport.
+  intervention without a marker that fired has unknown exposure, not no exposure, since fresh exposure is
+  matched by marker only (copy patterns serve recall and transport); one without either is not observable for
+  transport.
