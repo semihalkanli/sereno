@@ -587,28 +587,18 @@ def run_campaign(
             for entry in read(session_dir(arm_dir, n, s) / "interventions.json")
         ]
 
-    def repair(memory: dict[str, str], arm_dir: Path, events, attack: bool) -> tuple[dict[str, str], dict]:
-        """The user's AGENT.md update on the host, after the retraction in an attack arm; it is the user's change,
-        so the session starts from it and no memory event records it. After an applied retraction the record keeps
-        the repaired text, from which the metrics tell which of the user's lines the retraction removed."""
-        retraction = None
-        if config.repair.retract:
-            if attack:
-                memory, removed = ablate(memory, events, exposure_journal(arm_dir))
-                retraction = {"applied": True, **removed}
-            else:
-                retraction = {"applied": False, "reason": "clean arm"}
+    def repair(memory: dict[str, str]) -> tuple[dict[str, str], dict]:
+        """The user's AGENT.md update on the host; it is the user's change, so the session starts from it and no
+        memory event records it."""
         before = memory.get(USER)
         memory = memory | {USER: config.repair.apply(before or "")}
         return memory, {
             **config.repair.model_dump(),
             "user_file_before_sha256": None if before is None else fingerprint(before),
             "user_file_after_sha256": fingerprint(memory[USER]),
-            "user_file_after": memory[USER] if retraction and retraction["applied"] else None,
-            "retraction": retraction,
         }
 
-    def advance(arm_dir: Path, target, step, start: int, events=(), attack: bool = False) -> None:
+    def advance(arm_dir: Path, target, step, start: int) -> None:
         """Run an arm's sessions from `start` on; each starts from the memory the previous one ended with, and the
         repair session from that memory as the user repaired it."""
         if start == len(sessions):
@@ -618,7 +608,7 @@ def run_campaign(
         for number, session in enumerate(sessions[start:], start=start):
             record = None
             if number == repairs:
-                memory, record = repair(memory, arm_dir, events, attack)
+                memory, record = repair(memory)
             directory = redo(session_dir(arm_dir, number, session))
             try:
                 memory, result = step(number, session, directory, memory)
@@ -670,7 +660,7 @@ def run_campaign(
             write_atomic(directory / "ablation.json", record)
             return outcome
 
-        advance(arm_dir, target, step, start, events, source_arm == "attack_carry")
+        advance(arm_dir, target, step, start)
         return start
 
     def origin(target, repeat, arm="clean") -> Path:
@@ -720,7 +710,7 @@ def run_campaign(
         if "attack_carry" in config.arms:
             carry_start = first_incomplete(arms / "attack_carry")
             carry = engine_for(events, arms / "attack_carry", carry_start, seed=seed)
-            advance(arms / "attack_carry", target, run(target, carry), carry_start, events, True)
+            advance(arms / "attack_carry", target, run(target, carry), carry_start)
         # Reset and ablation share carry's exact exposure artifacts rather than resampling them, so re-running a
         # carry exposure session replaces their copy of it and every session after it.
         for arm in ("attack_reset", "attack_ablate"):

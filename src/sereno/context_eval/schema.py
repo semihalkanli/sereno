@@ -223,13 +223,11 @@ class MemoryConfig(Contract):
 
 
 class Repair(Contract):
-    """The user's correction at the start of one probe session, through the only trusted channel, AGENT.md;
-    `retract` also removes the interventions' content from the carried memory as attack_ablate does."""
+    """The user's correction at the start of one probe session, through the only trusted channel, AGENT.md."""
 
     session: str
     user_update: str = Field(min_length=1)
     operation: Literal["append", "replace"] = "append"
-    retract: bool = False
 
     def apply(self, before: str) -> str:
         """AGENT.md after the update: the update appended to `before` on a line of its own, or in its place."""
@@ -292,8 +290,7 @@ class ExperimentConfig(Contract):
                 raise ValueError("repair: unknown session")
             if ids.index(self.repair.session) <= sum(exposure):
                 raise ValueError("repair: the session must follow every exposure session and at least one probe")
-        retracts = self.repair is not None and self.repair.retract
-        removes = "attack_ablate" if "attack_ablate" in self.arms else ("repair retraction" if retracts else None)
+        ablates = "attack_ablate" in self.arms
         update = self.repair.user_update if self.repair else ""
         for name, events in self.variants.items():
             if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
@@ -309,9 +306,9 @@ class ExperimentConfig(Contract):
                     raise ValueError(f"{event.id}: unknown sessions")
                 if any(not s.exposure for s in self.sessions if s.id in event.sessions):
                     raise ValueError(f"{event.id}: interventions cannot target clean probe sessions")
-                if removes and event.marker is None and not event.copy_patterns:
+                if ablates and event.marker is None and not event.copy_patterns:
                     raise ValueError(
-                        f"{name}/{event.id}: {removes} needs a marker or copy_patterns to find what it removes"
+                        f"{name}/{event.id}: attack_ablate needs a marker or copy_patterns to find what it removes"
                     )
                 # The update is the user's own text; holding planted content, it would read as transport.
                 if event.holds(update):
