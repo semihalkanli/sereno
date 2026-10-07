@@ -7,7 +7,7 @@
 logs the usage OpenRouter returns with every completion. When the command
 exits, the calls are summed and one row is appended to the ledger
 (`runs/cost/ledger.jsonl` by default). The wrapped command may use any Python
-environment, so AgentDyn runs are covered as well.
+environment.
 
 Per-call costs are the source of truth because OpenRouter's account total lags
 by minutes. `report` prints the ledger and compares its sum with that account
@@ -29,13 +29,21 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from sereno.events import read_events
-from sereno.runner import git_state
-
 REPO = Path(__file__).resolve().parent.parent
 HOOK_DIR = Path(__file__).resolve().parent / "cost_hook"
 DEFAULT_LEDGER = REPO / "runs" / "cost" / "ledger.jsonl"
 OPENROUTER = "https://openrouter.ai/api/v1"
+
+
+def read_jsonl(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def git_state() -> dict:
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True).stdout.strip()
+
+    return {"commit": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain"))}
 
 
 def openrouter_get(path: str) -> dict | None:
@@ -52,7 +60,7 @@ def openrouter_get(path: str) -> dict | None:
 
 
 def summarize_calls(calls_path: Path) -> dict:
-    calls = read_events(calls_path) if calls_path.exists() else []
+    calls = read_jsonl(calls_path) if calls_path.exists() else []
     billed = [c for c in calls if c["cost"] is not None]
     by_model: dict[str, dict] = defaultdict(lambda: {"calls": 0, "cost_usd": 0.0, "providers": set()})
     for call in billed:
@@ -115,7 +123,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_report(args: argparse.Namespace) -> int:
-    rows = read_events(args.ledger) if args.ledger.exists() else []
+    rows = read_jsonl(args.ledger) if args.ledger.exists() else []
     if args.label:
         rows = [r for r in rows if r["label"] == args.label]
     print(f"{'run':<44} {'calls':>6} {'failed':>6} {'tokens in':>10} {'tokens out':>10} {'USD':>10}")

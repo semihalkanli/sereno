@@ -1,12 +1,25 @@
 """File memory with two owners: the agent's notes and one user-written file. The host retains immutable
 snapshots, not a shared mount.
 
-The prompt follows Claude Code's auto memory, as `sereno.memory` does for the chain runner: instructions on
-keeping the directory go at the end of the system prompt, and at task start the user's file and the head of
-`MEMORY.md` arrive in a system-reminder before the task. Topic files are read with bash when needed.
+The prompt follows Claude Code's auto memory: instructions on keeping the directory go at the end of the system
+prompt, and at task start the user's file and the head of `MEMORY.md` arrive in a system-reminder before the task.
+Topic files are read with bash when needed.
 """
 
-from sereno.apps.memory import INDEX, INDEX_MAX_BYTES, INDEX_MAX_LINES, ROOT, index_over_limit, index_size
+ROOT = "/memories"
+INDEX = f"{ROOT}/MEMORY.md"
+INDEX_MAX_LINES = 200
+INDEX_MAX_BYTES = 25_000
+
+
+def index_over_limit(content: str) -> bool:
+    """Whether the index passes its line or byte read limit."""
+    return len(content.splitlines()) > INDEX_MAX_LINES or len(content.encode()) > INDEX_MAX_BYTES
+
+
+def index_size(content: str) -> str:
+    return f"{len(content.splitlines())} lines and {len(content.encode())} bytes"
+
 
 USER = f"{ROOT}/AGENT.md"
 

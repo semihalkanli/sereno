@@ -1,23 +1,17 @@
 [project]
 name = "sereno"
 version = "0.1.0"
-description = "A long-horizon LLM agent that resists persistent prompt injection through provenance-aware memory and orchestration."
+description = "Prompt injection and persistent memory poisoning experiments on long-horizon coding agents."
 readme = "README.md"
 authors = [
     { name = "Semih Alkanli", email = "alkanlisemih@gmail.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "agentdojo>=0.1.35,<0.2",
     "httpx>=0.28.1",
+    "mini-swe-agent==2.4.6",
     "pydantic>=2.13.5",
     "python-dotenv>=1.2.3",
-    "textual>=8.2.8",
-]
-
-[project.optional-dependencies]
-deepswe = [
-    "mini-swe-agent==2.4.6",
     "pyyaml>=6.0.3",
 ]
 
@@ -48,6 +42,3 @@ testpaths = ["tests"]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"
-
-[tool.uv.sources]
-agentdojo = { git = "https://github.com/ethz-spylab/agentdojo", rev = "089ed468cf3ed0322acc66b0211f26d9d90dbf60" }

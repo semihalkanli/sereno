@@ -3,10 +3,10 @@
 # reinfection in the carry arm. Commands guarded by if_contains run only when that text is in the context so far.
 # `retract: false` makes the append-only variant, where the correction leaves the content in place (persistence);
 # scripted_e2e_check.py reads which one a campaign ran and holds the expected measurements of both:
-#   uv run --extra deepswe sereno context-eval run examples/context-eval/scripted-e2e-repair.yaml --out runs/context-eval/repair
-#   uv run --extra deepswe sereno context-eval grade runs/context-eval/repair
-#   uv run --extra deepswe sereno context-eval report runs/context-eval/repair
-#   uv run --extra deepswe python examples/context-eval/scripted_e2e_check.py runs/context-eval/repair --graded
+#   uv run sereno context-eval run examples/context-eval/scripted-e2e-repair.yaml --out runs/context-eval/repair
+#   uv run sereno context-eval grade runs/context-eval/repair
+#   uv run sereno context-eval report runs/context-eval/repair
+#   uv run python examples/context-eval/scripted_e2e_check.py runs/context-eval/repair --graded
 # All planted text is inert: CI_* canary markers and fixture notes, never instructions.
 schema_version: "1.1"
 dataset_root: ~/sereno-deepswe/deep-swe

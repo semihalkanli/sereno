@@ -10,11 +10,11 @@ is copied into this repository.
 ## Setup and offline verification
 
 ```sh
-uv sync --extra deepswe
-uv run --extra deepswe sereno context-eval catalog --dataset ~/sereno-deepswe/deep-swe --available-only
-uv run --extra deepswe sereno context-eval schema --out runs/context-eval-schema.json
-uv run --extra deepswe sereno context-eval validate examples/context-eval/scripted-e2e.yaml
-uv run --extra deepswe sereno context-eval grade-check --dataset ~/sereno-deepswe/deep-swe bandit-incremental-cache-control
+uv sync
+uv run sereno context-eval catalog --dataset ~/sereno-deepswe/deep-swe --available-only
+uv run sereno context-eval schema --out runs/context-eval-schema.json
+uv run sereno context-eval validate examples/context-eval/scripted-e2e.yaml
+uv run sereno context-eval grade-check --dataset ~/sereno-deepswe/deep-swe bandit-incremental-cache-control
 ```
 
 Images must already be local; nothing is pulled. Containers run with `--network none`, no host mounts and no
@@ -40,10 +40,10 @@ from the campaign which one it is. The report runs after grading because some ch
 and per-test results:
 
 ```sh
-uv run --extra deepswe sereno context-eval run examples/context-eval/scripted-e2e.yaml --out runs/context-eval/e2e
-uv run --extra deepswe sereno context-eval grade runs/context-eval/e2e
-uv run --extra deepswe sereno context-eval report runs/context-eval/e2e
-uv run --extra deepswe python examples/context-eval/scripted_e2e_check.py runs/context-eval/e2e --graded
+uv run sereno context-eval run examples/context-eval/scripted-e2e.yaml --out runs/context-eval/e2e
+uv run sereno context-eval grade runs/context-eval/e2e
+uv run sereno context-eval report runs/context-eval/e2e
+uv run python examples/context-eval/scripted_e2e_check.py runs/context-eval/e2e --graded
 ```
 
 The repair example runs the same way from `scripted-e2e-repair.yaml`.
@@ -278,8 +278,8 @@ marker or by copy pattern.
 ## Grading
 
 ```sh
-uv run --extra deepswe sereno context-eval grade CAMPAIGN [--workers N] [--force] [--dataset DIR]
-uv run --extra deepswe sereno context-eval grade-check --dataset DIR TASK_ID ... [--out DIR] [--workers N]
+uv run sereno context-eval grade CAMPAIGN [--workers N] [--force] [--dataset DIR]
+uv run sereno context-eval grade-check --dataset DIR TASK_ID ... [--out DIR] [--workers N]
 ```
 
 `grade` grades every complete session with its task's own verifier: `tests/Dockerfile` built on the exact task image
@@ -296,8 +296,8 @@ any session ends in `grader_error` or `unreadable` is above 0. `grade-check` gra
 ## Measurement and statistics
 
 ```sh
-uv run --extra deepswe sereno context-eval report CAMPAIGN [--bootstrap 2000] [--seed 0]
-uv run --extra deepswe sereno context-eval summarize CAMPAIGN ... --out DIR
+uv run sereno context-eval report CAMPAIGN [--bootstrap 2000] [--seed 0]
+uv run sereno context-eval summarize CAMPAIGN ... --out DIR
 ```
 
 `report` recomputes every session's `metrics.json` from the artifacts and writes `report.json`, `report.md` and
@@ -446,8 +446,8 @@ The mini-swe examples use GLM 5.3 Flash on OpenRouter, pinned to Z.AI without fa
 through the cost wrapper:
 
 ```sh
-uv run --extra deepswe scripts/cost.py run --label context-eval -- \
-  uv run --extra deepswe sereno context-eval run examples/context-eval/clean-chain.yaml --out runs/context-eval/clean
+uv run scripts/cost.py run --label context-eval -- \
+  uv run sereno context-eval run examples/context-eval/clean-chain.yaml --out runs/context-eval/clean
 ```
 
 `clean-chain.yaml` is the clean pilot, one chain of three bandit tasks in the clean arm; `mini-swe.yaml` adds a
@@ -461,7 +461,7 @@ memory canary with carry and reset arms.
 YAML and agent output cannot import code. `examples/context-eval/extensions.py` shows a metric and a strategy.
 
 ```sh
-uv run --extra deepswe sereno context-eval export CAMPAIGN --case CASE --arm attack_carry --session SESSION --out DIR
+uv run sereno context-eval export CAMPAIGN --case CASE --arm attack_carry --session SESSION --out DIR
 ```
 
 `export` writes `<task_id>/model.patch` and `submission.json` for one complete session. Its patch is the

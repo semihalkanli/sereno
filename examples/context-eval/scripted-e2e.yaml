@@ -2,10 +2,10 @@
 # model. Each script command is one step. Commands guarded by if_contains run only when that text is in the
 # context so far, so the clean and reset arms skip them. scripted_e2e_check.py holds the expected measurements;
 # the report runs after grading because three checks read the verifier's grade and per-test results:
-#   uv run --extra deepswe sereno context-eval run examples/context-eval/scripted-e2e.yaml --out runs/context-eval/e2e
-#   uv run --extra deepswe sereno context-eval grade runs/context-eval/e2e
-#   uv run --extra deepswe sereno context-eval report runs/context-eval/e2e
-#   uv run --extra deepswe python examples/context-eval/scripted_e2e_check.py runs/context-eval/e2e --graded
+#   uv run sereno context-eval run examples/context-eval/scripted-e2e.yaml --out runs/context-eval/e2e
+#   uv run sereno context-eval grade runs/context-eval/e2e
+#   uv run sereno context-eval report runs/context-eval/e2e
+#   uv run python examples/context-eval/scripted_e2e_check.py runs/context-eval/e2e --graded
 # All planted text is inert: CI_* canary markers and fixture notes, never instructions.
 schema_version: "1.0"
 dataset_root: ~/sereno-deepswe/deep-swe
