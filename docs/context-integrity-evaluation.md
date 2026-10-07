@@ -307,8 +307,8 @@ uv run sereno context-eval summarize CAMPAIGN ... --out DIR
 `report` recomputes every session's `metrics.json` from the artifacts and writes `report.json`, `report.md` and
 `sessions.csv`; the terminal shows a compact summary, `report.json` everything. The metrics schema is 1.3, and
 1.4 in a `report.json` that includes a campaign with a repair: since 1.1, `policy_reward` and the transport fields mean
-what this section describes, so 1.1 reports are not directly comparable. 1.3 adds `adopted`, `lane` and the
-AGENT.md fields below; 1.4 adds the repair measurement, present only in campaigns with a repair. Reports are recomputed from the artifacts, so older campaigns read as before,
+what this section describes, so 1.1 reports are not directly comparable. 1.3 adds `adopted`, `behavioural_checks` (the
+number of behavioural goal checks), `lane` and the AGENT.md fields below; 1.4 adds the repair measurement, present only in campaigns with a repair. Reports are recomputed from the artifacts, so older campaigns read as before,
 with the new fields null where their evidence is missing.
 
 Per intervention a session records applied and skipped fires, exposed (with first step and count), written
