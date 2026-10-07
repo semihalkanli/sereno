@@ -60,14 +60,17 @@ is literal and takes no `parameters`. `validate` checks the whole definition, th
 variant, intervention, session it fires in and task: `ok`, `missing` or `uncheckable`, with a reason; it exits 1
 when any item is `missing`. A memory path is checked against the seed or user memory the config gives it, a
 repository path against the file the task image ships, read from one container per task (`--network none`,
-removed afterwards). A match count other than one is `missing`, as at run time, and so is a file the image does
-not ship or, at the start of the first session, a memory path with no seed content. Command output, a memory
-path without seed content elsewhere (the agent may write it) and a path an earlier intervention of the variant
-writes are `uncheckable`; earlier writes are not reproduced. Memory carries every earlier session's writes; a
-repository starts from the image in every session, so for a file only earlier writes in the same session count
-(an earlier phase, or the same phase earlier in the declaration order). `run` performs the same check after its
-image preflight and stops on the first `missing` item, naming the intervention, session, task and path, before
-it creates the campaign directory or starts a session.
+removed afterwards). At `session_start`, where the runtime raises, a match count other than one is `missing`,
+and so is a file the image does not ship or, at the start of the first session, a memory path with no seed
+content; in a later phase the agent may have changed or created the text, so such a miss is `uncheckable`, as the
+runtime skips and logs it. Command output, a memory path without seed content elsewhere (the agent may write it),
+a path an earlier intervention of the variant writes, and every session after the first of an intervention that
+fires once are `uncheckable`; earlier writes are not reproduced. Memory carries every earlier session's writes; a
+repository starts from the image in every session, so for a file only earlier writes in the same session count:
+an earlier phase, or the same phase earlier in the declaration order, and, since action phases repeat every step,
+for an intervention in an action phase any other writer of the session outside `session_end`. `run` performs the
+same check after its image preflight and stops on the first `missing` item, naming the intervention, session,
+task and path, before it creates the campaign directory or starts a session.
 
 The matrix is target × variant × repeat. Each repeat has its own memory and containers; `seed` seeds the
 intervention engine's random strategies, not provider sampling.
