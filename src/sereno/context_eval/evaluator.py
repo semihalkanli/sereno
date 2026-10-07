@@ -181,10 +181,10 @@ def blank_grade(task_id: str) -> dict:
 
 
 def built_on(image: dict, base: dict) -> bool:
-    """The base ID label catches a re-pulled base whose layers match but whose config (ENV, WORKDIR) differs."""
-    layers, prefix = image["RootFS"].get("Layers", []), base["RootFS"].get("Layers", [])
+    """Whether the build labelled the image with this base's ID, which fixes both the base layers and its config
+    (ENV, WORKDIR), so a re-pulled base whose layers match but whose config differs still counts as stale."""
     labels = (image.get("Config") or {}).get("Labels") or {}
-    return labels.get(BASE_LABEL) == base["Id"] and layers[: len(prefix)] == prefix
+    return labels.get(BASE_LABEL) == base["Id"]
 
 
 def session_dirs(campaign: Path) -> list[Path]:
