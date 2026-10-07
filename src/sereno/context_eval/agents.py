@@ -112,7 +112,7 @@ class MiniSweAdapter:
             def execute(self, action, **kwargs):
                 output = runtime.execute(action["command"])
                 if output["submitted"]:
-                    final = "\n".join(runtime.last_output.lstrip().splitlines()[1:])
+                    final = "".join(runtime.last_output.lstrip().splitlines(keepends=True)[1:])
                     raise Submitted(
                         {"role": "exit", "content": final, "extra": {"exit_status": "Submitted", "submission": final}}
                     )

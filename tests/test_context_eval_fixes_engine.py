@@ -77,6 +77,19 @@ def test_session_start_replace_without_old_text_is_a_configuration_error(tmp_pat
         runtime.engine.apply(runtime, "session_start")
 
 
+@pytest.mark.parametrize(
+    ("command", "submitted"),
+    [
+        ("echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT '", True),
+        ("printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\t\\nrest\\n'", True),
+        ("echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUTX", False),
+        ("echo; echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT; false", False),
+    ],
+)
+def test_submission_matches_mini_swe_first_line_check(tmp_path, factory, command, submitted):
+    assert runtime_for(tmp_path, factory, []).execute(command)["submitted"] is submitted
+
+
 BODY = "".join(f"line {i}\n" for i in range(30))
 PLANT = f"# {MARKER}\n"
 CRLF = BODY.replace("\n", "\r\n")

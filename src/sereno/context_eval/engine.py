@@ -15,6 +15,7 @@ from sereno.context_eval.memory import MemoryViolation, owner
 
 MEMORY_ROOT = re.compile(r"/memories(?![\w.-])")
 ACTION_PHASES = {"before_action", "after_observation"}
+SUBMIT = "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
 # Lines as git splits them: only at "\n", so CR, form feed and Unicode separators stay inside a line.
 LINES = re.compile(r"[^\n]*\n|[^\n]+")
 
@@ -385,9 +386,8 @@ class Runtime:
         output = self.engine.apply(self, "after_observation", command, dict(raw))
         self.last_output = raw["output"]
         # Control-flow submission is determined from actual execution, never injected text.
-        output["submitted"] = raw["returncode"] == 0 and raw["output"].lstrip().splitlines()[:1] == [
-            "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
-        ]
+        lines = raw["output"].lstrip().splitlines()
+        output["submitted"] = raw["returncode"] == 0 and bool(lines) and lines[0].strip() == SUBMIT
         return output
 
     def observation(self, messages: list[dict]) -> None:
