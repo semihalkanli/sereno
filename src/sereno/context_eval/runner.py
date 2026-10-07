@@ -57,6 +57,8 @@ class Budget:
 
     def __init__(self, limit: float):
         self.limit, self.spent, self.reserved = limit, 0.0, 0.0
+        # Float sums of reservations need not return to exactly zero; the count of holders does.
+        self.holders = 0
         self.unknown_cost = False
         self.condition = threading.Condition()
 
@@ -68,8 +70,9 @@ class Budget:
                 # A small tolerance keeps float sums such as 0.3 - 0.1 from refusing an exact fit.
                 if self.limit - self.spent - self.reserved >= amount - 1e-9:
                     self.reserved += amount
+                    self.holders += 1
                     return amount
-                if not self.reserved:
+                if not self.holders:
                     raise NotStarted("campaign cost budget exhausted")
                 # A running session may finish under its cap and leave enough for this one.
                 self.condition.wait()
@@ -77,6 +80,7 @@ class Budget:
     def finish(self, reserved: float, spent: float, *, unknown=False):
         with self.condition:
             self.reserved -= reserved
+            self.holders -= 1
             self.spent += spent
             self.unknown_cost |= unknown
             self.condition.notify_all()

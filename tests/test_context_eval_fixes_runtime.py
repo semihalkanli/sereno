@@ -46,6 +46,26 @@ def test_budget_never_grants_a_partial_allowance():
     assert exact.acquire(0.2) == 0.2
 
 
+def test_budget_exhaustion_is_not_hidden_by_float_residue():
+    budget = Budget(1.0)
+    for amount in [budget.acquire(0.1) for _ in range(3)]:
+        budget.finish(amount, 0.0)
+    assert budget.reserved != 0.0
+    budget.spent = 0.95
+    outcome = []
+
+    def acquire():
+        try:
+            budget.acquire(0.1)
+        except NotStarted as error:
+            outcome.append(str(error))
+
+    waiting = threading.Thread(target=acquire, daemon=True)
+    waiting.start()
+    waiting.join(5)
+    assert outcome == ["campaign cost budget exhausted"]
+
+
 def test_session_cap_cannot_exceed_the_campaign_cap(fixture_world):
     raw = base.campaign_config(fixture_world[0]).model_dump()
     with pytest.raises(ValidationError, match="cannot exceed campaign_cost_limit_usd"):
