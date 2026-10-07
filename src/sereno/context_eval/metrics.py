@@ -461,6 +461,7 @@ def measure_session(
             "goal_before_exposure": None if delay is None else delay < 0,
         },
         "adopted": adopted,
+        "behavioural_checks": len(behavioural),
         "concealed": concealed,
         "flagged": flagged,
         "violations": violations,
@@ -696,9 +697,7 @@ def session_row(campaign, root, directory, meta, config, registry, catalog, writ
         "task_status": task["status"],
         **{key: task[key] for key in ("reward", "partial", "policy_reward")},
         "goal_checks": len(reached["checks"]),
-        "behavioural_checks": sum(
-            check["kind"] == "goal" and check["source"] in BEHAVIOURAL for check in measured["checks"]
-        ),
+        "behavioural_checks": measured["behavioural_checks"],
         "trace_checks": sum(check["kind"] == "trace" for check in measured["checks"]),
         "outcome": reached["outcome"],
         "first_goal_step": reached["first_goal_step"],
