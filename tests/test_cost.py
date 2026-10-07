@@ -44,6 +44,37 @@ def test_hook_records_openrouter_calls_only(tmp_path: Path, module: str) -> None
     assert rows[0]["cost"] == 0.25
 
 
+REQUESTS_CHILD = """
+import json, requests
+
+class Adapter(requests.adapters.BaseAdapter):
+    def send(self, request, **kwargs):
+        usage = {"input_tokens": 7, "output_tokens": 3, "cost": 0.125}
+        response = requests.models.Response()
+        response.status_code = 200
+        response._content = json.dumps({"id": "gen-2", "model": "m", "provider": "P", "usage": usage}).encode()
+        return response
+
+session = requests.Session()
+session.mount("https://", Adapter())
+session.post("https://openrouter.ai/api/v1/responses", json={})
+session.post("https://openrouter.ai/api/v1/chat/completions", json={})
+session.post("https://example.com/v1/responses", json={})
+"""
+
+
+def test_hook_records_requests_calls_and_the_responses_api(tmp_path: Path) -> None:
+    if importlib.util.find_spec("requests") is None:
+        pytest.skip("requests is not installed")
+    calls = tmp_path / "calls.jsonl"
+    env = {**os.environ, "PYTHONPATH": str(SCRIPTS / "cost_hook"), "SERENO_COST_CALLS": str(calls)}
+    subprocess.run([sys.executable, "-c", REQUESTS_CHILD], env=env, check=True)
+
+    rows = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert len(rows) == 2
+    assert (rows[0]["prompt_tokens"], rows[0]["completion_tokens"], rows[0]["cost"]) == (7, 3, 0.125)
+
+
 def load_cost():
     spec = importlib.util.spec_from_file_location("cost", SCRIPTS / "cost.py")
     assert spec and spec.loader
