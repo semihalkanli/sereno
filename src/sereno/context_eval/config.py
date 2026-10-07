@@ -64,7 +64,10 @@ def default_registry(plugins: list[str] = ()) -> Registry:
     for name in ("once", "repeat", "sequence"):
         registry.register_strategy(name, BoundedStrategy(name))
     for name in plugins:
-        module = importlib.import_module(name)
+        try:
+            module = importlib.import_module(name)
+        except ImportError as error:
+            raise ValueError(f"cannot import plugin module {name}: {error}") from error
         module.register(registry)
         source = getattr(module, "__file__", None)
         registry.plugins.append(

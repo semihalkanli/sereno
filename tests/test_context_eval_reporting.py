@@ -92,3 +92,8 @@ def test_cli_prints_compact_summaries(tmp_path, fixture_world, monkeypatch, caps
     printed = json.loads(capsys.readouterr().out)
     assert printed["files"] == [str(out.resolve() / name) for name in FILES]
     assert all((out / name).exists() for name in FILES)
+
+
+def test_cli_reports_a_plugin_that_cannot_be_imported(tmp_path, capsys):
+    assert cli.main(["context-eval", "report", str(tmp_path), "--plugin", "sereno_missing_plugin"]) == 2
+    assert capsys.readouterr().out.startswith("context-eval: cannot import plugin module sereno_missing_plugin:")

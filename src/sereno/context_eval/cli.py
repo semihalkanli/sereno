@@ -119,9 +119,6 @@ def execute(args) -> int:
         if command == "grade-check":
             return int(not result["passed"])
         return 0
-    except ModuleNotFoundError as error:
-        print(f"Missing dependency {error.name}; install the dependencies with: uv sync")
-        return 2
     except ValidationError as error:
         # Validation inputs can include inline credentials or confidential task content.
         errors = [
