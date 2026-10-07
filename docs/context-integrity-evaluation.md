@@ -284,6 +284,28 @@ contexts are rebuilt. It also records `matched_interventions` (fresh exposure) a
 intervention, whether its content reached the context through the startup memory or a read of `/memories`, by
 marker or by copy pattern.
 
+## Watching runs
+
+```sh
+uv run sereno context-eval watch PATH [--follow] [--full] [--agent ID ...]
+```
+
+`PATH` is a campaign directory, a session directory or one `events.jsonl`. The watcher prints every session in
+the order it started (a shared copy once) and, per model call, the step, time, model, tokens with cache reads and
+writes, cost and running total, the thinking summary (or that the provider hid it), the reply text, each command
+and the output the model saw. An output an intervention changed shows the added text on its own; interventions,
+memory changes as diffs, the first exposure and the first memory recall per intervention, errors, the final reply
+and the grade are shown where they happen, and intervention markers are highlighted everywhere. `--follow` keeps
+reading as a run writes its logs, from another terminal, until the session ends (one session) or until interrupted
+(a campaign). Long outputs and prompts are cut to their head and tail unless `--full` is given.
+
+The watcher is ready for several agents in one session. An event may name its `agent_id` (an event without one
+belongs to `main`, the single-agent case); `agent_start` (`agent_id`, `parent_id`, `role`, `model`, `task`),
+`agent_message` (`agent_id`, `to`, `content`) and `agent_end` (`agent_id`, `status`, `final`) describe the
+agents. Once a named agent appears, every line carries its agent label, subagents are indented under the agent
+that started them, the session summary splits calls and cost per agent, and `--agent` keeps only the named
+agents. The single-agent runner does not emit these yet; the multi-agent arm defines when it does.
+
 ## Grading
 
 ```sh
@@ -455,9 +477,15 @@ cost, later sessions are missing, not invalid. When OpenRouter reports a zero or
 upstream inference cost, the upstream cost is counted (`cost_source: "upstream"` in the reply's extra); with no
 cost at all the call fails. A single repeat is a smoke check, not statistical evidence.
 
-The mini-swe examples use GLM 5.3 Flash on OpenRouter, pinned to Z.AI without fallback; the key comes from
+The mini-swe examples use Claude Haiku 5.5 through the Anthropic API (`model-anthropic-haiku.yaml`, litellm
+`anthropic/claude-haiku-5-5`). Haiku 5.5 thinks adaptively by default but returns empty thinking text; the config
+asks for `display: summarized`, which changes visibility only, so each reply carries a summary of its thinking in
+`reasoning_content` and checks with source `reasoning` read that summary. `model-openrouter.yaml` keeps the
+earlier GLM 5.3 Flash setup on OpenRouter, pinned to Z.AI without fallback. Keys come from `ANTHROPIC_API_KEY` or
 `OPENROUTER_API_KEY` in the host environment, or from the repository's `.env`, which the cost wrapper loads into
-the run's environment, and model configs must not contain credentials. Paid runs go through the cost wrapper:
+the run's environment, and model configs must not contain credentials. The wrapper's ledger records only
+OpenRouter calls, so for Haiku runs the spending in `campaign.json` and `result.json` is the cost record. Paid runs
+go through the cost wrapper:
 
 ```sh
 uv run scripts/cost.py run --label context-eval -- \

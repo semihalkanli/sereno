@@ -11,7 +11,7 @@ The experiments run on DeepSWE tasks: each session is one whole task, and a
 
 ```sh
 uv sync
-cp .env.example .env   # then fill in OPENROUTER_API_KEY
+cp .env.example .env   # then fill in ANTHROPIC_API_KEY (OPENROUTER_API_KEY for the GLM config)
 ```
 
 The DeepSWE checkout lives outside the repository at `~/sereno-deepswe/deep-swe`,
@@ -25,7 +25,7 @@ repository files, command output and memory files, compares clean, carry, reset
 and ablation arms with clean controls, can repair the poisoned memory through
 the user's `AGENT.md`, grades patches with each task's own verifier, and reports
 exposure, memory transport, attack success, adoption, task success and recovery
-with interval estimates. See
+with interval estimates. `sereno context-eval watch` follows a run live, step by step. See
 [Context Integrity Evaluation](docs/context-integrity-evaluation.md) for setup,
 examples and offline verification.
 

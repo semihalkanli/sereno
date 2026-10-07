@@ -1,5 +1,5 @@
-"""CLI for catalogs, validated campaign matrices, pre-run dry checks, offline reports, patch export and DeepSWE
-grading."""
+"""CLI for catalogs, validated campaign matrices, pre-run dry checks, offline reports, patch export, DeepSWE grading
+and watching runs."""
 
 import argparse
 import json
@@ -53,6 +53,13 @@ def add_parser(parent):
     check.add_argument("task_ids", nargs="+")
     check.add_argument("--out", type=Path, help="new output directory")
     check.add_argument("--workers", type=int, default=1)
+    watch = commands.add_parser("watch", help="show a campaign or session step by step, live with --follow")
+    watch.add_argument("path", type=Path, help="campaign directory, session directory or events.jsonl")
+    watch.add_argument("-f", "--follow", action="store_true", help="keep showing new events until interrupted")
+    watch.add_argument("--full", action="store_true", help="show long outputs and prompts in full")
+    watch.add_argument(
+        "--agent", action="append", default=[], help="show only this agent's events (repeatable; default: all agents)"
+    )
     schema = commands.add_parser("schema", help="print the experiment JSON Schema")
     schema.add_argument("--out", type=Path)
     return parser
@@ -64,6 +71,10 @@ def execute(args) -> int:
 
     try:
         command = args.context_command
+        if command == "watch":
+            from sereno.context_eval.watch import watch
+
+            return watch(args.path, follow=args.follow, full=args.full, agents=args.agent)
         if command == "schema":
             result = ExperimentConfig.model_json_schema()
             if args.out:
