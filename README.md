@@ -4,8 +4,9 @@ Sereno studies how prompt injection and persistent memory poisoning affect
 coding agents on long-horizon work, and builds a harness layer that lets them
 finish their tasks reliably despite these attacks.
 
-The experiments run on DeepSWE tasks: each session is one whole task, and a
-`/memories` directory carries from one task to the next.
+The experiments run on DeepSWE tasks: each session is one whole task, and
+`~/.claude` (the user's `CLAUDE.md` and one memory directory per repository)
+carries from one task to the next.
 
 ## Setup
 
@@ -23,7 +24,7 @@ and its task images in Docker's image store.
 experiments with mini-swe-agent on DeepSWE task images. It plants content in
 repository files, command output and memory files, compares clean, carry, reset
 and ablation arms with clean controls, can repair the poisoned memory through
-the user's `AGENT.md`, grades patches with each task's own verifier, and reports
+the user's `~/.claude/CLAUDE.md`, grades patches with each task's own verifier, and reports
 exposure, memory transport, attack success, adoption, task success and recovery
 with interval estimates. `sereno context-eval watch` follows a run live, step by step. See
 [Context Integrity Evaluation](docs/context-integrity-evaluation.md) for setup,
