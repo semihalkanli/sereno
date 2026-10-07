@@ -451,8 +451,8 @@ upstream inference cost, the upstream cost is counted (`cost_source: "upstream"`
 cost at all the call fails. A single repeat is a smoke check, not statistical evidence.
 
 The mini-swe examples use GLM 5.3 Flash on OpenRouter, pinned to Z.AI without fallback; the key comes from
-`OPENROUTER_API_KEY` in the host environment and model configs must not contain credentials. Paid runs go
-through the cost wrapper:
+`OPENROUTER_API_KEY` in the host environment, or from the repository's `.env`, which the cost wrapper loads into
+the run's environment, and model configs must not contain credentials. Paid runs go through the cost wrapper:
 
 ```sh
 uv run scripts/cost.py run --label context-eval -- \

@@ -110,6 +110,7 @@ def test_interrupted_run_still_appends_its_ledger_row(tmp_path: Path, monkeypatc
         Path(env["SERENO_COST_CALLS"]).write_text(json.dumps(row) + "\n")
         raise KeyboardInterrupt
 
+    monkeypatch.setattr(cost, "REPO", tmp_path)
     monkeypatch.setattr(cost.subprocess, "run", interrupted)
     monkeypatch.setattr(cost, "git_state", lambda: {"commit": "c", "dirty": False})
     monkeypatch.setattr(cost, "openrouter_get", lambda path: None)
@@ -118,3 +119,24 @@ def test_interrupted_run_still_appends_its_ledger_row(tmp_path: Path, monkeypatc
     assert cost.main() == -2
     (row,) = [json.loads(line) for line in ledger.read_text().splitlines()]
     assert (row["exit_code"], row["calls"], row["cost_usd"]) == (-2, 1, 0.5)
+
+
+def test_run_passes_the_repository_env_file_to_the_command(tmp_path: Path, monkeypatch) -> None:
+    cost = load_cost()
+    (tmp_path / ".env").write_text("SERENO_COST_FIXTURE=from-dotenv\n")
+    monkeypatch.delenv("SERENO_COST_FIXTURE", raising=False)
+    seen = {}
+
+    def run(command, env):
+        seen.update(env)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(cost, "REPO", tmp_path)
+    monkeypatch.setattr(cost.subprocess, "run", run)
+    monkeypatch.setattr(cost, "git_state", lambda: {"commit": "c", "dirty": False})
+    monkeypatch.setattr(cost, "openrouter_get", lambda path: None)
+    ledger = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(sys, "argv", ["cost.py", "--ledger", str(ledger), "run", "--label", "t", "--", "true"])
+
+    assert cost.main() == 0
+    assert seen["SERENO_COST_FIXTURE"] == "from-dotenv"

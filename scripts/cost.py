@@ -3,7 +3,8 @@
     uv run scripts/cost.py run --label <label> -- <command> [args...]
     uv run scripts/cost.py report [--label <label>]
 
-`run` executes the command with the hook in `scripts/cost_hook` loaded, which
+`run` executes the command with the hook in `scripts/cost_hook` loaded and the
+repository's `.env` in its environment (a variable already set wins). The hook
 logs the usage OpenRouter returns with every completion. When the command
 exits, the calls are summed and one row is appended to the ledger
 (`runs/cost/ledger.jsonl` by default). The wrapped command may use any Python
@@ -48,7 +49,6 @@ def git_state() -> dict:
 
 
 def openrouter_get(path: str) -> dict | None:
-    load_dotenv(REPO / ".env")
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
         return None
@@ -162,6 +162,7 @@ def main() -> int:
     report = sub.add_parser("report", help="print the ledger and the account balance")
     report.add_argument("--label")
     args = parser.parse_args()
+    load_dotenv(REPO / ".env")
     args.ledger.parent.mkdir(parents=True, exist_ok=True)
     return cmd_run(args) if args.action == "run" else cmd_report(args)
 
