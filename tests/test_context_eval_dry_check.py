@@ -97,6 +97,62 @@ def test_memory_written_in_an_earlier_session_is_uncheckable(fixture_world):
     assert statuses(items)["file"] == ("ok", None)
 
 
+def test_a_miss_after_session_start_is_uncheckable(fixture_world):
+    dataset, factory, _, _ = fixture_world
+    events = [
+        replace("created", "file", "/app/solution_new.py", "x", phase="before_action"),
+        replace("changed", "file", "/app/README.md", "CI_ABSENT", phase="session_end"),
+        replace("seeded", "memory", NOTE, "CI_ABSENT", phase="after_observation"),
+        replace("shipped", "file", "/app/README.md", "documentation", phase="before_action"),
+    ]
+    items = dry_check(config_with(dataset, events, memory={"seed": {NOTE: "seed line\n"}}), IDENTITIES, factory)
+    found = statuses(items)
+    assert found["created"] == ("uncheckable", "the agent may change or create the text before before_action")
+    assert found["changed"] == ("uncheckable", "the agent may change or create the text before session_end")
+    assert found["seeded"] == ("uncheckable", "the agent may change or create the text before after_observation")
+    assert found["shipped"] == ("ok", None)
+
+
+def test_action_phases_repeat_so_any_writer_of_the_session_may_come_first(fixture_world):
+    dataset, factory, _, _ = fixture_world
+    writer = {
+        "id": "writer",
+        "method": "file",
+        "sessions": ["exposure"],
+        "path": "/app/README.md",
+        "phase": "after_observation",
+        "text": "CI_DRY",
+    }
+    later = replace("later", "file", "/app/README.md", "CI_DRY", phase="before_action", min_step=2)
+    closing = dict(writer, id="closing", phase="session_end")
+    start = replace("start", "file", "/app/README.md", "documentation")
+    variants = {"chain": [later, writer], "closing": [later, closing], "start": [start, writer]}
+    found = {
+        item["variant"]: (item["status"], item["reason"])
+        for item in dry_check(config_with(dataset, variants), IDENTITIES, factory)
+    }
+    assert found["chain"] == ("uncheckable", "writer writes /app/README.md earlier")
+    assert found["closing"][0] == "uncheckable" and "writer" not in found["closing"][1]
+    assert found["start"] == ("ok", None)
+
+
+def test_a_once_event_is_checked_only_in_its_first_session(fixture_world):
+    dataset = fixture_world[0]
+    config = base.campaign_config(dataset).model_dump(mode="json")
+    config["sessions"].insert(0, {**config["sessions"][0], "id": "early"})
+    once = replace("once", "file", "/app/README.md", "CI_ABSENT", sessions=["early", "exposure"])
+    repeat = dict(once, id="repeat", strategy="repeat", max_fires=2)
+    config["variants"] = {"once": [once], "repeat": [repeat]}
+    items = dry_check(ExperimentConfig.model_validate(config), IDENTITIES, fixture_world[1])
+    found = {(item["intervention"], item["session"]): item["status"] for item in items}
+    assert found == {
+        ("once", "early"): "missing",
+        ("once", "exposure"): "uncheckable",
+        ("repeat", "early"): "missing",
+        ("repeat", "exposure"): "missing",
+    }
+
+
 def test_a_definite_miss_stops_the_campaign_before_any_session(tmp_path, fixture_world):
     dataset, factory, created, _ = fixture_world
     config = config_with(dataset, [replace("absent", "file", "/app/README.md", "CI_ABSENT")])
