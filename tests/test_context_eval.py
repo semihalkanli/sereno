@@ -561,6 +561,15 @@ def test_moved_harness_content_is_an_ambiguous_patch(fixture_world):
         separate_patch(env, [{"event": event.model_dump(), "before": before, "after": before + event.text}], base)
 
 
+@pytest.mark.parametrize("field", ["cost_limit_usd", "campaign_cost_limit_usd"])
+def test_cost_limits_must_be_finite(fixture_world, field):
+    dataset, _, _, _ = fixture_world
+    config = campaign_config(dataset).model_dump()
+    with pytest.raises(ValidationError) as error:
+        ExperimentConfig.model_validate(config | {field: float("inf")})
+    assert [(e["loc"], e["type"]) for e in error.value.errors()] == [((field,), "finite_number")]
+
+
 def test_duplicate_markers_reject_ambiguous_attribution(fixture_world):
     dataset, _, _, _ = fixture_world
     config = campaign_config(dataset).model_dump()

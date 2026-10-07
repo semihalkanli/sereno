@@ -251,8 +251,8 @@ class ExperimentConfig(Contract):
     repeats: int = Field(1, ge=1, le=1000)
     workers: int = Field(1, ge=1, le=64)
     seed: int = Field(0, ge=0)
-    cost_limit_usd: float = Field(2.0, gt=0)
-    campaign_cost_limit_usd: float = Field(20.0, gt=0)
+    cost_limit_usd: float = Field(2.0, gt=0, allow_inf_nan=False)
+    campaign_cost_limit_usd: float = Field(20.0, gt=0, allow_inf_nan=False)
     wall_time_limit_seconds: int | None = Field(None, ge=1)
     repair: Repair | None = None
     # The campaign's frozen mini-swe configuration, set by the runner; never part of the experiment file.
