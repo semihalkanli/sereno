@@ -198,7 +198,7 @@ class InterventionEngine:
             except (ValueError, RuntimeError) as error:
                 # Only configured content without old_text is a configuration error; text the agent changed (any
                 # later phase, or memory carried from an earlier session) must not invalidate a paid session.
-                carried = event.method == "memory" and runtime.memory.get(event.path) != (
+                carried = event.method == "memory" and runtime.memory_start.get(event.path) != (
                     runtime.memory_config.initial().get(event.path)
                 )
                 if phase == "session_start" and not carried:
@@ -334,6 +334,7 @@ class Runtime:
     def __init__(self, env, engine, log, session, memory_config, initial_memory, checks):
         self.env, self.engine, self.log, self.session = env, engine, log, session
         self.memory_config, self.memory = memory_config, dict(initial_memory)
+        self.memory_start = dict(initial_memory)
         self.checks = checks
         self.action_id = None
         self.actions = 0

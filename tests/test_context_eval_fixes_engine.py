@@ -114,6 +114,27 @@ def test_session_start_replace_in_carried_memory_skips_but_a_seed_miss_raises(tm
         runtime.engine.apply(runtime, "session_start")
 
 
+def test_session_start_replaces_that_conflict_in_seed_memory_raise(tmp_path, factory):
+    first, second = (
+        Intervention(
+            id=name,
+            method="memory",
+            sessions=["e1"],
+            path="/memories/MEMORY.md",
+            operation="replace",
+            old_text="- [Old](old.md) - hook",
+            text=f"- [{name}]({name}.md) - hook",
+        )
+        for name in ("a", "b")
+    )
+    seed = {"/memories/MEMORY.md": "- [Old](old.md) - hook\n"}
+    runtime = exposure_runtime(tmp_path, factory, first, "e1", seed)
+    runtime.engine.events.append(second)
+    runtime.memory_config = MemoryConfig(seed=seed)
+    with pytest.raises(ValueError, match="exactly once"):
+        runtime.engine.apply(runtime, "session_start")
+
+
 @pytest.mark.parametrize(
     ("command", "submitted"),
     [
@@ -215,7 +236,7 @@ def exposure_runtime(tmp_path, factory, event, session_id, memory):
     for path, text in memory.items():
         env.write(path, text)
     runtime = runtime_for(tmp_path, factory, [event], session_id=session_id, env=env)
-    runtime.memory = dict(memory)
+    runtime.memory = runtime.memory_start = dict(memory)
     runtime.initial_memory_context = FileMemory().context(memory)
     return runtime
 
