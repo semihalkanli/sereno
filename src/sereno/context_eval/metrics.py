@@ -776,7 +776,9 @@ def collect(root: Path, registry, *, write: bool = True) -> list[dict]:
             # A reset arm starts its first probe from the initial memory, as the runner does; an ablated probe keeps
             # the rest of the carried memory and its lineage. Both share the exposure sessions of their source arm
             # together with the memory those ran on.
-            if arm in RESET_ARMS and row["exposure_phase"] is False and chain[number - 1]["exposure_phase"]:
+            if not memory or (
+                arm in RESET_ARMS and row["exposure_phase"] is False and chain[number - 1]["exposure_phase"]
+            ):
                 start = number
             source = SHARED_EXPOSURE.get(arm) if row["exposure_phase"] else None
             row["inherits_memory"], row["chain_written"] = lineage.get((case, source, row["position"])) or (
