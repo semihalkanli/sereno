@@ -563,4 +563,4 @@ def test_a_repair_past_the_memory_limits_is_a_configuration_failure(tmp_path, fi
     root, _ = base.run_fixture(tmp_path, fixture_world, config)
     recovery = read(base.session_dir(root, "clean", "003-recovery") / "result.json")
     assert (recovery["status"], recovery["limit"], recovery["steps"]) == ("invalid", None, 0)
-    assert recovery["error"].startswith("restored memory breaks the memory rules") and "memory_error" not in recovery
+    assert recovery["error"] == "restored memory exceeds the memory limits" and "memory_error" not in recovery

@@ -200,6 +200,9 @@ class MemoryConfig(Contract):
 
         return {**self.seed, **({USER: self.user} if self.user is not None else {})}
 
+    def within_limits(self, files: dict[str, str]) -> bool:
+        return len(files) <= self.max_files and sum(len(t.encode()) for t in files.values()) <= self.max_bytes
+
     @model_validator(mode="after")
     def coherent(self):
         from sereno.context_eval.memory import USER
@@ -211,7 +214,7 @@ class MemoryConfig(Contract):
         files = self.initial()
         if not self.enabled and (files or self.instructions_file):
             raise ValueError("disabled memory cannot have seed, user or instructions files")
-        if len(files) > self.max_files or sum(len(t.encode()) for t in files.values()) > self.max_bytes:
+        if not self.within_limits(files):
             raise ValueError("seed exceeds memory limits")
         return self
 
