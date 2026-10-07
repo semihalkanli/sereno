@@ -390,17 +390,21 @@ PHASES = ("session_start", "before_action", "after_observation", "session_end")
 
 
 def written_before(events, index: int, session_id: str, order: dict) -> str | None:
-    """An intervention that writes the path of `events[index]` before it fires in `session_id`, this one in an
-    earlier session included. A session's repository starts from the image, so for a file only the same session
-    counts; memory carries every earlier session's writes."""
+    """An intervention that writes, or may write, the path of `events[index]` before it fires in `session_id`, this
+    one in an earlier session included. A session's repository starts from the image, so for a file only the same
+    session counts; memory carries every earlier session's writes. Action phases repeat every step, so for an event
+    in one any other writer of the session outside session_end may come first."""
     event = events[index]
+    repeats = event.phase in {"before_action", "after_observation"}
     position = (order[session_id], PHASES.index(event.phase), index)
     for number, other in enumerate(events):
         if other.method != event.method or other.path != event.path:
             continue
         for session in other.sessions:
             if event.method == "memory" or session == session_id:
-                if (order[session], PHASES.index(other.phase), number) < position:
+                if (order[session], PHASES.index(other.phase), number) < position or (
+                    repeats and session == session_id and number != index and other.phase != "session_end"
+                ):
                     return other.id
     return None
 
@@ -409,8 +413,10 @@ def dry_check(config, identities: dict | None = None, env_factory=DockerEnvironm
     """Every replace intervention's old_text, per session it fires in and task, against what it will replace,
     without a model: the seed or user memory the config gives a memory path, or the file a task image ships at a
     repository path, read from one container per task. Command output, a memory path without seed content outside
-    the first session's start, and a path an earlier intervention writes are uncheckable; earlier writes are not
-    reproduced. A match count other than one is missing, as the runtime's replace requires."""
+    the first session's start, a path an earlier intervention writes, and a session after the first of an event
+    that fires once are uncheckable; earlier writes are not reproduced. A match count other than one is missing at
+    session_start, where the runtime raises; in a later phase the agent may have changed the text, so it is
+    uncheckable, as the runtime skips and logs it."""
     order = {session.id: number for number, session in enumerate(config.sessions)}
     seed = config.memory.initial()
     items = {}
@@ -418,7 +424,7 @@ def dry_check(config, identities: dict | None = None, env_factory=DockerEnvironm
         for index, event in enumerate(events):
             if event.operation != "replace" or event.old_text is None:
                 continue
-            for session_id in sorted(event.sessions, key=order.get):
+            for rank, session_id in enumerate(sorted(event.sessions, key=order.get)):
                 session = config.sessions[order[session_id]]
                 for target in config.targets:
                     task = session.task_id or target.task_id
@@ -435,13 +441,15 @@ def dry_check(config, identities: dict | None = None, env_factory=DockerEnvironm
                     first = order[session_id] == 0 and event.phase == "session_start"
                     if event.method == "output":
                         item["reason"] = "command output is unknown before the run"
+                    elif rank and event.max_fires == 1:
+                        item["reason"] = "it fires once, in the first session where it applies"
                     elif writer := written_before(events, index, session_id, order):
                         item["reason"] = f"{writer} writes {event.path} earlier"
                     elif event.method == "memory" and event.path not in seed and not first:
                         item["reason"] = "no seed or user memory at this path; the agent may write it"
                     else:
                         item["status"] = None
-                    items.setdefault((variant, event.id, session_id, task), (item, event.old_text))
+                    items.setdefault((variant, event.id, session_id, task), (item, event))
     needed = defaultdict(set)
     for item, _ in items.values():
         if item["status"] is None and item["method"] == "file":
@@ -455,12 +463,15 @@ def dry_check(config, identities: dict | None = None, env_factory=DockerEnvironm
             shipped |= {(task, path): env.read(path) for path in sorted(paths)}
         finally:
             env.close()
-    for item, old_text in items.values():
+    for item, event in items.values():
         if item["status"] is None:
             text = shipped[(item["task"], item["path"])] if item["method"] == "file" else seed.get(item["path"])
-            count = (text or "").count(old_text)
+            count = (text or "").count(event.old_text)
             item["status"] = "ok" if count == 1 else "missing"
-            if text is None:
+            if count != 1 and event.phase != "session_start":
+                item["status"] = "uncheckable"
+                item["reason"] = f"the agent may change or create the text before {event.phase}"
+            elif text is None:
                 item["reason"] = (
                     "the image ships no file at this path"
                     if item["method"] == "file"
