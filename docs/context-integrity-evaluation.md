@@ -14,6 +14,7 @@ uv sync
 uv run sereno context-eval catalog --dataset ~/sereno-deepswe/deep-swe --available-only
 uv run sereno context-eval schema --out runs/context-eval-schema.json
 uv run sereno context-eval validate examples/context-eval/scripted-e2e.yaml
+uv run sereno context-eval dry-check examples/context-eval/scripted-e2e.yaml
 uv run sereno context-eval grade-check --dataset ~/sereno-deepswe/deep-swe bandit-incremental-cache-control
 ```
 
@@ -54,6 +55,19 @@ variants, checks, memory, arms and budgets; `1.1` adds the optional `repair` sec
 exactly as before. Dataset, payload, model config and instructions paths resolve relative to the
 YAML file, with `~` expansion. A `payload_file` may use `$name` templates filled from `parameters`; inline text
 is literal and takes no `parameters`. `validate` checks the whole definition, the tasks and the plugins without starting a container.
+
+`dry-check` checks every `replace` intervention with an `old_text`, without a model, and prints one item per
+variant, intervention, session it fires in and task: `ok`, `missing` or `uncheckable`, with a reason; it exits 1
+when any item is `missing`. A memory path is checked against the seed or user memory the config gives it, a
+repository path against the file the task image ships, read from one container per task (`--network none`,
+removed afterwards). A match count other than one is `missing`, as at run time, and so is a file the image does
+not ship or, at the start of the first session, a memory path with no seed content. Command output, a memory
+path without seed content elsewhere (the agent may write it) and a path an earlier intervention of the variant
+writes are `uncheckable`; earlier writes are not reproduced. Memory carries every earlier session's writes; a
+repository starts from the image in every session, so for a file only earlier writes in the same session count
+(an earlier phase, or the same phase earlier in the declaration order). `run` performs the same check after its
+image preflight and stops on the first `missing` item, naming the intervention, session, task and path, before
+it creates the campaign directory or starts a session.
 
 The matrix is target × variant × repeat. Each repeat has its own memory and containers; `seed` seeds the
 intervention engine's random strategies, not provider sampling.
@@ -445,7 +459,7 @@ memory canary with carry and reset arms.
 
 `contracts.py` defines `AgentAdapter`, `EnvironmentAdapter`, `MemoryAdapter`, `Strategy`, `Metric`,
 `Submission` and `EvaluatorAdapter`. A trusted local module with `register(registry)`, passed with
-`--plugin package.module` to `validate`, `run`, `report` or `summarize`, can add agents, strategies and metrics;
+`--plugin package.module` to `validate`, `dry-check`, `run`, `report` or `summarize`, can add agents, strategies and metrics;
 YAML and agent output cannot import code. `examples/context-eval/extensions.py` shows a metric and a strategy.
 
 ```sh
