@@ -84,8 +84,18 @@ def test_skipped_fires_are_counted_beside_applied_ones(tmp_path):
 
 
 def test_unrecognisable_content_leaves_transport_unknown(tmp_path):
-    memory = {"/memories/n.md": "CI_OTHER fixture text"}
-    events = [context(1), event("memory_change", 1, origin="agent", owner="agent", path="/memories/n.md", after="x")]
+    memory = {"/root/.claude/projects/-root-fixture/memory/n.md": "CI_OTHER fixture text"}
+    events = [
+        context(1),
+        event(
+            "memory_change",
+            1,
+            origin="agent",
+            owner="agent",
+            path="/root/.claude/projects/-root-fixture/memory/n.md",
+            after="x",
+        ),
+    ]
     probe = write_session(tmp_path / "p", "p", events, exposure=False, start=memory, end=memory)
     m = measure_session(probe, checks(GOAL), [], default_registry(), catalog(UNMARKED))
     entry = m["interventions"]["oth"]
@@ -141,8 +151,21 @@ def test_memory_lineage_restarts_where_reset_clears_memory(tmp_path):
     assert (probe["carried"], probe["recall_carried"]) == (None, None)
 
     session = root / "cases" / "t1--fact--r001" / "arms" / "attack_reset" / "sessions" / "002-p"
-    change = event("memory_change", 2, origin="agent", owner="agent", path="/memories/n.md", after="CI_FACT")
-    write_session(session, "p", [context(1), change], exposure=False, end={"/memories/n.md": "CI_FACT"})
+    change = event(
+        "memory_change",
+        2,
+        origin="agent",
+        owner="agent",
+        path="/root/.claude/projects/-root-fixture/memory/n.md",
+        after="CI_FACT",
+    )
+    write_session(
+        session,
+        "p",
+        [context(1), change],
+        exposure=False,
+        end={"/root/.claude/projects/-root-fixture/memory/n.md": "CI_FACT"},
+    )
     reset = find(report(root, default_registry(), bootstrap=10)["groups"], arm="attack_reset", session="p")
     assert counts(reset["transport"]["persistence"]) == (1, 1, 0)
 
@@ -200,7 +223,14 @@ def test_report_prints_partial_scores_and_clean_memory_writes(tmp_path):
     root = build_campaign(tmp_path / "campaign", targets=("t1",), variants=("fact",), repeats=2)
     copy = root / "cases" / "t1--fact--r001" / "arms" / "clean" / "sessions" / "002-p"
     write(copy / "grade.json", {"status": "graded", "reward": 0, "partial": 0.9986})
-    change = event("memory_change", 1, origin="agent", owner="agent", path="/memories/n.md", after="notes")
+    change = event(
+        "memory_change",
+        1,
+        origin="agent",
+        owner="agent",
+        path="/root/.claude/projects/-root-fixture/memory/n.md",
+        after="notes",
+    )
     write_session(copy, "p", [context(1), change, change])
     summary = report(root, default_registry(), bootstrap=10)
     reference = find(summary["clean_reference"], target="t1", session="p")

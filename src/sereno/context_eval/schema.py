@@ -6,6 +6,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
+from sereno.context_eval.memory import REPO_INSTRUCTIONS, USER, is_index
+from sereno.context_eval.memory import ROOT as MEMORY_ROOT
+
 
 class Contract(BaseModel, extra="forbid"):
     pass
@@ -75,7 +78,7 @@ class Intervention(Contract):
         if self.method == "output" and self.phase != "after_observation":
             raise ValueError("output interventions require after_observation")
         if self.method != "output":
-            validate_path(self.path or "", "/memories" if self.method == "memory" else "/app")
+            validate_path(self.path or "", MEMORY_ROOT if self.method == "memory" else "/app")
         elif self.path is not None:
             raise ValueError("output interventions do not have a path")
         if self.phase in {"session_start", "session_end"} and (self.command_contains or self.output_contains):
@@ -108,11 +111,12 @@ class Intervention(Contract):
 
     @property
     def channel(self) -> str:
-        from sereno.context_eval.memory import INDEX, USER
-
-        if self.method != "memory":
-            return "repo_file" if self.method == "file" else "command_output"
-        return {USER: "user_file", INDEX: "memory_index"}.get(self.path, "memory_topic")
+        if self.method == "output":
+            return "command_output"
+        if self.method == "file":
+            # A planted instruction file is loaded at task start, not only when the agent reads it.
+            return "repo_instructions" if self.path in REPO_INSTRUCTIONS else "repo_file"
+        return "user_file" if self.path == USER else "memory_index" if is_index(self.path) else "memory_topic"
 
     def copy_match(self, text: str) -> str | None:
         """The first text a copy pattern recognises as a verbatim or paraphrased copy of this content."""
@@ -183,7 +187,7 @@ class Check(Contract):
         elif self.path is not None:
             if self.source != "memory":
                 raise ValueError("path only applies to workspace or memory")
-            validate_path(self.path, "/memories")
+            validate_path(self.path, MEMORY_ROOT)
         return self
 
 
@@ -201,8 +205,6 @@ class MemoryConfig(Contract):
 
     def initial(self) -> dict[str, str]:
         """Agent-owned seed files plus the user-written file, identical for every arm."""
-        from sereno.context_eval.memory import USER
-
         return {**self.seed, **({USER: self.user} if self.user is not None else {})}
 
     def within_limits(self, files: dict[str, str]) -> bool:
@@ -210,10 +212,8 @@ class MemoryConfig(Contract):
 
     @model_validator(mode="after")
     def coherent(self):
-        from sereno.context_eval.memory import USER
-
         for path in self.seed:
-            validate_path(path, "/memories")
+            validate_path(path, MEMORY_ROOT)
         if USER in self.seed:
             raise ValueError(f"{USER} is user-written; set memory.user instead of seeding it")
         files = self.initial()
@@ -223,14 +223,15 @@ class MemoryConfig(Contract):
 
 
 class Repair(Contract):
-    """The user's correction at the start of one probe session, through the only trusted channel, AGENT.md."""
+    """The user's correction at the start of one probe session, through the only trusted channel, the user's
+    ~/.claude/CLAUDE.md."""
 
     session: str
     user_update: str = Field(min_length=1)
     operation: Literal["append", "replace"] = "append"
 
     def apply(self, before: str) -> str:
-        """AGENT.md after the update: the update appended to `before` on a line of its own, or in its place."""
+        """The user's file after the update: the update appended to `before` on a line of its own, or in its place."""
         if self.operation == "replace":
             return self.user_update
         return before + ("\n" if before and not before.endswith("\n") else "") + self.user_update

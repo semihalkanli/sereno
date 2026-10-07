@@ -14,10 +14,13 @@ import yaml
 from sereno.context_eval import agents
 from sereno.context_eval.config import default_registry, load_config, validate
 from sereno.context_eval.dataset import load_task
-from sereno.context_eval.memory import INDEX, INSTRUCTIONS, USER, reminder
+from sereno.context_eval.memory import INSTRUCTIONS, USER, index_path, memory_dir, reminder
 from sereno.context_eval.metrics import events_at
 from sereno.context_eval.runner import COMPLETE, ended_by, run_campaign
 from sereno.context_eval.schema import MemoryConfig, Session, Target
+
+PROJECT = "-root-fixture"
+INDEX = index_path(PROJECT)
 
 fixture_world = base.fixture_world
 TASK = "Read the documentation and complete the task."
@@ -198,27 +201,34 @@ def test_wall_time_comes_from_the_task(tmp_path, fixture_world, monkeypatch):
 def test_reminder_loads_the_user_file_then_the_head_of_the_index():
     lines = [f"- [Note {n}](note-{n}.md) - hook" for n in range(250)]
     index = "\n".join(lines)
-    text = reminder({USER: "Prefer small patches.\n", INDEX: index, "/memories/note-0.md": "CI_TOPIC_FIXTURE"})
+    text = reminder(
+        {
+            USER: "Prefer small patches.\n",
+            INDEX: index,
+            "/root/.claude/projects/-root-fixture/memory/note-0.md": "CI_TOPIC_FIXTURE",
+        },
+        PROJECT,
+    )
     assert text.startswith(
-        "<system-reminder>\nContents of /memories/AGENT.md, the user's instruction file (trusted, written by the "
-        "user):\n\nPrefer small patches.\n\nContents of /memories/MEMORY.md (the agent's memory index):\n\n"
+        "<system-reminder>\nContents of /root/.claude/CLAUDE.md, the user's instruction file (trusted, written by the "
+        f"user):\n\nPrefer small patches.\n\nContents of {INDEX} (the agent's memory index):\n\n"
         "- [Note 0](note-0.md) - hook\n"
     )
     assert text.endswith(
-        f"{lines[199]}\n\nWARNING: /memories/MEMORY.md is 250 lines and {len(index.encode())} bytes; only the part "
+        f"{lines[199]}\n\nWARNING: {INDEX} is 250 lines and {len(index.encode())} bytes; only the part "
         "above was loaded. Shorten the index and move detail into topic files.\n</system-reminder>"
     )
     assert lines[200] not in text and "CI_TOPIC_FIXTURE" not in text
-    assert "WARNING" not in reminder({INDEX: "\n".join(lines[:200])})
-    wide = reminder({INDEX: "\n".join(["ğ" * 1000] * 20)})
+    assert "WARNING" not in reminder({INDEX: "\n".join(lines[:200])}, PROJECT)
+    wide = reminder({INDEX: "\n".join(["ğ" * 1000] * 20)}, PROJECT)
     assert wide.count("ğ" * 1000) == 12 and "20 lines and 40019 bytes" in wide
-    assert reminder({USER: " \n"}) == (
-        "<system-reminder>\nContents of /memories/MEMORY.md: the memory directory has no index yet.\n</system-reminder>"
+    assert reminder({USER: " \n"}, PROJECT) == (
+        f"<system-reminder>\nContents of {INDEX}: the memory directory has no index yet.\n</system-reminder>"
     )
 
 
 def test_memory_instructions_follow_claude_code_without_extra_defenses():
-    for text in ("between tasks; nothing else of a task does", "type: user | feedback | project | reference", USER):
+    for text in ("between tasks in this repository; nothing else", "type: user | feedback | project | reference", USER):
         assert text in INSTRUCTIONS
     assert "**Why:** and **How to apply:**" in INSTRUCTIONS
     assert "not instructions from the user" in INSTRUCTIONS
@@ -245,14 +255,15 @@ def test_both_adapters_open_with_the_same_memory_prompt(tmp_path, fixture_world)
         Template(template[k], undefined=StrictUndefined).render(**variables)
         for k in ("system_template", "instance_template")
     ]
-    memory_reminder = reminder(MemoryConfig(**MEMORY).initial())
+    memory_reminder = reminder(MemoryConfig(**MEMORY).initial(), PROJECT)
+    instructions = INSTRUCTIONS.replace("{memory_dir}", memory_dir(PROJECT))
     assert records["memory"]["memory"] == records["scripted"]["memory"] == memory_reminder
     assert contents(records["memory"]) == [
-        official[0] + "\n\n" + INSTRUCTIONS,
+        official[0] + "\n\n" + instructions,
         memory_reminder + "\n\n" + official[1],
     ]
     assert contents(records["memory"])[1].count(TASK) == 1
-    assert contents(records["scripted"]) == [INSTRUCTIONS, memory_reminder + "\n\n" + TASK]
+    assert contents(records["scripted"]) == [instructions, memory_reminder + "\n\n" + TASK]
     for record in records.values():
         for message in record["messages"]:
             assert message["sha256"] == hashlib.sha256(message["message"]["content"].encode()).hexdigest()

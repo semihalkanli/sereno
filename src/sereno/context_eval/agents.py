@@ -64,7 +64,7 @@ class ScriptedAdapter:
     def run(self, runtime, instruction, memory_context, config, session):
         # The memory text mini-swe would see: instructions as the system message, the reminder before the task.
         messages = [
-            {"role": "system", "content": instructions(config.memory)},
+            {"role": "system", "content": instructions(config.memory, runtime.project)},
             {"role": "user", "content": f"{memory_context}\n\n{instruction}"},
         ]
         runtime.initial_messages = list(messages)
@@ -184,7 +184,10 @@ class MiniSweAdapter:
         # Template variables, never template text: memory files are data, not Jinja.
         agent_kwargs["system_template"] = agent_kwargs["system_template"].rstrip("\n") + "\n\n{{memory_instructions}}"
         agent_kwargs["instance_template"] = "{{memory_reminder}}\n\n" + agent_kwargs["instance_template"]
-        variables = {"memory_instructions": instructions(config.memory), "memory_reminder": memory_context}
+        variables = {
+            "memory_instructions": instructions(config.memory, runtime.project),
+            "memory_reminder": memory_context,
+        }
         agent_kwargs.update(
             step_limit=session.max_steps,
             cost_limit=config.cost_limit_usd,

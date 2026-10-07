@@ -6,6 +6,7 @@ import subprocess
 import time
 import uuid
 
+from sereno.context_eval.memory import ROOT
 from sereno.context_eval.schema import validate_path
 
 # JSON on stdin keeps payloads out of shell syntax. All filesystem operations stay in the container.
@@ -15,7 +16,7 @@ import json, os, pathlib, sys
 request = json.load(sys.stdin)
 def safe(raw):
     p = pathlib.Path(raw)
-    if not (raw.startswith('/app/') or raw.startswith('/memories/')):
+    if not (raw.startswith('/app/') or raw.startswith('/root/.claude/')):
         raise ValueError('path outside experiment roots')
     if '..' in p.parts or '.git' in p.parts or str(p) != raw or '\\' in raw:
         raise ValueError('noncanonical or reserved path')
@@ -43,8 +44,15 @@ elif op == 'write':
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(request['text'], encoding='utf-8', newline='')
     result = None
+elif op == 'instructions':
+    # Read as Claude Code reads them: through symlinks, such as CLAUDE.md -> AGENTS.md, and never failing on bytes.
+    result = {}
+    for raw in request['paths']:
+        p = pathlib.Path(raw)
+        if p.is_file():
+            result[raw] = p.read_bytes().decode('utf-8', errors='replace')
 elif op == 'memory':
-    root = pathlib.Path('/memories')
+    root = pathlib.Path('/root/.claude')
     result, size = {}, 0
     if root.is_symlink():
         raise ValueError('symlink memory root')
@@ -223,12 +231,16 @@ class DockerEnvironment:
         return json.loads(result.stdout)
 
     def read(self, path: str) -> str | None:
-        validate_path(path, "/memories" if path.startswith("/memories/") else "/app")
+        validate_path(path, ROOT if path.startswith(ROOT + "/") else "/app")
         return self._bridge({"op": "read", "path": path})
 
     def write(self, path: str, text: str | None) -> None:
-        validate_path(path, "/memories" if path.startswith("/memories/") else "/app")
+        validate_path(path, ROOT if path.startswith(ROOT + "/") else "/app")
         self._bridge({"op": "write", "path": path, "text": text})
+
+    def read_instructions(self, paths: tuple[str, ...]) -> dict[str, str]:
+        """The repository instruction files among `paths` that exist, read through symlinks."""
+        return self._bridge({"op": "instructions", "paths": list(paths)})
 
     def snapshot_memory(self, max_files: int, max_bytes: int) -> dict[str, str]:
         return self._bridge({"op": "memory", "max_files": max_files, "max_bytes": max_bytes})

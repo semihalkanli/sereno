@@ -83,13 +83,13 @@ def test_session_end_replace_after_an_agent_rewrite_skips(tmp_path, factory):
         method="memory",
         phase="session_end",
         sessions=["s"],
-        path="/memories/MEMORY.md",
+        path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
         operation="replace",
         old_text="- [Old](old.md) - hook",
         text="- [New](new.md) - hook",
     )
     runtime = runtime_for(tmp_path, factory, [event])
-    drive(runtime, [["echo '- [Other](o.md) - x' > /memories/MEMORY.md"]])
+    drive(runtime, [["echo '- [Other](o.md) - x' > /root/.claude/projects/-root-fixture/memory/MEMORY.md"]])
     runtime.engine.apply(runtime, "session_end")
     skipped = kinds(runtime, "intervention_skipped")
     assert runtime.journal == [] and [(r["intervention_id"], r["phase"]) for r in skipped] == [("e", "session_end")]
@@ -100,16 +100,26 @@ def test_session_start_replace_in_carried_memory_skips_but_a_seed_miss_raises(tm
         id="c",
         method="memory",
         sessions=["e2"],
-        path="/memories/MEMORY.md",
+        path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
         operation="replace",
         old_text="- [Old](old.md) - hook",
         text="- [New](new.md) - hook",
     )
-    runtime = exposure_runtime(tmp_path, factory, event, "e2", {"/memories/MEMORY.md": "- rewritten by the agent\n"})
-    runtime.memory_config = MemoryConfig(seed={"/memories/MEMORY.md": "- [Old](old.md) - hook\n"})
+    runtime = exposure_runtime(
+        tmp_path,
+        factory,
+        event,
+        "e2",
+        {"/root/.claude/projects/-root-fixture/memory/MEMORY.md": "- rewritten by the agent\n"},
+    )
+    runtime.memory_config = MemoryConfig(
+        seed={"/root/.claude/projects/-root-fixture/memory/MEMORY.md": "- [Old](old.md) - hook\n"}
+    )
     runtime.engine.apply(runtime, "session_start")
     assert [r["phase"] for r in kinds(runtime, "intervention_skipped")] == ["session_start"]
-    runtime.memory_config = MemoryConfig(seed={"/memories/MEMORY.md": "- rewritten by the agent\n"})
+    runtime.memory_config = MemoryConfig(
+        seed={"/root/.claude/projects/-root-fixture/memory/MEMORY.md": "- rewritten by the agent\n"}
+    )
     with pytest.raises(ValueError, match="exactly once"):
         runtime.engine.apply(runtime, "session_start")
 
@@ -120,14 +130,14 @@ def test_session_start_replaces_that_conflict_in_seed_memory_raise(tmp_path, fac
             id=name,
             method="memory",
             sessions=["e1"],
-            path="/memories/MEMORY.md",
+            path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
             operation="replace",
             old_text="- [Old](old.md) - hook",
             text=f"- [{name}]({name}.md) - hook",
         )
         for name in ("a", "b")
     )
-    seed = {"/memories/MEMORY.md": "- [Old](old.md) - hook\n"}
+    seed = {"/root/.claude/projects/-root-fixture/memory/MEMORY.md": "- [Old](old.md) - hook\n"}
     runtime = exposure_runtime(tmp_path, factory, first, "e1", seed)
     runtime.engine.events.append(second)
     runtime.memory_config = MemoryConfig(seed=seed)
@@ -237,7 +247,7 @@ def exposure_runtime(tmp_path, factory, event, session_id, memory):
         env.write(path, text)
     runtime = runtime_for(tmp_path, factory, [event], session_id=session_id, env=env)
     runtime.memory = runtime.memory_start = dict(memory)
-    runtime.initial_memory_context = FileMemory().context(memory)
+    runtime.initial_memory_sections = FileMemory("-root-fixture").sections(memory)
     return runtime
 
 
@@ -245,15 +255,20 @@ def matched(runtime):
     return [r["matched_interventions"] for r in kinds(runtime, "context_sent")]
 
 
-CARRIED = {"/memories/MEMORY.md": f"- {MARKER}\n"}
+CARRIED = {"/root/.claude/projects/-root-fixture/memory/MEMORY.md": f"- {MARKER}\n"}
 
 
 def test_carried_marker_is_not_fresh_exposure_without_a_fire(tmp_path, factory):
     event = Intervention(
-        id="m", method="memory", sessions=["e1"], path="/memories/MEMORY.md", text=f"- {MARKER}\n", marker=MARKER
+        id="m",
+        method="memory",
+        sessions=["e1"],
+        path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
+        text=f"- {MARKER}\n",
+        marker=MARKER,
     )
     runtime = exposure_runtime(tmp_path, factory, event, "e2", CARRIED)
-    drive(runtime, [["cat /memories/MEMORY.md"], ["echo done"]])
+    drive(runtime, [["cat /root/.claude/projects/-root-fixture/memory/MEMORY.md"], ["echo done"]])
     assert matched(runtime) == [[], []]
     assert kinds(runtime, "context_sent")[0]["memory_recall"] == {"m": {"startup": "marker"}}
 
@@ -271,18 +286,25 @@ def test_memory_borne_copies_of_a_fired_file_plant_are_recall_only(tmp_path, fac
     )
     runtime = exposure_runtime(tmp_path, factory, event, "e2", CARRIED)
     runtime.engine.apply(runtime, "session_start")
-    drive(runtime, [["cat /memories/MEMORY.md"], ["cat /app/README.md"], ["echo done"]])
+    drive(
+        runtime, [["cat /root/.claude/projects/-root-fixture/memory/MEMORY.md"], ["cat /app/README.md"], ["echo done"]]
+    )
     assert matched(runtime) == [[], [], ["f"]]
     assert all(r["memory_recall"]["f"]["startup"] == "marker" for r in kinds(runtime, "context_sent"))
 
 
 def test_memory_plant_fired_this_session_is_exposed_through_the_reminder(tmp_path, factory):
     event = Intervention(
-        id="m", method="memory", sessions=["e1"], path="/memories/MEMORY.md", text=f"- {MARKER}\n", marker=MARKER
+        id="m",
+        method="memory",
+        sessions=["e1"],
+        path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
+        text=f"- {MARKER}\n",
+        marker=MARKER,
     )
     runtime = exposure_runtime(tmp_path, factory, event, "e1", {})
     runtime.engine.apply(runtime, "session_start")
-    runtime.initial_memory_context = FileMemory().context(runtime.memory)
+    runtime.initial_memory_sections = FileMemory("-root-fixture").sections(runtime.memory)
     drive(runtime, [["echo done"]])
     assert matched(runtime) == [["m"]]
 
@@ -490,7 +512,9 @@ def test_docker_actions_are_killed_at_the_limit(docker_env):
 
 
 def run_bridge(request, root):
-    script = environment.BRIDGE.replace("'/app/'", repr(f"{root}/app/")).replace("'/memories/'", repr(f"{root}/m/"))
+    script = environment.BRIDGE.replace("'/app/'", repr(f"{root}/app/")).replace(
+        "'/root/.claude/projects/-root-fixture/memory/'", repr(f"{root}/m/")
+    )
     result = subprocess.run(["python3", "-c", script], input=json.dumps(request), capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
@@ -518,8 +542,8 @@ def test_bridge_rejects_memory_entries_the_host_cannot_restore(tmp_path, make, r
     memories = tmp_path.resolve() / "m"
     memories.mkdir()
     make(memories)
-    script = environment.BRIDGE.replace("'/memories/'", repr(f"{memories}/")).replace(
-        "'/memories'", repr(str(memories))
+    script = environment.BRIDGE.replace("'/root/.claude/'", repr(f"{memories}/")).replace(
+        "'/root/.claude'", repr(str(memories))
     )
     request = json.dumps({"op": "memory", "max_files": 100, "max_bytes": 1_000_000})
     result = subprocess.run(["python3", "-c", script], input=request, capture_output=True, text=True, timeout=10)

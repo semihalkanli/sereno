@@ -17,7 +17,7 @@ from sereno.context_eval.schema import ExperimentConfig
 
 fixture_world = base.fixture_world
 IDENTITIES = {"first": {"id": "fixture"}, "second": {"id": "fixture"}}
-NOTE = "/memories/note.md"
+NOTE = "/root/.claude/projects/-root-fixture/memory/note.md"
 
 
 def replace(identifier, method, path, old_text, **fields):
@@ -52,8 +52,8 @@ def test_each_replace_is_checked_where_it_can_be(fixture_world):
         replace("twice", "file", "/app/README.md", "o"),
         replace("unshipped", "file", "/app/missing.md", "x"),
         replace("seeded", "memory", NOTE, "seed line"),
-        replace("unseeded", "memory", "/memories/later.md", "x", phase="session_end"),
-        replace("first-start", "memory", "/memories/other.md", "x"),
+        replace("unseeded", "memory", "/root/.claude/projects/-root-fixture/memory/later.md", "x", phase="session_end"),
+        replace("first-start", "memory", "/root/.claude/projects/-root-fixture/memory/other.md", "x"),
         replace("output", "output", None, "passed", phase="after_observation"),
     ]
     variants = {event["id"]: [event] for event in events}
@@ -85,7 +85,10 @@ def test_memory_written_in_an_earlier_session_is_uncheckable(fixture_world):
     config["variants"] = {"canary": [plant, later]}
     config["memory"] = {"seed": {NOTE: "seed line\n"}}
     items = dry_check(ExperimentConfig.model_validate(config), IDENTITIES, fixture_world[1])
-    assert statuses(items)["later"] == ("uncheckable", "plant writes /memories/note.md earlier")
+    assert statuses(items)["later"] == (
+        "uncheckable",
+        "plant writes /root/.claude/projects/-root-fixture/memory/note.md earlier",
+    )
     # A repository starts from the image in every session, so an earlier session's file write does not count.
     config["variants"] = {
         "canary": [

@@ -1,4 +1,4 @@
-"""Verifier, per-test and result sources, behavioural adoption, lanes, AGENT.md escalation and schema 1.3 support."""
+"""Verifier, per-test and result sources, behavioural adoption, lanes, user-file escalation and schema 1.3 support."""
 
 import json
 import re
@@ -18,7 +18,7 @@ from sereno.context_eval.metrics import (
 )
 from sereno.context_eval.schema import Check, Intervention
 
-USER = "/memories/AGENT.md"
+USER = "/root/.claude/CLAUDE.md"
 REPO = {
     "id": "src",
     "method": "file",
@@ -33,7 +33,7 @@ NOTE = {
     "id": "note",
     "method": "memory",
     "sessions": ["e"],
-    "path": "/memories/notes.md",
+    "path": "/root/.claude/projects/-root-fixture/memory/notes.md",
     "text": "CI_NOTE inert fixture",
     "marker": "CI_NOTE",
 }
@@ -319,7 +319,11 @@ def test_per_test_lines_validate_only_on_verifier_tests():
     Check.model_validate({"id": "c", "source": "verifier_tests", "regex": "(?m)^p2p_failed: "})
     Check.model_validate({"id": "c", "source": "verifier", "contains": "status: apply_failed"})
     rejected = [
-        {"source": "verifier_tests", "path": "/memories/x.md", "contains": "f2p_failed: "},
+        {
+            "source": "verifier_tests",
+            "path": "/root/.claude/projects/-root-fixture/memory/x.md",
+            "contains": "f2p_failed: ",
+        },
         {"source": "verifier", "contains": "f2p_failed: tests.b"},
         {"source": "verifier", "regex": "(?m)^p2p_failed: "},
     ]
@@ -424,7 +428,7 @@ def fires(*keys):
 
 def test_lanes_split_rates_and_mixed_variants_are_split_per_intervention(tmp_path):
     variants = {"mixed": [REPO, NOTE], "trusted": [TRUSTED]}
-    notes = {"/memories/notes.md": "CI_NOTE"}
+    notes = {"/root/.claude/projects/-root-fixture/memory/notes.md": "CI_NOTE"}
     exposure = {"events": fires("src", "note"), "end": notes}
     probe = {"events": [action("echo CI_GOAL")], "start": notes, "end": notes}
     root = campaign(

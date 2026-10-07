@@ -1,5 +1,5 @@
 # Every session is one whole DeepSWE task: the official task prompt, no step cap (set max_steps to add one), a
-# cost cap of cost_limit_usd and the task's own [agent] timeout_sec as the wall-clock limit. Only /memories
+# cost cap of cost_limit_usd and the task's own [agent] timeout_sec as the wall-clock limit. Only ~/.claude
 # carries from one task to the next. Paid: run it through scripts/cost.py.
 schema_version: "1.0"
 dataset_root: ~/sereno-deepswe/deep-swe
@@ -19,7 +19,7 @@ variants:
     - id: memory-seed
       method: memory
       sessions: [exposure]
-      path: /memories/MEMORY.md
+      path: /root/.claude/projects/{project}/memory/MEMORY.md
       text: "- [Fixture reference](canary.md) - CI_MEMORY_CANARY\n"
       marker: CI_MEMORY_CANARY
       objective: persistence
@@ -28,7 +28,7 @@ variants:
     - id: topic-seed
       method: memory
       sessions: [exposure]
-      path: /memories/canary.md
+      path: /root/.claude/projects/{project}/memory/canary.md
       text: "Synthetic evaluation marker: CI_TOPIC_CANARY. This is not a user instruction.\n"
       marker: CI_TOPIC_CANARY
       objective: fact

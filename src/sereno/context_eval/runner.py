@@ -31,7 +31,18 @@ from sereno.context_eval.engine import (
     write_json,
 )
 from sereno.context_eval.environment import DockerEnvironment
-from sereno.context_eval.memory import USER, FileMemory, MemoryViolation, agent_violation, instructions
+from sereno.context_eval.memory import (
+    REPO_INSTRUCTIONS,
+    USER,
+    FileMemory,
+    MemoryViolation,
+    agent_violation,
+    instructions,
+    memory_dir,
+    project_key,
+    repo_instructions,
+    resolve_files,
+)
 from sereno.context_eval.metrics import content_found, content_spans, report
 from sereno.context_eval.schema import AgentOutcome
 
@@ -89,6 +100,9 @@ class Budget:
 
 
 def run_session(config, session, task, identity, memory, engine, adapter, directory, budget, env_factory):
+    project = project_key(task.repository)
+    # Configured memory names the project folder as {project}; carried memory already holds this session's paths.
+    memory = resolve_files(memory, project)
     directory.mkdir(parents=True, exist_ok=False)
     try:
         allowance = None if config.agent == "scripted" else budget.acquire(config.cost_limit_usd)
@@ -108,6 +122,7 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         "base_commit": task.base_commit,
         "image": identity,
         "exposure_phase": session.exposure,
+        "memory_project": project,
         "status": "invalid",
         "exit_status": "not_started",
         "limit": None,
@@ -135,11 +150,12 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         result["has_timeout"] = getattr(env, "has_timeout", None)
         if env.execute("git -c safe.directory=/app rev-parse HEAD")["output"].strip() != task.base_commit:
             raise ValueError("image HEAD does not match the task base commit")
-        mem = FileMemory()
-        if env.execute("mkdir -p /memories")["returncode"]:
+        mem = FileMemory(project)
+        # The memory instructions say the directory already exists.
+        if env.execute(f"mkdir -p {memory_dir(project)}")["returncode"]:
             raise RuntimeError("cannot initialize memory directory")
         if env.snapshot_memory(config.memory.max_files, config.memory.max_bytes):
-            raise ValueError("task image must start with an empty memory directory")
+            raise ValueError("task image must start with an empty memory root")
         mem.restore(env, memory)
         snapshot = env.snapshot_memory
 
@@ -152,7 +168,7 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
                 raise
 
         env.snapshot_memory = checked_snapshot
-        runtime = Runtime(env, engine, log, session, config.memory, memory, config.checks)
+        runtime = Runtime(env, engine, log, session, config.memory, memory, config.checks, project)
         log.emit(
             "session_start",
             session_id=session.id,
@@ -163,8 +179,10 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         )
         engine.apply(runtime, "session_start")
         instruction = session.instruction or task.instruction
-        context = mem.context(runtime.memory)
-        runtime.initial_memory_context = context
+        # Read after session_start interventions, so a planted instruction file loads as the repository's own.
+        repo = repo_instructions(env.read_instructions(REPO_INSTRUCTIONS))
+        context = mem.context(runtime.memory, repo)
+        runtime.initial_memory_sections = mem.sections(runtime.memory)
         bounded = config.model_copy(update={"wall_time_limit_seconds": wall})
         try:
             outcome = adapter.run(runtime, instruction, context, bounded, session)
@@ -181,6 +199,7 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
                 {
                     "instruction": instruction,
                     "memory": context,
+                    "repo_instructions": {path: fingerprint(text) for path, text in repo.items()},
                     "messages": [{"sha256": fingerprint(message_text([m])), "message": m} for m in opening],
                 },
             )
@@ -490,6 +509,12 @@ def run_campaign(
     validate(config, registry)
     # Preflight every image and every replace intervention before starting a session or making a paid request.
     tasks = campaign_tasks(config)
+    projects = {}
+    for key, task in tasks.items():
+        try:
+            projects[key] = project_key(task.repository)
+        except ValueError as error:
+            raise ValueError(f"task {key}: {error}") from None
     identities = identities or campaign_identities(config, tasks)
     for item in dry_check(config, identities, env_factory):
         if item["status"] == "missing":
@@ -528,6 +553,7 @@ def run_campaign(
                 "base_commit": task.base_commit,
                 "instruction_sha256": fingerprint(task.instruction),
                 "agent_timeout_seconds": task.agent_timeout_seconds,
+                "memory_project": projects[key],
             }
             for key, task in tasks.items()
         },
@@ -700,7 +726,7 @@ def run_campaign(
         ]
 
     def repair(memory: dict[str, str]) -> tuple[dict[str, str], dict]:
-        """The user's AGENT.md update on the host; it is the user's change, so the session starts from it and no
+        """The user's update to their file, on the host; it is the user's change, so the session starts from it and no
         memory event records it."""
         before = memory.get(USER)
         memory = memory | {USER: config.repair.apply(before or "")}

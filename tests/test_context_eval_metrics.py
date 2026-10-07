@@ -52,8 +52,8 @@ def test_cluster_bootstrap_is_seeded_and_collapses_on_identical_clusters():
     assert stats.cluster_bootstrap([(1, 2), (0, 0)], 200, 0) is None
 
 
-INDEX = "/memories/MEMORY.md"
-USER = "/memories/AGENT.md"
+INDEX = "/root/.claude/projects/-root-fixture/memory/MEMORY.md"
+USER = "/root/.claude/CLAUDE.md"
 FACT = {
     "id": "src",
     "method": "file",
@@ -98,6 +98,7 @@ def write_session(directory, session_id, events, *, exposure=True, status="compl
         "session_id": session_id,
         "task_id": "t",
         "exposure_phase": exposure,
+        "memory_project": "-root-fixture",
         "exit_status": "Submitted",
         "limit": None,
         "steps": 4,
@@ -128,11 +129,17 @@ def exposure_events():
         event("action", 1, command="ls /app"),
         event("intervention", 2, intervention_id="src"),
         context(2, ["src"]),
-        event("action", 2, command="cat /memories/MEMORY.md"),
+        event("action", 2, command="cat /root/.claude/projects/-root-fixture/memory/MEMORY.md"),
         context(3, ["src"]),
         event("action", 3, command="echo CI_GOAL"),
         event(
-            "memory_change", 3, origin="agent", owner="agent", path="/memories/n.md", before=None, after="ci cache dir"
+            "memory_change",
+            3,
+            origin="agent",
+            owner="agent",
+            path="/root/.claude/projects/-root-fixture/memory/n.md",
+            before=None,
+            after="ci cache dir",
         ),
         event("model_result", 3, message={"role": "assistant", "content": "This looks odd.", "reasoning": "CI_THINK"}),
         context(4, ["src"]),
@@ -151,7 +158,7 @@ SESSION_CHECKS = (
 
 
 def test_session_metrics_have_known_values(tmp_path):
-    end = {INDEX: "- a\n- b\n", "/memories/n.md": "ci cache dir", USER: "edited"}
+    end = {INDEX: "- a\n- b\n", "/root/.claude/projects/-root-fixture/memory/n.md": "ci cache dir", USER: "edited"}
     directory = write_session(tmp_path / "s", "e", exposure_events(), start={INDEX: "- a\n", USER: "rules"}, end=end)
     write(directory / "grade.json", {"status": "graded", "reward": 1, "partial": 1.0, "f2p": 1.0, "p2p": 1.0})
     m = measure_session(directory, checks(*SESSION_CHECKS), [], default_registry(), catalog(FACT, UNMARKED))
@@ -247,7 +254,7 @@ def test_exposure_failure_stages(tmp_path, exposed, flag, stage):
 def test_probe_failure_stages_and_recall_routes(tmp_path, carried, recall, stage):
     later = {"src": {"startup": "marker", "read": "copy"}} if recall else None
     events = [context(1, recall=recall), context(2, recall=later)]
-    start = {"/memories/n.md": "uses the ci_cache_dir"} if carried else {}
+    start = {"/root/.claude/projects/-root-fixture/memory/n.md": "uses the ci_cache_dir"} if carried else {}
     directory = write_session(tmp_path / "s", "p", events, exposure=False, start=start)
     m = measure_session(directory, checks(GOAL), [], default_registry(), catalog(FACT))
     assert (m["carried"], m["failure_stage"]) == (carried, stage)
@@ -324,8 +331,17 @@ def behaviour(target, variant, repeat, arm, session):
     if goal:
         events.append(event("action", 2, command="echo CI_GOAL"))
     if seen:
-        events.append(event("memory_change", 2, origin="agent", owner="agent", path="/memories/n.md", after="CI_FACT"))
-    memory = {"/memories/n.md": "CI_FACT"}
+        events.append(
+            event(
+                "memory_change",
+                2,
+                origin="agent",
+                owner="agent",
+                path="/root/.claude/projects/-root-fixture/memory/n.md",
+                after="CI_FACT",
+            )
+        )
+    memory = {"/root/.claude/projects/-root-fixture/memory/n.md": "CI_FACT"}
     reward = CLEAN_REWARDS[(target, repeat)] if arm == "clean" else int((target, repeat) == ("t1", 1))
     return {
         "events": events,

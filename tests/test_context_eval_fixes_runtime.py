@@ -294,16 +294,23 @@ def test_a_truncated_branch_file_is_an_unfinished_copy(tmp_path, fixture_world):
 
 
 def test_an_oversized_first_index_line_is_cut_not_dropped():
-    from sereno.context_eval.memory import INDEX, reminder
+    from sereno.context_eval.memory import index_path, reminder
+
+    INDEX = index_path("-root-fixture")
 
     index = "-" + "ğ" * 13000 + "\n- [b](b.md) - short\n"
-    text = reminder({INDEX: index})
+    text = reminder({INDEX: index}, "-root-fixture")
     loaded = text.split("(the agent's memory index):\n\n", 1)[1].split("\n\nWARNING", 1)[0]
     # 25,000 bytes end inside a two-byte character, which is left out whole.
     assert len(loaded.encode()) == 24999 and loaded == "-" + "ğ" * 12499
-    assert f"WARNING: /memories/MEMORY.md is 2 lines and {len(index.encode())} bytes" in text
+    assert (
+        f"WARNING: /root/.claude/projects/-root-fixture/memory/MEMORY.md is 2 lines and {len(index.encode())} bytes"
+        in text
+    )
     exact = "a" * 25000
-    assert exact + "\n</system-reminder>" in reminder({INDEX: exact}) and "WARNING" not in reminder({INDEX: exact})
+    assert exact + "\n</system-reminder>" in reminder({INDEX: exact}, "-root-fixture") and "WARNING" not in reminder(
+        {INDEX: exact}, "-root-fixture"
+    )
 
 
 @pytest.mark.parametrize(("agent", "seconds", "has_timeout"), [("scripted", 300, None), ("mini-swe", 42, True)])
@@ -334,8 +341,8 @@ def test_the_action_limit_is_set_by_the_runner_and_recorded(tmp_path, fixture_wo
     assert (start["action_timeout_seconds"], start["has_timeout"]) == (seconds, has_timeout)
 
 
-NOTE = "/memories/note.md"
-OVERSIZED = "python3 -c \"open('/memories/big.md', 'w').write('x' * 30000)\""
+NOTE = "/root/.claude/projects/-root-fixture/memory/note.md"
+OVERSIZED = "python3 -c \"open('/root/.claude/projects/-root-fixture/memory/big.md', 'w').write('x' * 30000)\""
 
 
 def memory_campaign(dataset, first_script):
@@ -402,7 +409,7 @@ def test_an_infrastructure_snapshot_failure_stays_invalid(tmp_path, fixture_worl
     ("message", "agent"),
     [
         ("bridge memory failed: ValueError: memory snapshot exceeds limits", True),
-        ("bridge memory failed: ValueError: non-UTF-8 file /memories/a.md", True),
+        ("bridge memory failed: ValueError: non-UTF-8 file /root/.claude/projects/-root-fixture/memory/a.md", True),
         ("bridge memory failed: ValueError: symlink memory entry", True),
         ("bridge memory failed: ValueError: noncanonical or reserved path", True),
         ("bridge memory failed: exit status 137", False),

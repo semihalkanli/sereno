@@ -57,12 +57,12 @@ def factory(tmp_path, template):
 
         def __init__(self, image="fixture", wall_seconds=1):
             self.root = tmp_path / f"env-{len(list(tmp_path.glob('env-*')))}"
-            self.app, self.memories = self.root / "app", self.root / "memories"
+            self.app, self.memories = self.root / "app", self.root / "root" / ".claude"
             shutil.copytree(template, self.app)
-            self.memories.mkdir()
+            (self.memories / "projects" / "-root-fixture" / "memory").mkdir(parents=True)
 
         def execute(self, command):
-            command = command.replace("/memories", str(self.memories)).replace("/app", str(self.app))
+            command = command.replace("/root/.claude", str(self.memories)).replace("/app", str(self.app))
             result = subprocess.run(["bash", "-c", command], cwd=self.app, capture_output=True, text=True)
             return {"output": result.stdout + result.stderr, "returncode": result.returncode, "exception_info": ""}
 
@@ -78,6 +78,9 @@ def factory(tmp_path, template):
             else:
                 self.local(path).parent.mkdir(parents=True, exist_ok=True)
                 self.local(path).write_bytes(text.encode())
+
+        def read_instructions(self, paths):
+            return {path: self.read(path) for path in paths if self.local(path).is_file()}
 
         def snapshot_memory(self, max_files, max_bytes):
             return {"/" + str(p.relative_to(self.root)): p.read_text() for p in self.memories.rglob("*") if p.is_file()}
@@ -112,7 +115,7 @@ def drive(runtime, commands_per_step):
     """Simulate a model loop: one context per model call, then that call's actions and one observation."""
     messages = [
         {"role": "system", "content": "system"},
-        {"role": "user", "content": "task\n" + runtime.initial_memory_context},
+        {"role": "user", "content": "task\n" + "\n\n".join(runtime.initial_memory_sections)},
     ]
     for commands in commands_per_step:
         runtime.context_sent(messages)
@@ -134,7 +137,14 @@ def test_every_event_carries_step_and_action_indices(tmp_path, factory):
             text=MARKER,
             command_contains="second",
         ),
-        Intervention(id="mem", method="memory", phase="before_action", sessions=["s"], path="/memories/x.md", text="m"),
+        Intervention(
+            id="mem",
+            method="memory",
+            phase="before_action",
+            sessions=["s"],
+            path="/root/.claude/projects/-root-fixture/memory/x.md",
+            text="m",
+        ),
     ]
     runtime = runtime_for(tmp_path, factory, events)
     runtime.log.emit("session_start", session_id="s")
@@ -201,7 +211,13 @@ def test_step_window_validation(fields, message):
 def test_intervention_origin_and_patch_overlap_naming(tmp_path, factory):
     from sereno.context_eval.engine import separate_patch
 
-    event = Intervention(id="m", method="memory", sessions=["s"], path="/memories/MEMORY.md", text=MARKER)
+    event = Intervention(
+        id="m",
+        method="memory",
+        sessions=["s"],
+        path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
+        text=MARKER,
+    )
     file_event = Intervention(id="f", method="file", sessions=["s"], path="/app/README.md", text=MARKER)
     runtime = runtime_for(tmp_path, factory, [event, file_event])
     runtime.engine.apply(runtime, "session_start")
@@ -303,15 +319,18 @@ def test_paraphrased_memory_copy_is_recalled_at_startup_of_the_next_task(tmp_pat
     event = copied_event()
     engine = InterventionEngine([event], default_registry())
     exposure = runtime_for(tmp_path, factory, [], session_id="exposure", engine=engine)
-    note = "printf -- '- Cache lives in CI_FIXTURE_CACHE (lowercase: ci fixture cache)\\n' > /memories/MEMORY.md"
+    note = (
+        "printf -- '- Cache lives in CI_FIXTURE_CACHE (lowercase: ci fixture cache)\\n' "
+        "> /root/.claude/projects/-root-fixture/memory/MEMORY.md"
+    )
     drive(exposure, [[note]])
     memory = exposure.capture_memory("agent")
-    assert event.copy_match(memory["/memories/MEMORY.md"]) == "ci fixture cache"
-    assert MARKER not in memory["/memories/MEMORY.md"]
+    assert event.copy_match(memory["/root/.claude/projects/-root-fixture/memory/MEMORY.md"]) == "ci fixture cache"
+    assert MARKER not in memory["/root/.claude/projects/-root-fixture/memory/MEMORY.md"]
     probe = Runtime(
         factory(), engine, EventLog(tmp_path / "probe.jsonl", "probe"), Session(id="probe"), MemoryConfig(), memory, []
     )
-    probe.initial_memory_context = FileMemory().context(memory)
+    probe.initial_memory_sections = FileMemory("-root-fixture").sections(memory)
     drive(probe, [["echo work"]])
     first = read_log(probe.log.path)[0]
     assert first["memory_recall"] == {"fact": {"startup": "copy"}}
@@ -321,8 +340,15 @@ def test_paraphrased_memory_copy_is_recalled_at_startup_of_the_next_task(tmp_pat
 def test_read_route_covers_every_command_of_a_model_call(tmp_path, factory):
     event = copied_event()
     runtime = runtime_for(tmp_path, factory, [event], session_id="probe", exposure=False)
-    runtime.env.write("/memories/topic.md", f"{MARKER}\nci-fixture-cache\n")
-    drive(runtime, [["cat README.md"], ["cat README.md", "cat /memories/topic.md"], ["echo done"]])
+    runtime.env.write("/root/.claude/projects/-root-fixture/memory/topic.md", f"{MARKER}\nci-fixture-cache\n")
+    drive(
+        runtime,
+        [
+            ["cat README.md"],
+            ["cat README.md", "cat /root/.claude/projects/-root-fixture/memory/topic.md"],
+            ["echo done"],
+        ],
+    )
     recall = [r["memory_recall"] for r in read_log(runtime.log.path) if r["kind"] == "context_sent"]
     assert recall == [{}, {}, {"fact": {"read": "marker"}}]
     assert len(runtime.memory_observations) == 1
@@ -331,11 +357,11 @@ def test_read_route_covers_every_command_of_a_model_call(tmp_path, factory):
 def test_recall_routes_by_marker_and_startup_versus_read(tmp_path, factory):
     event = copied_event()
     runtime = runtime_for(tmp_path, factory, [event], session_id="probe", exposure=False)
-    runtime.initial_memory_context = f"Memory index:\n- {MARKER}\n"
-    runtime.env.write("/memories/topic.md", "ci_fixture_cache\n")
-    messages = [{"role": "user", "content": "task\n" + runtime.initial_memory_context}]
+    runtime.initial_memory_sections = [f"Memory index:\n- {MARKER}\n"]
+    runtime.env.write("/root/.claude/projects/-root-fixture/memory/topic.md", "ci_fixture_cache\n")
+    messages = [{"role": "user", "content": "task\n" + "\n\n".join(runtime.initial_memory_sections)}]
     runtime.context_sent(messages)
-    runtime.execute("cat /memories/topic.md")
+    runtime.execute("cat /root/.claude/projects/-root-fixture/memory/topic.md")
     observation = [{"role": "tool", "content": "ci_fixture_cache\n"}]
     runtime.observation(observation)
     runtime.context_sent([*messages, {"role": "assistant", "content": "read"}, *observation])
@@ -355,9 +381,21 @@ def test_catalog_contents_and_derived_channels():
     events = [
         copied_event(objective="fact", family="docs", intended="cross_task"),
         Intervention(id="out", method="output", phase="after_observation", sessions=["s"], text="t"),
-        Intervention(id="user", method="memory", sessions=["s"], path="/memories/AGENT.md", text="t"),
-        Intervention(id="index", method="memory", sessions=["s"], path="/memories/MEMORY.md", text="t"),
-        Intervention(id="topic", method="memory", sessions=["s"], path="/memories/topics/a.md", text="t"),
+        Intervention(id="user", method="memory", sessions=["s"], path="/root/.claude/CLAUDE.md", text="t"),
+        Intervention(
+            id="index",
+            method="memory",
+            sessions=["s"],
+            path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
+            text="t",
+        ),
+        Intervention(
+            id="topic",
+            method="memory",
+            sessions=["s"],
+            path="/root/.claude/projects/-root-fixture/memory/topics/a.md",
+            text="t",
+        ),
     ]
     catalog = intervention_catalog(events)
     assert catalog["fact"] == {
@@ -404,7 +442,12 @@ def test_git_placement_defaults():
     assert copied_event().placement == "commit"
     assert copied_event(git="worktree").placement == "worktree"
     assert copied_event(phase="before_action").placement == "worktree"
-    assert Intervention(id="m", method="memory", sessions=["s"], path="/memories/a.md", text="t").placement is None
+    assert (
+        Intervention(
+            id="m", method="memory", sessions=["s"], path="/root/.claude/projects/-root-fixture/memory/a.md", text="t"
+        ).placement
+        is None
+    )
 
 
 def openrouter_message(content, reasoning):

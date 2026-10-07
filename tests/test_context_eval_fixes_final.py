@@ -52,7 +52,8 @@ def crlf_world(tmp_path, world):
     commit = git(template, "rev-parse", "HEAD")
     for toml in dataset.glob("tasks/*/task.toml"):
         toml.write_text(
-            f'[metadata]\nbase_commit_hash="{commit}"\nlanguage="python"\n[environment]\ndocker_image="fixture:local"\n'
+            f'[metadata]\nbase_commit_hash="{commit}"\nlanguage="python"\nrepository_url="https://github.com/ci/fixture"\n'
+            '[environment]\ndocker_image="fixture:local"\n'
         )
     return (dataset, factory, created, commit), template
 
@@ -65,7 +66,10 @@ def crlf_config(dataset):
         {"command": "cat win.txt"},
         {"command": f'python3 -c "{edit}"'},
         {"command": "printf 'caf\\351\\n' > /app/latin.txt"},
-        {"command": base.write_command("/memories/MEMORY.md", MARKER), "if_contains": MARKER},
+        {
+            "command": base.write_command("/root/.claude/projects/-root-fixture/memory/MEMORY.md", MARKER),
+            "if_contains": MARKER,
+        },
     ]
     config["variants"]["canary"][0] |= {"path": "/app/win.txt", "text": f"{MARKER}\r\n", "operation": "append"}
     return ExperimentConfig.model_validate(config)
@@ -155,7 +159,7 @@ def fresh_exposure(tmp_path, world, command):
     return matched, row["exposed"]
 
 
-@pytest.mark.parametrize("command", ["cat README.md", "ls /memories; cat README.md"])
+@pytest.mark.parametrize("command", ["cat README.md", "ls /root/.claude; cat README.md"])
 def test_other_output_of_a_memory_reading_command_is_fresh_exposure(tmp_path, fixture_world, command):
     assert fresh_exposure(tmp_path, fixture_world, command) == ([[], ["source"]], True)
 
@@ -173,10 +177,10 @@ RENDERINGS = {
 @pytest.mark.parametrize(
     ("command", "exposed"),
     [
-        ("cat /memories/topic.md", False),
-        ("grep -r CI_ /memories", False),
-        ("head -n 1 /memories/topic.md", False),
-        ("cat /memories/topic.md README.md", True),
+        ("cat /root/.claude/projects/-root-fixture/memory/topic.md", False),
+        ("grep -r CI_ /root/.claude", False),
+        ("head -n 1 /root/.claude/projects/-root-fixture/memory/topic.md", False),
+        ("cat /root/.claude/projects/-root-fixture/memory/topic.md README.md", True),
     ],
 )
 def test_memory_derived_lines_are_recall_and_the_rest_is_fresh(tmp_path, factory, command, exposed, rendering):
@@ -184,16 +188,16 @@ def test_memory_derived_lines_are_recall_and_the_rest_is_fresh(tmp_path, factory
     event = Intervention(
         id="f", method="file", sessions=["e"], path="/app/README.md", text=f"\n{MARKER}\n", marker=MARKER
     )
-    memory = {"/memories/topic.md": f"{CARRIED_LINE}\nsecond line\n"}
+    memory = {"/root/.claude/projects/-root-fixture/memory/topic.md": f"{CARRIED_LINE}\nsecond line\n"}
     env = factory()
     for path, text in memory.items():
         env.write(path, text)
     engine = InterventionEngine([event], default_registry())
     log = EventLog(tmp_path / "e.jsonl", "e")
     runtime = Runtime(env, engine, log, Session(id="e", exposure=True), MemoryConfig(), memory, [])
-    runtime.initial_memory_context = FileMemory().context(memory)
+    runtime.initial_memory_sections = FileMemory("-root-fixture").sections(memory)
     engine.apply(runtime, "session_start")
-    messages = [{"role": "user", "content": "task\n" + runtime.initial_memory_context}]
+    messages = [{"role": "user", "content": "task\n" + "\n\n".join(runtime.initial_memory_sections)}]
     runtime.context_sent(messages)
     observation = [{"role": "tool", "content": RENDERINGS[rendering](runtime.execute(command)["output"])}]
     runtime.observation(observation)
@@ -210,7 +214,7 @@ def test_memory_plant_past_the_limits_in_an_action_phase_is_a_configuration_fail
         "phase": "after_observation",
         "text": f"{MARKER} " + "x" * 30000,
         "operation": "append",
-        "path": "/memories/notes.md",
+        "path": "/root/.claude/projects/-root-fixture/memory/notes.md",
     }
     root, summary = base.run_fixture(tmp_path, fixture_world, ExperimentConfig.model_validate(config))
     exposure = base.session_dir(root, "attack_carry", "001-exposure")

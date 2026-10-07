@@ -11,9 +11,11 @@ from typing import Any
 
 from sereno.context_eval.config import fingerprint
 from sereno.context_eval.environment import commit_planted
-from sereno.context_eval.memory import MemoryViolation, owner
+from sereno.context_eval.memory import MemoryViolation, owner, resolve, resolve_files
 
-MEMORY_ROOT = re.compile(r"/memories(?![\w.-])")
+# A command that names the memory root reads memory. The text test misses a read through `cd ~` and a relative
+# path, or a variable.
+MEMORY_READ = re.compile(r"(?:~|\$HOME|\$\{HOME\}|/root)/\.claude(?![\w.-])")
 SUBMIT = "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
 # Lines as git splits them: only at "\n", so CR, form feed and Unicode separators stay inside a line.
 LINES = re.compile(r"[^\n]*\n|[^\n]+")
@@ -192,15 +194,14 @@ class InterventionEngine:
                 event, total, session_count, context
             ):
                 continue
+            path = runtime.resolve(event.path)
             try:
-                before = output["output"] if event.method == "output" else runtime.env.read(event.path)
+                before = output["output"] if event.method == "output" else runtime.env.read(path)
                 after = edit(before, event)
             except (ValueError, RuntimeError) as error:
                 # Only configured content without old_text is a configuration error; text the agent changed (any
                 # later phase, or memory carried from an earlier session) must not invalidate a paid session.
-                carried = event.method == "memory" and runtime.memory_start.get(event.path) != (
-                    runtime.memory_config.initial().get(event.path)
-                )
+                carried = event.method == "memory" and runtime.memory_start.get(path) != runtime.initial().get(path)
                 if phase == "session_start" and not carried:
                     raise
                 runtime.emit("intervention_skipped", intervention_id=event.id, phase=phase, reason=str(error))
@@ -208,7 +209,7 @@ class InterventionEngine:
             if event.method == "output":
                 output["output"] = after
             else:
-                runtime.env.write(event.path, after)
+                runtime.env.write(path, after)
             self.fires[event.id] += 1
             self.session_fires[(event.id, runtime.session.id)] += 1
             runtime.emit(
@@ -217,7 +218,7 @@ class InterventionEngine:
                 method=event.method,
                 strategy=event.strategy,
                 phase=phase,
-                path=event.path,
+                path=path,
                 before_sha256=fingerprint(before or ""),
                 after_sha256=fingerprint(after),
                 occurrence=self.fires[event.id],
@@ -225,7 +226,8 @@ class InterventionEngine:
             )
             runtime.journal.append(
                 {
-                    "event": event.model_dump(mode="json"),
+                    # The path the edit landed on: a memory path in the session's project folder.
+                    "event": event.model_dump(mode="json") | {"path": path},
                     "step": runtime.step,
                     "action": runtime.actions,
                     "before": before,
@@ -331,8 +333,10 @@ def separate_patch(env, journal: list[dict], base_commit: str) -> bytes:
 
 
 class Runtime:
-    def __init__(self, env, engine, log, session, memory_config, initial_memory, checks):
+    def __init__(self, env, engine, log, session, memory_config, initial_memory, checks, project=None):
         self.env, self.engine, self.log, self.session = env, engine, log, session
+        # The session's memory project folder; configured memory paths resolve into it.
+        self.project = project
         self.memory_config, self.memory = memory_config, dict(initial_memory)
         self.memory_start = dict(initial_memory)
         self.checks = checks
@@ -341,7 +345,8 @@ class Runtime:
         self.journal: list[dict] = []
         self.observations: list[str] = []
         self.last_output = ""
-        self.initial_memory_context = ""
+        # The startup reminder sections that come from memory: the user's file and the index head.
+        self.initial_memory_sections: list[str] = []
         self.memory_observations: list[str] = []
         # Memory-reading observations with every memory-derived line removed, for fresh exposure.
         self.memory_stripped: list[tuple[str, str]] = []
@@ -354,6 +359,14 @@ class Runtime:
     @property
     def step(self) -> int:
         return self.log.step
+
+    def resolve(self, path: str | None) -> str | None:
+        return path if path is None or self.project is None else resolve(path, self.project)
+
+    def initial(self) -> dict[str, str]:
+        """The configured initial memory in the session's project folder."""
+        files = self.memory_config.initial()
+        return files if self.project is None else resolve_files(files, self.project)
 
     def emit(self, kind: str, **data) -> str:
         return self.log.emit(kind, session_id=self.session.id, action_id=self.action_id, action=self.actions, **data)
@@ -397,9 +410,9 @@ class Runtime:
     def observation(self, messages: list[dict]) -> None:
         text = message_text(messages)
         self.observations.append(text)
-        # Each action starts in /app, so any read of memory names the /memories root in the command itself.
+        # Each action starts in /app, so a read of memory names the memory root in the command itself.
         # One observation can carry several actions when a model call issues several tool calls.
-        if any(MEMORY_ROOT.search(command) for command in self.pending_commands):
+        if any(MEMORY_READ.search(command) for command in self.pending_commands):
             self.memory_observations.append(text)
             stripped = text
             for form in sorted({f for line in self.memory_lines for f in renderings(line)}, key=len, reverse=True):
@@ -414,8 +427,11 @@ class Runtime:
         text = message_text(incoming)
         # Fresh exposure needs a fire in this session; a carried memory copy is recall, not exposure,
         # except for memory interventions, whose own channel is the reminder and memory reads. Only
-        # memory-derived content leaves: other output of a command that also read /memories stays.
-        fresh = text.replace(self.initial_memory_context, "") if self.initial_memory_context else text
+        # memory-derived content leaves: other output of a command that also read memory stays, and so do the
+        # repository's instruction files in the reminder.
+        fresh = text
+        for part in self.initial_memory_sections:
+            fresh = fresh.replace(part, "")
         for observed, stripped in self.memory_stripped:
             fresh = fresh.replace(observed, stripped)
         matched = [
@@ -430,7 +446,7 @@ class Runtime:
         for event in self.engine.events:
             routes = {
                 route: evidence
-                for route, sources in (("startup", [self.initial_memory_context]), ("read", self.memory_observations))
+                for route, sources in (("startup", self.initial_memory_sections), ("read", self.memory_observations))
                 if (evidence := recall_evidence(event, sources, text))
             }
             if routes:
