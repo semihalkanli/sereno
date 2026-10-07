@@ -287,7 +287,8 @@ uv run sereno context-eval grade-check --dataset DIR TASK_ID ... [--out DIR] [--
 ```
 
 `grade` grades every complete session with its task's own verifier: `tests/Dockerfile` built on the exact task image
-the agent used (checked by immutable image ID, cached per `tests/` content), run in a fresh container with no
+the agent used (checked by immutable image ID, cached per `tests/` content and rebuilt when the cached image's
+`sereno.base_id` label is not that ID), run in a fresh container with no
 network under the task's verifier timeout. `grade.json` has status `graded`, `apply_failed` (reward 0),
 `verifier_timeout` (reward 0, partial 0.0, f2p and p2p null), `grader_error` (reward null, not an agent failure) or
 `not_gradable`, with reward, f2p, p2p, partial and test counts; logs go to `grade/verifier/` (regular files and

@@ -40,9 +40,11 @@ class FakeDocker:
         if args[0] == "build":
             tag = args[args.index("-t") + 1]
             layers = self.images[TASK_IMAGE]["RootFS"]["Layers"]
+            key, value = args[args.index("--label") + 1].split("=", 1)
             self.images[tag] = {
                 "Id": f"sha256:verifier-{len(self.builds) - 1}",
                 "RootFS": {"Layers": [*layers, "tests"]},
+                "Config": {"Labels": {key: value}},
             }
             return subprocess.CompletedProcess(args, 0, "", "")
         if args[0] == "run":
@@ -223,6 +225,10 @@ def test_verifier_tag_is_reused_and_rebuilt_when_stale(dataset, tmp_path):
     (dataset / "tasks" / "demo" / "tests" / "test.sh").write_text("echo changed\n")
     fourth = grader.evaluate(submit(tmp_path, image_id="sha256:repulled"), tmp_path / "d")
     assert len(docker.builds) == 3 and fourth["verifier"]["tag"] != third["verifier"]["tag"]
+    docker.images[TASK_IMAGE] = {"Id": "sha256:new-config", "RootFS": {"Layers": ["new-layer"]}}
+    fifth = grader.evaluate(submit(tmp_path, image_id="sha256:new-config"), tmp_path / "e")
+    assert len(docker.builds) == 4 and fifth["verifier"]["id"] == "sha256:verifier-3"
+    assert docker.builds[-1][docker.builds[-1].index("--label") + 1] == "sereno.base_id=sha256:new-config"
 
 
 def test_build_failure_is_grader_error(dataset, tmp_path):

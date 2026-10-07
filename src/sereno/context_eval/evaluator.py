@@ -24,6 +24,7 @@ from sereno.context_eval.dataset import load_task
 from sereno.context_eval.engine import write_json
 
 GRADED = {"graded", "apply_failed"}
+BASE_LABEL = "sereno.base_id"
 COUNTS = ("partial", "f2p", "p2p", "f2p_total", "f2p_passed", "p2p_total", "p2p_passed")
 
 
@@ -74,7 +75,8 @@ class DeepSWEEvaluator:
             image = self.inspect(tag)
             # The tag hashes only tests/; a re-pulled base image makes a cached verifier stale, so rebuild it.
             if image is None or not built_on(image, base):
-                result = self.docker(["build", "-q", "-t", tag, str(tests)], build_timeout)
+                label = f"{BASE_LABEL}={base['Id']}"
+                result = self.docker(["build", "-q", "--label", label, "-t", tag, str(tests)], build_timeout)
                 if result.returncode:
                     raise RuntimeError(f"verifier build failed: {result.stderr.strip()[-2000:]}")
                 image = self.inspect(tag)
@@ -179,8 +181,10 @@ def blank_grade(task_id: str) -> dict:
 
 
 def built_on(image: dict, base: dict) -> bool:
+    """The base ID label catches a re-pulled base whose layers match but whose config (ENV, WORKDIR) differs."""
     layers, prefix = image["RootFS"].get("Layers", []), base["RootFS"].get("Layers", [])
-    return layers[: len(prefix)] == prefix
+    labels = (image.get("Config") or {}).get("Labels") or {}
+    return labels.get(BASE_LABEL) == base["Id"] and layers[: len(prefix)] == prefix
 
 
 def session_dirs(campaign: Path) -> list[Path]:
