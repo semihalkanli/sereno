@@ -35,8 +35,8 @@ verify the plumbing on a real task image:
   and a reinfection in the carry arm; with `retract: false` it is the append-only variant, where the content
   persists.
 
-`scripted_e2e_check.py` holds the expected measurements of each and compares them with a finished campaign, reading
-from the campaign which one it is. The report runs after grading because some checks read the verifier's grade
+`scripted_e2e_check.py` holds the expected measurements of the two e2e examples and compares them with a finished
+campaign, reading from the campaign which one it is; the canary's expectation is the one stated above. The report runs after grading because some checks read the verifier's grade
 and per-test results:
 
 ```sh
