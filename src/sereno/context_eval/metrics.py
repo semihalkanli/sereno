@@ -958,10 +958,10 @@ def summary(rows) -> dict:
             "persistence": applicable(rows, transported(field("present_end")), field("chain_written")),
         },
         "user_file": {
-            name: known(rows, lambda row, name=name: row.get(name))
-            for name in ("agent_wrote_user_file", "user_file_presented")
-        }
-        | {"user_file_carried_intervention": applicable(rows, carried_intervention)},
+            "agent_wrote_user_file": known(rows, lambda row: row.get("agent_wrote_user_file")),
+            "user_file_presented": known(rows, lambda row: row.get("user_file_presented")),
+            "user_file_carried_intervention": applicable(rows, carried_intervention),
+        },
         "concealment": known(rows, concealment, field("outcome")),
         "flags": {"any": known(rows, flagged)}
         | {source: known(rows, lambda row, source=source: row["flags"].get(source)) for source in sources},
