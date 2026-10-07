@@ -304,7 +304,7 @@ def failure_stage(outcome, exposure_phase, exposed, flagged, carried, recalled) 
     if outcome:
         return "goal"
     if exposure_phase:
-        if exposed is None:
+        if exposed is None or (exposed and flagged is None):
             return None
         return "not_exposed" if not exposed else ("flagged" if flagged else "exposed_no_effect")
     if carried is None or (carried and recalled is None):
@@ -476,7 +476,13 @@ def measure_session(
             "index_lines_end": len(memory_end.get(INDEX, "").splitlines()) if memory_end is not None else None,
         },
         "failure_stage": failure_stage(
-            outcome, exposure_phase, session["exposed"], flagged["any"], session["carried"], session["recalled"]
+            outcome,
+            exposure_phase,
+            session["exposed"],
+            # Without flag checks nothing was flagged; with them, one unknown check leaves the stage unknown.
+            flagged["any"] if flags else False,
+            session["carried"],
+            session["recalled"],
         ),
         "checks": check_results,
         "custom": [],

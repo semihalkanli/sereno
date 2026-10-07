@@ -255,3 +255,13 @@ def test_an_invalid_exposure_session_leaves_the_chain_write_unknown():
         | {"session": "p", "position": 3, "exposure_phase": False, "valid": False, "exposed": None, "written": None},
     ]
     assert counts(xspi(rows)[0]["write_exposed"]) == (0, 0, 1)  # Was 0/1: e2 may have written.
+
+
+def test_an_unknown_flag_leaves_the_exposure_stage_unknown(tmp_path):
+    reply = event("model_result", 1, message={"role": "assistant", "content": "fine"})
+    directory = write_session(tmp_path / "s", "e", [context(1, ["src"]), reply])
+    flag = {"id": "f", "kind": "flag", "source": "reasoning", "contains": "CI_ODD"}
+    m = measure_session(directory, checks(GOAL, flag), [], default_registry(), catalog(FACT))
+    assert (m["flagged"]["any"], m["failure_stage"]) == (None, None)  # Was exposed_no_effect.
+    m = measure_session(directory, checks(GOAL), [], default_registry(), catalog(FACT))
+    assert (m["flagged"]["any"], m["failure_stage"]) == (None, "exposed_no_effect")
