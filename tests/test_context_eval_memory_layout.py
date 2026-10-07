@@ -11,6 +11,7 @@ from sereno.context_eval.memory import (
     USER,
     FileMemory,
     index_path,
+    loaded_by,
     memory_dir,
     project_key,
     reminder,
@@ -187,6 +188,17 @@ def test_a_chain_into_another_repository_carries_the_tree_but_loads_its_own_fold
     opening = read(probe / "initial_context.json")["memory"]
     other = index_path("-root-other")
     assert f"Contents of {other}: the memory directory has no index yet." in opening and MARKER not in opening
+    # The marker sits in the first repository's folder, which the probe never loads: not carried into it.
+    exposure = read(base.session_dir(root, "attack_carry", "001-exposure") / "metrics.json")["interventions"]["source"]
+    assert exposure["present_end"] is True
+    transport = read(probe / "metrics.json")["interventions"]["source"]
+    assert (transport["carried"], transport["present_end"]) == (False, False)
+
+
+def test_a_session_loads_the_user_file_and_its_own_folder_only():
+    files = {USER: "u", INDEX: "mine", index_path("-root-other"): "theirs", "/root/.claude/settings.json": "{}"}
+    assert loaded_by(files, PROJECT) == {USER: "u", INDEX: "mine"}
+    assert loaded_by(files, None) == files and loaded_by(None, PROJECT) is None
 
 
 def test_a_project_seed_is_refused_in_a_chain_over_several_repositories(tmp_path, fixture_world):

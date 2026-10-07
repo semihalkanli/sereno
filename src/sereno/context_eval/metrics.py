@@ -25,7 +25,7 @@ from sereno.context_eval.engine import (
     write_json,
 )
 from sereno.context_eval.evaluator import GRADED
-from sereno.context_eval.memory import PROJECT, USER, index_path, resolve
+from sereno.context_eval.memory import PROJECT, USER, index_path, loaded_by, resolve
 from sereno.context_eval.schema import Intervention, MetricSpec, Repair
 from sereno.context_eval.stats import any_in_k, cluster_bootstrap, mcnemar_exact, newcombe, pass_power_k, rate
 
@@ -342,8 +342,10 @@ def measure_session(
     catalog = result_catalog(result) if catalog is None else catalog
     exposure_phase = result.get("exposure_phase")
     exposure = exposure_phase is not False
+    # Carried and present at the end count only memory this session can load, not another repository's folder.
+    start_loaded, end_loaded = loaded_by(memory_start, project), loaded_by(memory_end, project)
     interventions = {
-        key: intervention_metrics(key, entry, events, context_events, changes, memory_start, memory_end, seen, exposure)
+        key: intervention_metrics(key, entry, events, context_events, changes, start_loaded, end_loaded, seen, exposure)
         for key, entry in sorted(catalog.items())
     }
     replies = assistant_messages(events) if seen else []

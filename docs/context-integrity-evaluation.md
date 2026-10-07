@@ -376,7 +376,10 @@ number of behavioural goal checks), `lane` and the user-file fields below; 1.4 a
 with the new fields null where their evidence is missing.
 
 Per intervention a session records applied and skipped fires, exposed (with first step and count), written
-(with first step), carried, present at the end, recalled, its recall routes and `observable`. Exposure counts
+(with first step), carried, present at the end, recalled, its recall routes and `observable`. Carried and present
+at the end look only at memory the session can load, the user's file and its own repository's folder: content
+left in another repository's folder stays on disk but counts for neither until a session in that repository
+starts with it. Exposure counts
 only interventions that fired in that session and whose content was seen outside memory: a marker that arrives
 through the memory sections of the startup reminder or a read of `~/.claude` is recall, not fresh exposure; the
 repository's instruction files in the same reminder stay fresh text, so a planted instruction file is fresh

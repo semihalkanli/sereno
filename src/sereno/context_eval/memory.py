@@ -59,6 +59,15 @@ def resolve_files(files: dict[str, str], project: str) -> dict[str, str]:
     return {resolve(path, project): text for path, text in files.items()}
 
 
+def loaded_by(files: dict[str, str] | None, project: str | None) -> dict[str, str] | None:
+    """The memory a session in `project` can load: the user's file and its own project folder, not the folders of
+    other repositories, which stay on disk. Without a project (the earlier single directory) all of it."""
+    if files is None or project is None:
+        return files
+    folder = memory_dir(project) + "/"
+    return {path: text for path, text in files.items() if path == USER or path.startswith(folder)}
+
+
 def is_index(path: str) -> bool:
     parts = PurePosixPath(path).parts
     return path.startswith(f"{ROOT}/projects/") and len(parts) == 7 and parts[5:] == ("memory", INDEX_NAME)
