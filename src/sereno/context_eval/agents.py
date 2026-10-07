@@ -4,6 +4,7 @@ import json
 import time
 from pathlib import Path
 
+from sereno.context_eval.engine import message_text
 from sereno.context_eval.environment import DEFAULT_ACTION_TIMEOUT
 from sereno.context_eval.memory import instructions
 
@@ -45,6 +46,11 @@ def rendered_output(output: dict) -> dict:
     return rendered | ({"exception_info": output["exception_info"]} if output.get("exception_info") else {})
 
 
+def final_text(messages: list[dict]) -> str:
+    """The agent's closing statement: the text of its last reply, the same for both adapters."""
+    return message_text([m for m in messages if m.get("role") == "assistant"][-1:])
+
+
 def format_error_reply(error) -> dict:
     """The model reply a mini-swe FormatError carries: the provider message when the response has one."""
     extra = dict((error.messages[0] if error.messages else {}).get("extra") or {})
@@ -66,7 +72,7 @@ class ScriptedAdapter:
             messages = [{"role": "user", "content": instruction}]
         runtime.initial_messages = list(messages)
         started = time.monotonic()
-        steps, final = 0, ""
+        steps = 0
         exit_status = "script_complete"
         for action in session.script:
             # The same caps and exit statuses as mini-swe; max_steps 0 means no step cap.
@@ -87,14 +93,19 @@ class ScriptedAdapter:
             # Counted before the action runs, as mini-swe counts a model call, for runs that end in an error.
             runtime.partial_agent_result = {"steps": steps, "cost_usd": 0.0}
             output = runtime.execute(action.command)
-            final = runtime.last_output
             if output["submitted"]:
                 exit_status = "Submitted"
                 break
             observation = [{"role": "user", "content": json.dumps(rendered_output(output), ensure_ascii=False)}]
             runtime.observation(observation)
             messages.extend(observation)
-        return {"exit_status": exit_status, "steps": steps, "cost_usd": 0.0, "final": final, "messages": messages}
+        return {
+            "exit_status": exit_status,
+            "steps": steps,
+            "cost_usd": 0.0,
+            "final": final_text(messages),
+            "messages": messages,
+        }
 
 
 class MiniSweAdapter:
@@ -112,9 +123,9 @@ class MiniSweAdapter:
             def execute(self, action, **kwargs):
                 output = runtime.execute(action["command"])
                 if output["submitted"]:
-                    final = "".join(runtime.last_output.lstrip().splitlines(keepends=True)[1:])
+                    text = "".join(runtime.last_output.lstrip().splitlines(keepends=True)[1:])
                     raise Submitted(
-                        {"role": "exit", "content": final, "extra": {"exit_status": "Submitted", "submission": final}}
+                        {"role": "exit", "content": text, "extra": {"exit_status": "Submitted", "submission": text}}
                     )
                 return output
 
@@ -194,6 +205,6 @@ class MiniSweAdapter:
             "exit_status": status,
             "steps": agent.n_calls,
             "cost_usd": agent.cost,
-            "final": info.get("submission", runtime.last_output),
+            "final": final_text(agent.messages),
             "messages": agent.messages,
         }

@@ -215,8 +215,8 @@ A check matches `contains` or `regex` against one source, optionally restricted 
   (concealment evidence, usually on `final`), `flag` (the agent called the content suspicious) and `constraint`
   (a must-not-change assertion; a match is a violation and sets the policy reward to 0).
 - Sources: `memory` (optionally one `path`), `context` (the last context sent), `observations`, `commands`,
-  `assistant`, `reasoning` (unknown when the provider returns none), `final`, `workspace` (a `path` below `/app`,
-  read at session end), `patch`, `verifier`, `verifier_tests` and `result`. `verifier` matches the session's
+  `assistant`, `reasoning` (unknown when the provider returns none), `final` (the agent's last reply), `workspace`
+  (a `path` below `/app`, read at session end), `patch`, `verifier`, `verifier_tests` and `result`. `verifier` matches the session's
   `grade.json` rendered as `key: value` lines (`status`, `reward`, `partial`, `f2p`, `p2p`, then the pass counts;
   for example `status: graded`, `reward: 0`) and `result` matches `result.json` as `exit_status: ...` and
   `limit: ...`. A grade the verifier did not decide on (missing, corrupt, `grader_error`, `not_gradable`) leaves a

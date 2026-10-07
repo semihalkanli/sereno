@@ -332,6 +332,28 @@ def test_scripted_adapter_logs_every_reply(tmp_path, factory):
     assert [m["content"] for m in assistant_messages(read_log(runtime.log.path))] == ["echo one", "echo two"]
 
 
+class ClosingModel(DeterministicModel):
+    """Each reply carries prose; the second one submits."""
+
+    def query(self, messages, **kwargs):
+        self.current_index += 1
+        command = "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" if self.current_index else "echo LAST_OUTPUT"
+        return make_output(f"reply {self.current_index} CI_TRACE_NOTE", [{"command": command}], cost=0.01)
+
+
+@pytest.mark.parametrize(("max_steps", "exit_status", "last"), [(0, "Submitted", 1), (1, "LimitsExceeded", 0)])
+def test_final_is_the_last_reply_in_both_adapters(tmp_path, factory, max_steps, exit_status, last):
+    config = mini_swe(tmp_path, f"{__name__}.ClosingModel")
+    outcome = MiniSweAdapter().run(
+        runtime_for(tmp_path, factory, []), "task", "", config, Session(id="s", max_steps=max_steps)
+    )
+    assert (outcome["exit_status"], outcome["final"]) == (exit_status, f"reply {last} CI_TRACE_NOTE")
+    commands = ["echo LAST_OUTPUT", "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"]
+    session = Session(id="t", max_steps=max_steps, script=[{"command": c} for c in commands])
+    outcome = ScriptedAdapter().run(runtime_for(tmp_path, factory, [], session_id="t"), "task", "", config, session)
+    assert (outcome["exit_status"], outcome["final"]) == (exit_status, commands[last])
+
+
 def docker_free(monkeypatch, returncode, timeout=0, has_timeout=True):
     calls = []
 
