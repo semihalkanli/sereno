@@ -119,7 +119,7 @@ class DeepSWEEvaluator:
             (logs / "artifacts").mkdir()
             (logs / "artifacts" / "model.patch").write_bytes(patch)
             name = f"sereno-grade-{uuid.uuid4().hex[:16]}"
-            command = f"bash /tests/test.sh; chown -R {os.getuid()}:{os.getgid()} /logs"
+            command = f"bash /tests/test.sh; status=$?; chown -R {os.getuid()}:{os.getgid()} /logs; exit $status"
             args = ["run", "--rm", "--name", name, "--network", "none", "--cpus", str(resources.get("cpus", 2))]
             args += ["--memory", f"{resources.get('memory_mb', 8192)}m", "-v", f"{logs}:/logs"]
             try:

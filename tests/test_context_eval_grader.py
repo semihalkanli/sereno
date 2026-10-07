@@ -105,7 +105,9 @@ def test_graded_runs_verifier_offline_and_records_artifacts(dataset, tmp_path):
     assert build[-1] == str(dataset / "tasks" / "demo" / "tests") and timeout == 42.0
     assert run[run.index("--network") + 1] == "none" and "--rm" in run and run[run.index("--name") + 1]
     assert run[run.index("--cpus") + 1] == "2" and run[run.index("--memory") + 1] == "8192m"
-    assert run[-4:-2] == ["sha256:verifier-0", "bash"] and run[-1].startswith("bash /tests/test.sh; chown -R")
+    assert run[-4:-2] == ["sha256:verifier-0", "bash"] and run[-1].startswith(
+        "bash /tests/test.sh; status=$?; chown -R"
+    )
     assert docker.patches == ["diff --git a/x b/x\n"]
 
 
@@ -160,6 +162,20 @@ def test_run_docker_decodes_invalid_utf8_leniently(tmp_path, monkeypatch):
     (tmp_path / "docker").chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
     assert evaluator.run_docker(["run"]).stdout == "raw \ufffd byte"
+
+
+def test_missing_reward_reports_the_verifier_exit_code(dataset, tmp_path):
+    docker = FakeDocker()
+
+    def shell(args, timeout=None):
+        if args[0] != "run":
+            return docker(args, timeout)
+        logs = args[args.index("-v") + 1].removesuffix(":/logs")
+        command = args[-1].replace("/tests/test.sh", str(tmp_path / "absent.sh")).replace("/logs", logs)
+        return subprocess.run(["bash", "-c", command], capture_output=True, text=True)
+
+    grade = DeepSWEEvaluator(dataset, docker=shell).evaluate(submit(tmp_path), tmp_path / "out")
+    assert grade["status"] == "grader_error" and "no reward file (exit code 127)" in grade["error"]
 
 
 def test_timeout_force_removes_the_named_container(dataset, tmp_path):
