@@ -275,6 +275,13 @@ def test_shared_copy_reads_the_test_report_of_its_origin(tmp_path):
         assert (entry["value"], entry["status"]) == expected
 
 
+def test_shared_copy_ignores_its_stale_test_report_after_the_origin_is_regraded(tmp_path):
+    regraded = [("p2p", "tests.a.test_kept", "failed"), ("f2p", "tests.b.test_cell", "passed")]
+    stale = reported(tmp_path / "c", SIMPLE, grade=graded(regraded, shared_from="o"))
+    origin = reported(tmp_path / "o", regraded)
+    assert failed_tests(graded(regraded), "measured", stale, origin) == ("p2p_failed: tests.a.test_kept", "measured")
+
+
 def test_verifier_tests_of_an_invalid_session_is_unknown(tmp_path):
     directory = reported(tmp_path / "s", SIMPLE, status="invalid")
     entry = value(measure(directory, {"id": "c", "source": "verifier_tests", "contains": "f2p_failed: "}), "c")

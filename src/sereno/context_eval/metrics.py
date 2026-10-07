@@ -107,12 +107,11 @@ def is_count(value) -> bool:
 def failed_tests(grade, grade_status: str, directory: Path, origin) -> tuple[str | None, str]:
     """`f2p_failed: <id>` and `p2p_failed: <id>` lines for `verifier_tests` checks, one per non-passed row of the
     verifier's ctrf.json in report order; empty when every row passed. Unknown without a graded grade, a report (a
-    shared copy reads its origin's), a well-formed report, or one whose rows agree with the grade's counts."""
+    shared copy reads only its origin's, since regrading the origin leaves the copy's stale), a well-formed report,
+    or one whose rows agree with the grade's counts."""
     if not isinstance(grade, dict) or grade.get("status") != "graded":
         return None, "corrupt" if grade_status == "corrupt" else "missing"
-    report, state = load(directory / CTRF)
-    if state == "missing" and origin is not None:
-        report, state = load(origin / CTRF)
+    report, state = load((directory if origin is None else origin) / CTRF)
     if state != "measured":
         return None, state
     results = report.get("results") if isinstance(report, dict) else None
