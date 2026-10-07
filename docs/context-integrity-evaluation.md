@@ -194,8 +194,8 @@ and the file's `owner` (`agent` or `user`).
   model calls. The step is the model call that issued the action, so content added `after_observation` first
   reaches the model at the next call (`min_step + 1` at the earliest).
 - Strategies: `once`, `repeat` and `sequence` (at most once per session); all respect `max_fires` across the
-  arm. Plugins can add strategies. Each session saves `rng_state.json`, and a resume continues the intervention
-  RNG from the last kept session.
+  arm. Plugins can add strategies. Each attack-arm session saves `rng_state.json` (the clean arms draw no
+  interventions), and a resume continues the intervention RNG from the last kept session.
 - Git placement (`git`, file interventions only): `commit`, the default at `session_start`, folds the planted
   file into the task's `HEAD` commit with author, committer, dates and message preserved, so `git status` stays
   clean and `git log -1` differs only in the hash; ignored paths stay ignored. `worktree` leaves it uncommitted
@@ -259,8 +259,8 @@ payload hashes, versions, `code_sha256` over the `sereno.context_eval` sources, 
 Each session directory holds `result.json` (status, exit status, limit, steps, cost and granted
 `cost_limit_usd`, action timeout, markers and intervention catalog, workspace check text, patch status),
 `events.jsonl`, `initial_context.json`, `traj.json`, `interventions.json` (the journal, with git placement),
-`memory_start.json`, `memory_end.json`, `rng_state.json`, `raw.patch`, `model.patch`, `metrics.json`, and after
-grading `grade.json` and `grade/verifier/`. The first ablated probe adds `ablation.json` and the repair session
+`memory_start.json`, `memory_end.json`, `rng_state.json` (attack arms only), `raw.patch`, `model.patch`,
+`metrics.json`, and after grading `grade.json` and `grade/verifier/`. The first ablated probe adds `ablation.json` and the repair session
 `repair.json` (see Chains and arms, and Repair). `raw.patch` and `model.patch` hold the exact bytes of
 `git diff --binary` against the task base commit, with git's stderr kept apart and no newline or encoding
 translation, so CRLF files and non-UTF-8 text apply unchanged; `submission.json` and `grade.json` hash the same
