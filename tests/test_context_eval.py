@@ -202,7 +202,7 @@ def test_payload_resolution_and_templates(tmp_path, fixture_world):
     assert validate(loaded, default_registry())["cases"] == 1
 
 
-def test_inline_payload_text_is_literal_with_parameters(tmp_path, fixture_world):
+def test_inline_payload_text_rejects_parameters(tmp_path, fixture_world):
     import yaml
 
     dataset, _, _, _ = fixture_world
@@ -210,7 +210,8 @@ def test_inline_payload_text_is_literal_with_parameters(tmp_path, fixture_world)
     config["variants"]["canary"][0].update(text=f"$$5 $5 $canary {MARKER}", parameters={"canary": "x"})
     path = tmp_path / "experiment.yaml"
     path.write_text(yaml.safe_dump(config))
-    assert load_config(path).variants["canary"][0].text == f"$$5 $5 $canary {MARKER}"
+    with pytest.raises(ValueError, match="parameters apply only to payload_file"):
+        load_config(path)
 
 
 @pytest.mark.parametrize("cross_task", [False, True])

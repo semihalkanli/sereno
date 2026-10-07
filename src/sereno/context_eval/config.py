@@ -41,7 +41,7 @@ def load_config(path: Path) -> ExperimentConfig:
                     raise ValueError(f"{event.id}: missing payload template parameter") from error
             if not event.text:
                 raise ValueError(f"{event.id}: empty payload")
-            event.payload_file = None
+            event.payload_file, event.parameters = None, {}
     return config
 
 

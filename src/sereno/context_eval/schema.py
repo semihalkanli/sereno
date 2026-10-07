@@ -68,6 +68,8 @@ class Intervention(Contract):
     def coherent(self):
         if (self.text is None) == (self.payload_file is None):
             raise ValueError("provide exactly one of text or payload_file")
+        if self.parameters and self.payload_file is None:
+            raise ValueError("parameters apply only to payload_file")
         if self.text == "" or self.old_text == "":
             raise ValueError("text and old_text cannot be empty")
         if self.method == "output" and self.phase != "after_observation":

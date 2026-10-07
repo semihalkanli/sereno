@@ -59,7 +59,7 @@ A YAML file (schema version `1.0` or `1.1`; `schema` prints the JSON Schema) def
 variants, checks, memory, arms and budgets; `1.1` adds the optional `repair` section, and a `1.0` file runs
 exactly as before. Dataset, payload, model config and instructions paths resolve relative to the
 YAML file, with `~` expansion. A `payload_file` may use `$name` templates filled from `parameters`; inline text
-is literal. `validate` checks the whole definition, the tasks and the plugins without starting a container.
+is literal and takes no `parameters`. `validate` checks the whole definition, the tasks and the plugins without starting a container.
 
 The matrix is target × variant × repeat. Each repeat has its own memory and containers; `seed` seeds the
 intervention engine's random strategies, not provider sampling.
