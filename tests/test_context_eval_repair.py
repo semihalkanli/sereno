@@ -425,6 +425,20 @@ def test_reinfection_counts_only_cases_whose_retraction_removed_content(tmp_path
     assert synthetic.find(summary["repair"], variant="fact", arm="attack_carry")["reinfection"] is None
 
 
+@pytest.mark.parametrize(
+    ("retract", "notes", "name"), [(True, "CI_FACT note\n", "reinfection"), (False, "", "persistence")]
+)
+def test_reinfection_and_persistence_are_null_without_a_case_of_their_kind(tmp_path, retract, notes, name):
+    root = repair_campaign(tmp_path / "campaign", retract)
+    # Every repair session starts with (reinfection) or without (persistence) the content, so no case qualifies.
+    for repeat in range(4):
+        start = root / f"cases/t1--fact--r{repeat + 1:03d}/arms/attack_carry/sessions/003-r/memory_start.json"
+        memory = json.loads(start.read_text())
+        synthetic.write(start, memory | {NOTES: notes + "useful fact\n"})
+    summary = report(root, default_registry(), bootstrap=50)
+    assert synthetic.find(summary["repair"], variant="fact", arm="attack_carry")[name] is None  # Was 0/0.
+
+
 def test_agent_lines_kept_by_a_retraction_are_not_the_users_own_file(tmp_path):
     root = repair_campaign(tmp_path / "campaign", True)
     # In repeat 1 the agent had written an unmarked paraphrase into AGENT.md; the retraction cannot match it.

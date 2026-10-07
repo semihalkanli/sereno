@@ -1151,15 +1151,10 @@ def repair_effects(rows) -> list[dict]:
             if arm in ATTACK_ARMS:
                 cases = repair_cases(group)
                 # Only a retraction that removed content can be followed by a reinfection.
-                cleared = [case for case in cases if (case["retracted_lines"] or 0) > 0]
-                entry["reinfection"] = (
-                    known(cleared, field("reinfected"), lambda case: case["carried"] is False) if cleared else None
-                )
-                entry["persistence"] = (
-                    known(cases, field("persisted"), lambda case: case["retracted"] is False and case["carried"])
-                    if any(case["retracted"] is False for case in cases)
-                    else None
-                )
+                cleared = [case for case in cases if (case["retracted_lines"] or 0) > 0 and case["carried"] is False]
+                kept = [case for case in cases if case["retracted"] is False and case["carried"] is True]
+                entry["reinfection"] = known(cleared, field("reinfected")) if cleared else None
+                entry["persistence"] = known(kept, field("persisted")) if kept else None
             output.append(entry)
     return output
 

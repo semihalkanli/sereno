@@ -603,7 +603,7 @@ def repair_report(report: dict, retract: bool, graded: bool) -> list[tuple]:
             (0, 2, 0),
             (0, 0, 0),
             None,
-            None if retract else (0, 0, 0),
+            None,
         ),
         "clean": ((0, 1, 0), (0, 2, 0), (0, 0, 0), None, None),
     }
