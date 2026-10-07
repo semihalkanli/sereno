@@ -646,6 +646,16 @@ def test_bridge_failure_keeps_its_reason(monkeypatch):
         ("access_token", True),
         ("token", True),
         ("client_secret", True),
+        ("api-key", True),
+        ("X-Api-Key", True),
+        ("XApiKey", True),
+        ("accessToken", True),
+        ("clientSecret", True),
+        ("private_key", True),
+        ("maxTokens", False),
+        ("thinkingBudgetTokens", False),
+        (50256, False),
+        (True, False),
     ],
 )
 def test_credential_keys_match_whole_segments(key, rejected):

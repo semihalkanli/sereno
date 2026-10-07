@@ -10,7 +10,9 @@ from string import Template
 from sereno.context_eval.contracts import Registry
 from sereno.context_eval.schema import ExperimentConfig
 
-CREDENTIAL_KEY = re.compile(r"(^|[_-])(api_?key|authorization|secret|password|passwd|token|credentials?)([_-]|$)")
+CREDENTIAL_KEY = re.compile(
+    r"(^|_)(api_?key|private_?key|access_?key|authorization|secret|password|passwd|token|credentials?)(_|$)"
+)
 
 
 def load_config(path: Path) -> ExperimentConfig:
@@ -144,8 +146,10 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
 def reject_inline_credentials(value):
     if isinstance(value, dict):
         for key, item in value.items():
-            # Whole key segments, so token budgets such as thinking_budget_tokens are not taken for credentials.
-            if CREDENTIAL_KEY.search(key.lower()):
+            # Whole key segments, so token budgets such as thinking_budget_tokens are not taken for credentials;
+            # camelCase humps, '-' and '.' separate segments too, so x-api-key and accessToken are caught.
+            words = re.sub(r"([a-z0-9])([A-Z])|([A-Z])([A-Z][a-z])", r"\1\3_\2\4", str(key))
+            if CREDENTIAL_KEY.search(re.sub(r"[-.]", "_", words.lower())):
                 raise ValueError("inline credentials are not supported; use provider environment variables")
             reject_inline_credentials(item)
     elif isinstance(value, list):
