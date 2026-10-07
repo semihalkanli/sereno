@@ -6,6 +6,7 @@ import subprocess
 import threading
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from sereno.context_eval.agents import rendered_output
@@ -186,8 +187,6 @@ def test_validation_rejects_probe_injection_unknown_strategies_and_task_traversa
 
 
 def test_payload_resolution_and_templates(tmp_path, fixture_world):
-    import yaml
-
     dataset, _, _, _ = fixture_world
     config = campaign_config(dataset).model_dump(mode="json")
     payload = tmp_path / "payload.txt"
@@ -203,8 +202,6 @@ def test_payload_resolution_and_templates(tmp_path, fixture_world):
 
 
 def test_inline_payload_text_rejects_parameters(tmp_path, fixture_world):
-    import yaml
-
     dataset, _, _, _ = fixture_world
     config = campaign_config(dataset).model_dump(mode="json")
     config["variants"]["canary"][0].update(text=f"$$5 $5 $canary {MARKER}", parameters={"canary": "x"})
@@ -382,7 +379,6 @@ def test_model_config_rejects_inline_credentials(tmp_path, fixture_world):
 
 @pytest.mark.parametrize("max_steps, expected_status", [(2, "Submitted"), (1, "LimitsExceeded")])
 def test_mini_swe_adapter_offline_with_upstream_model(tmp_path, fixture_world, max_steps, expected_status):
-    import yaml
     from minisweagent.models.test_models import make_output
 
     dataset, _, _, _ = fixture_world

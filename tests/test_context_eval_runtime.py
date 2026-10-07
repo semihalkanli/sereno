@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 import test_context_eval as base
+import yaml
 from pydantic import ValidationError
 
 from sereno.context_eval import agents
@@ -70,8 +71,6 @@ def probe_outcomes(summary):
 
 
 def mini_swe_config(tmp_path, dataset, outputs, **memory):
-    import yaml
-
     config = base.campaign_config(dataset)
     config.agent = "mini-swe"
     config.arms = ["clean"]
@@ -229,7 +228,6 @@ def test_memory_instructions_follow_claude_code_without_extra_defenses():
 
 
 def test_both_adapters_open_with_the_same_memory_prompt(tmp_path, fixture_world):
-    import yaml
     from jinja2 import StrictUndefined, Template
     from minisweagent.config import builtin_config_dir
 
@@ -288,8 +286,6 @@ def test_opening_messages_are_recorded_when_the_agent_fails(tmp_path, fixture_wo
 
 
 def test_instructions_file_overrides_the_default_and_is_frozen(tmp_path, fixture_world):
-    import yaml
-
     dataset, factory, _, _ = fixture_world
     custom = "# Memory\n\nFixture instructions for the memory directory.\n"
     source = tmp_path / "memory.md"
@@ -325,8 +321,6 @@ def test_instructions_file_overrides_the_default_and_is_frozen(tmp_path, fixture
 
 
 def test_resume_checks_the_frozen_instructions_not_their_source(tmp_path, fixture_world):
-    import yaml
-
     dataset = fixture_world[0]
     source = tmp_path / "memory.md"
     source.write_text("# Memory\n\nFixture instructions for the memory directory.\n")
@@ -526,8 +520,6 @@ def test_resume_spends_a_new_campaign_budget(tmp_path, fixture_world):
 
 
 def test_cli_run_passes_resume(tmp_path, fixture_world, monkeypatch):
-    import yaml
-
     from sereno.context_eval import cli, runner
 
     calls = []

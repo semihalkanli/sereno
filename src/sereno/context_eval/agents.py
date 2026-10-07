@@ -4,6 +4,8 @@ import json
 import time
 from pathlib import Path
 
+import yaml
+
 from sereno.context_eval.engine import message_text
 from sereno.context_eval.environment import DEFAULT_ACTION_TIMEOUT
 from sereno.context_eval.memory import instructions
@@ -11,7 +13,6 @@ from sereno.context_eval.memory import instructions
 
 def mini_swe_config(model_config_file: Path) -> dict:
     """mini-swe's built-in mini.yaml merged with the experiment's model config."""
-    import yaml
     from minisweagent.config import builtin_config_dir
     from minisweagent.utils.serialize import recursive_merge
 
@@ -23,8 +24,6 @@ def mini_swe_config(model_config_file: Path) -> dict:
 
 def agent_config(config) -> dict:
     """The mini-swe configuration a session runs with: the campaign's frozen copy once the runner set one."""
-    import yaml
-
     frozen = getattr(config, "_agent_config_file", None)
     return yaml.safe_load(frozen.read_text()) if frozen else mini_swe_config(config.model_config_file)
 

@@ -6,6 +6,7 @@ import threading
 import pytest
 import test_context_eval as base
 import test_context_eval_runtime as runtime_tests
+import yaml
 from pydantic import ValidationError
 from test_context_eval_runtime import SUBMIT, output, read, result_of
 
@@ -17,8 +18,6 @@ fixture_world = base.fixture_world
 
 
 def yaml_text(value):
-    import yaml
-
     return yaml.safe_dump(value)
 
 
@@ -202,7 +201,6 @@ def system_message(directory):
 
 def test_sessions_run_with_the_frozen_agent_configuration(tmp_path, fixture_world, monkeypatch):
     import minisweagent.config
-    import yaml
 
     from sereno.context_eval.agents import mini_swe_config
 
@@ -310,8 +308,6 @@ def test_an_oversized_first_index_line_is_cut_not_dropped():
 
 @pytest.mark.parametrize(("agent", "seconds", "has_timeout"), [("scripted", 300, None), ("mini-swe", 42, True)])
 def test_the_action_limit_is_set_by_the_runner_and_recorded(tmp_path, fixture_world, agent, seconds, has_timeout):
-    import yaml
-
     from sereno.context_eval.metrics import events_at
 
     dataset, factory, created, _ = fixture_world

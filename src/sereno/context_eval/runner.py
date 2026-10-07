@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
 
+import yaml
+
 from sereno.context_eval.agents import action_timeout, mini_swe_config
 from sereno.context_eval.config import fingerprint, validate
 from sereno.context_eval.dataset import image_identity, load_task, provenance
@@ -446,8 +448,6 @@ def run_campaign(
             update={"memory": config.memory.model_copy(update={"instructions_file": instructions_snapshot})}
         )
     if config.agent == "mini-swe":
-        import yaml
-
         # mini.yaml merged with the model config, read once: resumed sessions never re-read site-packages.
         agent_snapshot = output / "mini-swe-config.yaml"
         previous = read(output / "manifest.json") if resume else {}

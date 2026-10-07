@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from string import Template
 
+import yaml
+
 from sereno.context_eval.contracts import Registry
 from sereno.context_eval.schema import ExperimentConfig
 
@@ -16,8 +18,6 @@ CREDENTIAL_KEY = re.compile(
 
 
 def load_config(path: Path) -> ExperimentConfig:
-    import yaml
-
     path = path.resolve()
     try:
         raw_config = yaml.safe_load(path.read_text())
@@ -90,8 +90,6 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
     if config.memory.enabled and not instructions(config.memory).strip():
         raise ValueError("memory instructions cannot be empty")
     if config.model_config_file:
-        import yaml
-
         try:
             model = yaml.safe_load(config.model_config_file.read_text())
         except yaml.YAMLError as error:
