@@ -386,6 +386,30 @@ def test_bridge_keeps_crlf_bytes(tmp_path):
     assert run_bridge({"op": "read", "path": path}, root) == "a\r\nb\r\nc\rd\n"
 
 
+@pytest.mark.parametrize(
+    ("make", "reason"),
+    [
+        (lambda m: (m / "a\\b.md").write_text("x"), "noncanonical or reserved path"),
+        (lambda m: os.close(os.open(bytes(m) + b"/n\xffm.md", os.O_CREAT | os.O_WRONLY)), "non-UTF-8 path"),
+        (lambda m: os.mkfifo(m / "pipe.md"), "non-regular memory entry"),
+    ],
+)
+def test_bridge_rejects_memory_entries_the_host_cannot_restore(tmp_path, make, reason):
+    from sereno.context_eval.memory import agent_violation
+
+    memories = tmp_path.resolve() / "m"
+    memories.mkdir()
+    make(memories)
+    script = environment.BRIDGE.replace("'/memories/'", repr(f"{memories}/")).replace(
+        "'/memories'", repr(str(memories))
+    )
+    request = json.dumps({"op": "memory", "max_files": 100, "max_bytes": 1_000_000})
+    result = subprocess.run(["python3", "-c", script], input=request, capture_output=True, text=True, timeout=10)
+    last = result.stderr.strip().splitlines()[-1]
+    assert result.returncode and last.startswith(f"ValueError: {reason}")
+    assert agent_violation(RuntimeError(f"bridge memory failed: {last}"))
+
+
 @pytest.mark.skipif(os.environ.get("SERENO_DOCKER_TESTS") != "1", reason="set SERENO_DOCKER_TESTS=1 to run Docker")
 def test_docker_bridge_round_trips_crlf(docker_env):
     docker_env.write("/app/ci_crlf.txt", "a\r\nb\r\n")

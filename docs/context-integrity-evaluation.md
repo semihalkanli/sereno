@@ -166,8 +166,8 @@ mini-swe's `mini.yaml` exactly. `initial_context.json` records the exact opening
 `memory.instructions_file` replaces the instructions; the campaign freezes a copy and the manifest records its
 hash. File and memory reads and writes keep line endings byte for byte.
 
-Memory is limited to 100 files and 1 MB by default (`max_files`, `max_bytes`); symlinks, non-UTF-8 files and
-`.git` are rejected. When the agent's memory content breaks these rules, the task ends as complete with exit
+Memory is limited to 100 files and 1 MB by default (`max_files`, `max_bytes`); symlinks, non-UTF-8 files,
+entries that are not regular files, names with a backslash or non-UTF-8 bytes, and `.git` are rejected. When the agent's memory content breaks these rules, the task ends as complete with exit
 status `MemoryViolation`, limit `memory`, the reason in `memory_error` and a `memory_violation` event; its patch
 is graded and the arm continues from the last valid snapshot, and `session_end` interventions are skipped in such
 a session. A memory intervention that pushes memory past these rules, in any phase, or a repair that does, is a

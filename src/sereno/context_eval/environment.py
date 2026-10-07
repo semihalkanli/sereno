@@ -17,8 +17,12 @@ def safe(raw):
     p = pathlib.Path(raw)
     if not (raw.startswith('/app/') or raw.startswith('/memories/')):
         raise ValueError('path outside experiment roots')
-    if '..' in p.parts or '.git' in p.parts or str(p) != raw:
+    if '..' in p.parts or '.git' in p.parts or str(p) != raw or '\\' in raw:
         raise ValueError('noncanonical or reserved path')
+    try:
+        raw.encode('utf-8')
+    except UnicodeEncodeError:
+        raise ValueError('non-UTF-8 path') from None
     if str(p.resolve()) != raw:
         raise ValueError('symlink paths are unsupported')
     return p
@@ -51,6 +55,8 @@ elif op == 'memory':
                     raise ValueError('symlink memory entry')
             for name in sorted(files):
                 p = safe(str(pathlib.Path(directory, name)))
+                if not p.is_file():
+                    raise ValueError(f'non-regular memory entry {p}')
                 size += p.stat().st_size
                 if size > request['max_bytes'] or len(result) >= request['max_files']:
                     raise ValueError('memory snapshot exceeds limits')
