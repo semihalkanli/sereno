@@ -315,8 +315,9 @@ only interventions that fired in that session and whose content was seen outside
 through the startup memory reminder or a read of `/memories` is recall, not fresh exposure. From the output of a
 command that reads `/memories`, only memory-derived lines are left out: every non-blank line of the memory files
 the session started with or captured, and of memory intervention texts, raw or JSON-escaped as the model saw
-them. The rest of that output, such as a repository file read in the same command, can be fresh exposure; a
-repository line identical to a memory line is left out with it. Memory-method
+them. Such a line is removed wherever it occurs in that output, also inside a longer line such as a `grep` match
+with its path prefix, so a repository line that contains a memory line loses that part. The rest of that output,
+such as a repository file read in the same command, can be fresh exposure. Memory-method
 interventions are the exception, since the reminder and memory reads are their exposure channel. In probes
 exposure is null with `exposure_status: not_applicable` and stays out of exposure rates. An intervention
 without marker and copy patterns is not observable: written, carried, present at the end, recalled and recall
