@@ -1,6 +1,7 @@
 """DeepSWE grading with a fake Docker runner: status mapping, image integrity and campaign bookkeeping."""
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -128,6 +129,13 @@ def test_missing_reward_is_infrastructure_error(dataset, tmp_path, sentinel):
     grade = DeepSWEEvaluator(dataset, docker=FakeDocker(crashed)).evaluate(submit(tmp_path), tmp_path / "out")
     assert grade["status"] == "grader_error" and grade["reward"] is None and grade["partial"] is None
     assert ("reward.txt -1" if sentinel else "no reward file") in grade["error"]
+
+
+def test_run_docker_decodes_invalid_utf8_leniently(tmp_path, monkeypatch):
+    (tmp_path / "docker").write_text("#!/bin/sh\nprintf 'raw \\377 byte'\n")
+    (tmp_path / "docker").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    assert evaluator.run_docker(["run"]).stdout == "raw \ufffd byte"
 
 
 def test_timeout_force_removes_the_named_container(dataset, tmp_path):

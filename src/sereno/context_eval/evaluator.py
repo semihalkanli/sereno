@@ -28,7 +28,8 @@ COUNTS = ("partial", "f2p", "p2p", "f2p_total", "f2p_passed", "p2p_total", "p2p_
 
 
 def run_docker(args: list[str], timeout: float | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=timeout)
+    # The verifier prints raw test output, which need not be valid UTF-8.
+    return subprocess.run(["docker", *args], capture_output=True, encoding="utf-8", errors="replace", timeout=timeout)
 
 
 def directory_digest(directory: Path) -> str:
