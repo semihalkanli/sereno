@@ -502,3 +502,27 @@ def test_resume_continues_the_intervention_rng(tmp_path, fixture_world):
     arm = tmp_path / "campaign" / "cases" / "first--canary--r001" / "arms" / "attack_carry" / "sessions"
     runtime_tests.invalidate(arm / "002-second")
     assert campaign(True) == draws[2:]
+
+
+def test_an_error_body_with_http_200_is_retried(monkeypatch):
+    pytest.importorskip("minisweagent")
+    import time
+
+    import httpx
+
+    from sereno.context_eval.models import TrackedOpenRouterModel
+
+    tool_call = {"id": "c1", "type": "function", "function": {"name": "bash", "arguments": '{"command": "ls"}'}}
+    replies = [
+        {
+            "choices": [{"message": {"role": "assistant", "content": "", "tool_calls": [tool_call]}}],
+            "usage": {"cost": 0.005},
+        },
+        {"id": "gen-x", "error": {"code": 502, "message": "fixture provider error"}},
+    ]
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(httpx, "post", lambda url, **kwargs: httpx.Response(200, json=replies.pop()))
+    reply = TrackedOpenRouterModel(model_name="fixture-model", cost_tracking="default").query(
+        [{"role": "user", "content": "fixture"}]
+    )
+    assert not replies and reply["extra"]["cost"] == 0.005

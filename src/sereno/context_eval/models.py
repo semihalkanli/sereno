@@ -39,9 +39,12 @@ class TrackedOpenRouterModel(OpenRouterModel):
         if not response.is_success:
             raise OpenRouterAPIError(f"OpenRouter HTTP {response.status_code}")
         try:
-            return response.json()
+            body = response.json()
         except json.JSONDecodeError as error:
             raise OpenRouterAPIError("OpenRouter returned invalid JSON") from error
+        if isinstance(body, dict) and body.get("error"):
+            raise OpenRouterAPIError("OpenRouter returned an error with HTTP 200")
+        return body
 
     def _calculate_cost(self, response) -> dict:
         """OpenRouter's billed cost; when a response reports 0 but names a positive upstream inference cost,
