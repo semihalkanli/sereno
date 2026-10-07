@@ -221,7 +221,10 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
                 result["status"] = "invalid"
                 result["cleanup_error"] = str(error)
         if config.agent != "scripted":
-            unknown = bool(result.get("error") and result["steps"] > 0 and result["cost_usd"] == 0)
+            # A model call that raised logged no model_result, so its cost is unknown even after priced calls.
+            unknown = bool(result.get("error")) and result["steps"] > sum(
+                json.loads(line)["kind"] == "model_result" for line in log.path.read_text().splitlines()
+            )
             budget.finish(allowance, result["cost_usd"], unknown=unknown)
             result["cost_status"] = "unknown" if unknown else "reported"
         result["duration_seconds"] = time.monotonic() - started

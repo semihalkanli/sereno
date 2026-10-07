@@ -100,6 +100,20 @@ def test_an_unaffordable_session_is_missing_and_resumable(tmp_path, fixture_worl
     )
 
 
+def test_a_failed_model_call_after_priced_calls_stops_the_campaign(tmp_path, fixture_world):
+    pytest.importorskip("minisweagent")
+    # The deterministic model has no second output, so its second query raises after a priced first call.
+    config = runtime_tests.mini_swe_config(tmp_path, fixture_world[0], [output("cat README.md", cost=0.4)])
+    config.arms = ["clean", "attack_carry"]
+    config.sessions = [Session(id="exposure", exposure=True), Session(id="probe")]
+    root, summary = base.run_fixture(tmp_path, fixture_world, config)
+    first = result_of(root / "clean" / "first--r001" / "sessions" / "001-exposure")
+    assert (first["status"], first["steps"], first["cost_usd"]) == ("invalid", 2, pytest.approx(0.4))
+    assert first["cost_status"] == "unknown" and read(root / "campaign.json")["unknown_cost"] is True
+    rows = {(row["arm"], row["session"]): row["status"] for row in summary["sessions"]}
+    assert rows[("attack_carry", "exposure")] == "missing"
+
+
 def test_copies_of_sessions_that_never_started_are_missing(tmp_path, fixture_world):
     pytest.importorskip("minisweagent")
     config = runtime_tests.mini_swe_config(tmp_path, fixture_world[0], [output(SUBMIT, cost=0.3)])
