@@ -44,12 +44,16 @@ def test_hook_records_openrouter_calls_only(tmp_path: Path, module: str) -> None
     assert rows[0]["cost"] == 0.25
 
 
-def test_summarize_calls_separates_failed_calls(tmp_path: Path) -> None:
+def load_cost():
     spec = importlib.util.spec_from_file_location("cost", SCRIPTS / "cost.py")
     assert spec and spec.loader
     cost = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cost)
+    return cost
 
+
+def test_summarize_calls_separates_failed_calls(tmp_path: Path) -> None:
+    cost = load_cost()
     calls = tmp_path / "calls.jsonl"
     rows = [
         {"model": "m", "provider": "P", "prompt_tokens": 10, "completion_tokens": 2, "cost": 0.5},
@@ -64,3 +68,22 @@ def test_summarize_calls_separates_failed_calls(tmp_path: Path) -> None:
     assert summary["prompt_tokens"] == 30
     assert summary["cost_usd"] == 0.75
     assert summary["by_model"]["m"]["providers"] == ["P"]
+
+
+def test_interrupted_run_still_appends_its_ledger_row(tmp_path: Path, monkeypatch) -> None:
+    cost = load_cost()
+    ledger = tmp_path / "ledger.jsonl"
+
+    def interrupted(command, env):
+        row = {"model": "m", "provider": "P", "prompt_tokens": 1, "completion_tokens": 1, "cost": 0.5}
+        Path(env["SERENO_COST_CALLS"]).write_text(json.dumps(row) + "\n")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cost.subprocess, "run", interrupted)
+    monkeypatch.setattr(cost, "git_state", lambda: {"commit": "c", "dirty": False})
+    monkeypatch.setattr(cost, "openrouter_get", lambda path: None)
+    monkeypatch.setattr(sys, "argv", ["cost.py", "--ledger", str(ledger), "run", "--label", "t", "--", "true"])
+
+    assert cost.main() == -2
+    (row,) = [json.loads(line) for line in ledger.read_text().splitlines()]
+    assert (row["exit_code"], row["calls"], row["cost_usd"]) == (-2, 1, 0.5)

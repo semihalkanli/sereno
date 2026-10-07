@@ -18,6 +18,7 @@ up.
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -97,7 +98,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     env["PYTHONPATH"] = os.pathsep.join(p for p in (str(HOOK_DIR), env.get("PYTHONPATH")) if p)
     credits_before = openrouter_get("/credits")
     t0 = time.monotonic()
-    exit_code = subprocess.run(command, env=env).returncode
+    try:
+        exit_code = subprocess.run(command, env=env).returncode
+    except KeyboardInterrupt:
+        exit_code = -signal.SIGINT
 
     row = {
         "run_id": run_id,
