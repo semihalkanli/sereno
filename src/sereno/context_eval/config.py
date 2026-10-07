@@ -35,12 +35,10 @@ def load_config(path: Path) -> ExperimentConfig:
             if event.payload_file:
                 event.payload_file = resolve(root, event.payload_file)
                 raw = event.payload_file.read_text()
-            else:
-                raw = event.text
-            try:
-                event.text = Template(raw).substitute(event.parameters) if event.parameters else raw
-            except KeyError as error:
-                raise ValueError(f"{event.id}: missing payload template parameter") from error
+                try:
+                    event.text = Template(raw).substitute(event.parameters) if event.parameters else raw
+                except KeyError as error:
+                    raise ValueError(f"{event.id}: missing payload template parameter") from error
             if not event.text:
                 raise ValueError(f"{event.id}: empty payload")
             event.payload_file = None

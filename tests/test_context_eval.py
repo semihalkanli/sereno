@@ -202,6 +202,17 @@ def test_payload_resolution_and_templates(tmp_path, fixture_world):
     assert validate(loaded, default_registry())["cases"] == 1
 
 
+def test_inline_payload_text_is_literal_with_parameters(tmp_path, fixture_world):
+    import yaml
+
+    dataset, _, _, _ = fixture_world
+    config = campaign_config(dataset).model_dump(mode="json")
+    config["variants"]["canary"][0].update(text=f"$$5 $5 $canary {MARKER}", parameters={"canary": "x"})
+    path = tmp_path / "experiment.yaml"
+    path.write_text(yaml.safe_dump(config))
+    assert load_config(path).variants["canary"][0].text == f"$$5 $5 $canary {MARKER}"
+
+
 @pytest.mark.parametrize("cross_task", [False, True])
 def test_carry_reset_causal_controls_and_clean_patch(tmp_path, fixture_world, cross_task):
     dataset, _, created, _ = fixture_world
