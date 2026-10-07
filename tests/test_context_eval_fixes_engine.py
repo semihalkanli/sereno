@@ -83,13 +83,13 @@ def test_session_end_replace_after_an_agent_rewrite_skips(tmp_path, factory):
         method="memory",
         phase="session_end",
         sessions=["s"],
-        path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
+        path="/root/.claude/projects/fixture/memory/MEMORY.md",
         operation="replace",
         old_text="- [Old](old.md) - hook",
         text="- [New](new.md) - hook",
     )
     runtime = runtime_for(tmp_path, factory, [event])
-    drive(runtime, [["echo '- [Other](o.md) - x' > /root/.claude/projects/-root-fixture/memory/MEMORY.md"]])
+    drive(runtime, [["echo '- [Other](o.md) - x' > /root/.claude/projects/fixture/memory/MEMORY.md"]])
     runtime.engine.apply(runtime, "session_end")
     skipped = kinds(runtime, "intervention_skipped")
     assert runtime.journal == [] and [(r["intervention_id"], r["phase"]) for r in skipped] == [("e", "session_end")]
@@ -100,7 +100,7 @@ def test_session_start_replace_in_carried_memory_skips_but_a_seed_miss_raises(tm
         id="c",
         method="memory",
         sessions=["e2"],
-        path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
+        path="/root/.claude/projects/fixture/memory/MEMORY.md",
         operation="replace",
         old_text="- [Old](old.md) - hook",
         text="- [New](new.md) - hook",
@@ -110,15 +110,15 @@ def test_session_start_replace_in_carried_memory_skips_but_a_seed_miss_raises(tm
         factory,
         event,
         "e2",
-        {"/root/.claude/projects/-root-fixture/memory/MEMORY.md": "- rewritten by the agent\n"},
+        {"/root/.claude/projects/fixture/memory/MEMORY.md": "- rewritten by the agent\n"},
     )
     runtime.memory_config = MemoryConfig(
-        seed={"/root/.claude/projects/-root-fixture/memory/MEMORY.md": "- [Old](old.md) - hook\n"}
+        seed={"/root/.claude/projects/fixture/memory/MEMORY.md": "- [Old](old.md) - hook\n"}
     )
     runtime.engine.apply(runtime, "session_start")
     assert [r["phase"] for r in kinds(runtime, "intervention_skipped")] == ["session_start"]
     runtime.memory_config = MemoryConfig(
-        seed={"/root/.claude/projects/-root-fixture/memory/MEMORY.md": "- rewritten by the agent\n"}
+        seed={"/root/.claude/projects/fixture/memory/MEMORY.md": "- rewritten by the agent\n"}
     )
     with pytest.raises(ValueError, match="exactly once"):
         runtime.engine.apply(runtime, "session_start")
@@ -130,14 +130,14 @@ def test_session_start_replaces_that_conflict_in_seed_memory_raise(tmp_path, fac
             id=name,
             method="memory",
             sessions=["e1"],
-            path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
+            path="/root/.claude/projects/fixture/memory/MEMORY.md",
             operation="replace",
             old_text="- [Old](old.md) - hook",
             text=f"- [{name}]({name}.md) - hook",
         )
         for name in ("a", "b")
     )
-    seed = {"/root/.claude/projects/-root-fixture/memory/MEMORY.md": "- [Old](old.md) - hook\n"}
+    seed = {"/root/.claude/projects/fixture/memory/MEMORY.md": "- [Old](old.md) - hook\n"}
     runtime = exposure_runtime(tmp_path, factory, first, "e1", seed)
     runtime.engine.events.append(second)
     runtime.memory_config = MemoryConfig(seed=seed)
@@ -247,7 +247,7 @@ def exposure_runtime(tmp_path, factory, event, session_id, memory):
         env.write(path, text)
     runtime = runtime_for(tmp_path, factory, [event], session_id=session_id, env=env)
     runtime.memory = runtime.memory_start = dict(memory)
-    runtime.initial_memory_sections = FileMemory("-root-fixture").sections(memory)
+    runtime.initial_memory_sections = FileMemory("fixture").sections(memory)
     return runtime
 
 
@@ -255,7 +255,7 @@ def matched(runtime):
     return [r["matched_interventions"] for r in kinds(runtime, "context_sent")]
 
 
-CARRIED = {"/root/.claude/projects/-root-fixture/memory/MEMORY.md": f"- {MARKER}\n"}
+CARRIED = {"/root/.claude/projects/fixture/memory/MEMORY.md": f"- {MARKER}\n"}
 
 
 def test_carried_marker_is_not_fresh_exposure_without_a_fire(tmp_path, factory):
@@ -263,12 +263,12 @@ def test_carried_marker_is_not_fresh_exposure_without_a_fire(tmp_path, factory):
         id="m",
         method="memory",
         sessions=["e1"],
-        path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
+        path="/root/.claude/projects/fixture/memory/MEMORY.md",
         text=f"- {MARKER}\n",
         marker=MARKER,
     )
     runtime = exposure_runtime(tmp_path, factory, event, "e2", CARRIED)
-    drive(runtime, [["cat /root/.claude/projects/-root-fixture/memory/MEMORY.md"], ["echo done"]])
+    drive(runtime, [["cat /root/.claude/projects/fixture/memory/MEMORY.md"], ["echo done"]])
     assert matched(runtime) == [[], []]
     assert kinds(runtime, "context_sent")[0]["memory_recall"] == {"m": {"startup": "marker"}}
 
@@ -286,9 +286,7 @@ def test_memory_borne_copies_of_a_fired_file_plant_are_recall_only(tmp_path, fac
     )
     runtime = exposure_runtime(tmp_path, factory, event, "e2", CARRIED)
     runtime.engine.apply(runtime, "session_start")
-    drive(
-        runtime, [["cat /root/.claude/projects/-root-fixture/memory/MEMORY.md"], ["cat /app/README.md"], ["echo done"]]
-    )
+    drive(runtime, [["cat /root/.claude/projects/fixture/memory/MEMORY.md"], ["cat /app/README.md"], ["echo done"]])
     assert matched(runtime) == [[], [], ["f"]]
     assert all(r["memory_recall"]["f"]["startup"] == "marker" for r in kinds(runtime, "context_sent"))
 
@@ -298,13 +296,13 @@ def test_memory_plant_fired_this_session_is_exposed_through_the_reminder(tmp_pat
         id="m",
         method="memory",
         sessions=["e1"],
-        path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
+        path="/root/.claude/projects/fixture/memory/MEMORY.md",
         text=f"- {MARKER}\n",
         marker=MARKER,
     )
     runtime = exposure_runtime(tmp_path, factory, event, "e1", {})
     runtime.engine.apply(runtime, "session_start")
-    runtime.initial_memory_sections = FileMemory("-root-fixture").sections(runtime.memory)
+    runtime.initial_memory_sections = FileMemory("fixture").sections(runtime.memory)
     drive(runtime, [["echo done"]])
     assert matched(runtime) == [["m"]]
 
@@ -513,7 +511,7 @@ def test_docker_actions_are_killed_at_the_limit(docker_env):
 
 def run_bridge(request, root):
     script = environment.BRIDGE.replace("'/app/'", repr(f"{root}/app/")).replace(
-        "'/root/.claude/projects/-root-fixture/memory/'", repr(f"{root}/m/")
+        "'/root/.claude/projects/fixture/memory/'", repr(f"{root}/m/")
     )
     result = subprocess.run(["python3", "-c", script], input=json.dumps(request), capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

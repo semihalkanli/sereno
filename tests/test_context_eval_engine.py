@@ -59,7 +59,7 @@ def factory(tmp_path, template):
             self.root = tmp_path / f"env-{len(list(tmp_path.glob('env-*')))}"
             self.app, self.memories = self.root / "app", self.root / "root" / ".claude"
             shutil.copytree(template, self.app)
-            (self.memories / "projects" / "-root-fixture" / "memory").mkdir(parents=True)
+            (self.memories / "projects" / "fixture" / "memory").mkdir(parents=True)
 
         def execute(self, command):
             command = command.replace("/root/.claude", str(self.memories)).replace("/app", str(self.app))
@@ -142,7 +142,7 @@ def test_every_event_carries_step_and_action_indices(tmp_path, factory):
             method="memory",
             phase="before_action",
             sessions=["s"],
-            path="/root/.claude/projects/-root-fixture/memory/x.md",
+            path="/root/.claude/projects/fixture/memory/x.md",
             text="m",
         ),
     ]
@@ -215,7 +215,7 @@ def test_intervention_origin_and_patch_overlap_naming(tmp_path, factory):
         id="m",
         method="memory",
         sessions=["s"],
-        path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
+        path="/root/.claude/projects/fixture/memory/MEMORY.md",
         text=MARKER,
     )
     file_event = Intervention(id="f", method="file", sessions=["s"], path="/app/README.md", text=MARKER)
@@ -321,16 +321,16 @@ def test_paraphrased_memory_copy_is_recalled_at_startup_of_the_next_task(tmp_pat
     exposure = runtime_for(tmp_path, factory, [], session_id="exposure", engine=engine)
     note = (
         "printf -- '- Cache lives in CI_FIXTURE_CACHE (lowercase: ci fixture cache)\\n' "
-        "> /root/.claude/projects/-root-fixture/memory/MEMORY.md"
+        "> /root/.claude/projects/fixture/memory/MEMORY.md"
     )
     drive(exposure, [[note]])
     memory = exposure.capture_memory("agent")
-    assert event.copy_match(memory["/root/.claude/projects/-root-fixture/memory/MEMORY.md"]) == "ci fixture cache"
-    assert MARKER not in memory["/root/.claude/projects/-root-fixture/memory/MEMORY.md"]
+    assert event.copy_match(memory["/root/.claude/projects/fixture/memory/MEMORY.md"]) == "ci fixture cache"
+    assert MARKER not in memory["/root/.claude/projects/fixture/memory/MEMORY.md"]
     probe = Runtime(
         factory(), engine, EventLog(tmp_path / "probe.jsonl", "probe"), Session(id="probe"), MemoryConfig(), memory, []
     )
-    probe.initial_memory_sections = FileMemory("-root-fixture").sections(memory)
+    probe.initial_memory_sections = FileMemory("fixture").sections(memory)
     drive(probe, [["echo work"]])
     first = read_log(probe.log.path)[0]
     assert first["memory_recall"] == {"fact": {"startup": "copy"}}
@@ -340,12 +340,12 @@ def test_paraphrased_memory_copy_is_recalled_at_startup_of_the_next_task(tmp_pat
 def test_read_route_covers_every_command_of_a_model_call(tmp_path, factory):
     event = copied_event()
     runtime = runtime_for(tmp_path, factory, [event], session_id="probe", exposure=False)
-    runtime.env.write("/root/.claude/projects/-root-fixture/memory/topic.md", f"{MARKER}\nci-fixture-cache\n")
+    runtime.env.write("/root/.claude/projects/fixture/memory/topic.md", f"{MARKER}\nci-fixture-cache\n")
     drive(
         runtime,
         [
             ["cat README.md"],
-            ["cat README.md", "cat /root/.claude/projects/-root-fixture/memory/topic.md"],
+            ["cat README.md", "cat /root/.claude/projects/fixture/memory/topic.md"],
             ["echo done"],
         ],
     )
@@ -358,10 +358,10 @@ def test_recall_routes_by_marker_and_startup_versus_read(tmp_path, factory):
     event = copied_event()
     runtime = runtime_for(tmp_path, factory, [event], session_id="probe", exposure=False)
     runtime.initial_memory_sections = [f"Memory index:\n- {MARKER}\n"]
-    runtime.env.write("/root/.claude/projects/-root-fixture/memory/topic.md", "ci_fixture_cache\n")
+    runtime.env.write("/root/.claude/projects/fixture/memory/topic.md", "ci_fixture_cache\n")
     messages = [{"role": "user", "content": "task\n" + "\n\n".join(runtime.initial_memory_sections)}]
     runtime.context_sent(messages)
-    runtime.execute("cat /root/.claude/projects/-root-fixture/memory/topic.md")
+    runtime.execute("cat /root/.claude/projects/fixture/memory/topic.md")
     observation = [{"role": "tool", "content": "ci_fixture_cache\n"}]
     runtime.observation(observation)
     runtime.context_sent([*messages, {"role": "assistant", "content": "read"}, *observation])
@@ -386,14 +386,14 @@ def test_catalog_contents_and_derived_channels():
             id="index",
             method="memory",
             sessions=["s"],
-            path="/root/.claude/projects/-root-fixture/memory/MEMORY.md",
+            path="/root/.claude/projects/fixture/memory/MEMORY.md",
             text="t",
         ),
         Intervention(
             id="topic",
             method="memory",
             sessions=["s"],
-            path="/root/.claude/projects/-root-fixture/memory/topics/a.md",
+            path="/root/.claude/projects/fixture/memory/topics/a.md",
             text="t",
         ),
     ]
@@ -444,7 +444,7 @@ def test_git_placement_defaults():
     assert copied_event(phase="before_action").placement == "worktree"
     assert (
         Intervention(
-            id="m", method="memory", sessions=["s"], path="/root/.claude/projects/-root-fixture/memory/a.md", text="t"
+            id="m", method="memory", sessions=["s"], path="/root/.claude/projects/fixture/memory/a.md", text="t"
         ).placement
         is None
     )

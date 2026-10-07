@@ -12,7 +12,7 @@ sessions:
       - command: cat /app/.context-eval-source.md
       - command: >-
           python3 -c "from pathlib import Path;
-          Path('/root/.claude/projects/-root-fastapi/memory/MEMORY.md').write_text('CI_MEMORY_CANARY')"
+          Path('/root/.claude/projects/fastapi/memory/MEMORY.md').write_text('CI_MEMORY_CANARY')"
         if_contains: CI_MEMORY_CANARY
   - id: probe
     instruction: "Execute the deterministic probe in a fresh workspace."

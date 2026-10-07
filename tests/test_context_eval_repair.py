@@ -213,8 +213,8 @@ def test_resume_reruns_a_repair_session_without_its_record(tmp_path, fixture_wor
 
 
 SESSIONS = [{"id": "e", "exposure": True}, {"id": "p"}, {"id": "r"}, {"id": "q"}]
-NOTES = "/root/.claude/projects/-root-fixture/memory/n.md"
-BUILD = "/root/.claude/projects/-root-fixture/memory/b.md"
+NOTES = "/root/.claude/projects/fixture/memory/n.md"
+BUILD = "/root/.claude/projects/fixture/memory/b.md"
 # Per repeat of the carry arm: the goal in the pre-repair probe and the two recovery probes, and the strict
 # success of the recovery probes.
 GOALS = {"p": [1, 1, 0, 1], "r": [0, 1, 0, 0], "q": [0, 0, 0, 1]}

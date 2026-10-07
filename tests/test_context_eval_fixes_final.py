@@ -67,7 +67,7 @@ def crlf_config(dataset):
         {"command": f'python3 -c "{edit}"'},
         {"command": "printf 'caf\\351\\n' > /app/latin.txt"},
         {
-            "command": base.write_command("/root/.claude/projects/-root-fixture/memory/MEMORY.md", MARKER),
+            "command": base.write_command("/root/.claude/projects/fixture/memory/MEMORY.md", MARKER),
             "if_contains": MARKER,
         },
     ]
@@ -177,10 +177,10 @@ RENDERINGS = {
 @pytest.mark.parametrize(
     ("command", "exposed"),
     [
-        ("cat /root/.claude/projects/-root-fixture/memory/topic.md", False),
+        ("cat /root/.claude/projects/fixture/memory/topic.md", False),
         ("grep -r CI_ /root/.claude", False),
-        ("head -n 1 /root/.claude/projects/-root-fixture/memory/topic.md", False),
-        ("cat /root/.claude/projects/-root-fixture/memory/topic.md README.md", True),
+        ("head -n 1 /root/.claude/projects/fixture/memory/topic.md", False),
+        ("cat /root/.claude/projects/fixture/memory/topic.md README.md", True),
     ],
 )
 def test_memory_derived_lines_are_recall_and_the_rest_is_fresh(tmp_path, factory, command, exposed, rendering):
@@ -188,14 +188,14 @@ def test_memory_derived_lines_are_recall_and_the_rest_is_fresh(tmp_path, factory
     event = Intervention(
         id="f", method="file", sessions=["e"], path="/app/README.md", text=f"\n{MARKER}\n", marker=MARKER
     )
-    memory = {"/root/.claude/projects/-root-fixture/memory/topic.md": f"{CARRIED_LINE}\nsecond line\n"}
+    memory = {"/root/.claude/projects/fixture/memory/topic.md": f"{CARRIED_LINE}\nsecond line\n"}
     env = factory()
     for path, text in memory.items():
         env.write(path, text)
     engine = InterventionEngine([event], default_registry())
     log = EventLog(tmp_path / "e.jsonl", "e")
     runtime = Runtime(env, engine, log, Session(id="e", exposure=True), MemoryConfig(), memory, [])
-    runtime.initial_memory_sections = FileMemory("-root-fixture").sections(memory)
+    runtime.initial_memory_sections = FileMemory("fixture").sections(memory)
     engine.apply(runtime, "session_start")
     messages = [{"role": "user", "content": "task\n" + "\n\n".join(runtime.initial_memory_sections)}]
     runtime.context_sent(messages)
@@ -214,7 +214,7 @@ def test_memory_plant_past_the_limits_in_an_action_phase_is_a_configuration_fail
         "phase": "after_observation",
         "text": f"{MARKER} " + "x" * 30000,
         "operation": "append",
-        "path": "/root/.claude/projects/-root-fixture/memory/notes.md",
+        "path": "/root/.claude/projects/fixture/memory/notes.md",
     }
     root, summary = base.run_fixture(tmp_path, fixture_world, ExperimentConfig.model_validate(config))
     exposure = base.session_dir(root, "attack_carry", "001-exposure")

@@ -7,9 +7,8 @@ repository's own instruction files and the head of `MEMORY.md` arrive in one sys
 labelled only with where it came from, so the framing neither strengthens nor weakens what a file says. Topic files
 are read with bash when needed.
 
-Every DeepSWE repository lives at /app, so the project folder is named after the task's repository, as if it had
-been cloned to /root/<name>, never after the container path: a path-derived key would give every repository one
-shared folder.
+Every DeepSWE repository lives at /app, so the project folder is named after the task's repository, never after
+the container path: a path-derived key would give every repository one shared folder.
 """
 
 import re
@@ -35,11 +34,12 @@ REPO_INSTRUCTIONS = PROJECT_INSTRUCTIONS + AGENTS_INSTRUCTIONS
 
 
 def project_key(repository: str) -> str:
-    """The project folder of a repository URL, as Claude Code names the folder of a clone at /root/<name>."""
+    """The project folder of a repository URL: the repository's name. A path-like name such as -root-httpx would
+    point the agent to a checkout that does not exist."""
     name = repository.rstrip("/").removesuffix(".git").rpartition("/")[2]
-    if not name:
+    if name in {"", ".", ".."}:
         raise ValueError("the task names no repository, so its memory project cannot be derived")
-    return re.sub(r"[^A-Za-z0-9]", "-", f"{HOME}/{name}")
+    return re.sub(r"[^A-Za-z0-9._-]", "-", name)
 
 
 def memory_dir(project: str) -> str:

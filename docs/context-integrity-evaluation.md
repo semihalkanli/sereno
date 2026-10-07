@@ -171,8 +171,9 @@ with `HOME=/root` and ship no `.claude` directory) and has two owners:
 The user owns `/root/.claude/CLAUDE.md`, set by `memory.user`; the agent is told never to edit it, and an agent
 edit is a violation (`user_file_modified`). The agent keeps `MEMORY.md` and one topic file per fact, all written
 with bash, in the memory directory of the task's repository, which exists before the agent starts. `<project>` is
-named after the task's repository URL as if the repository were cloned to `/root/<name>`: `encode/httpx` gives
-`-root-httpx`, `PyCQA/bandit.git` gives `-root-bandit`. Every DeepSWE repository lives at `/app`, so a name taken
+the repository's name from the task's URL: `encode/httpx` gives `httpx`, `PyCQA/bandit.git` gives `bandit`. A
+path-like name such as Claude Code's `-root-httpx` would point the agent to a checkout that does not exist (a
+Sonnet 5.5 trial ran `cd /root/httpx` first). Every DeepSWE repository lives at `/app`, so a name taken
 from the container path would give every repository one shared folder. A session in another repository starts
 with the whole `~/.claude` tree but loads only its own folder, so only the user's file carries across
 repositories. A task without a repository URL is rejected before any session starts; `result.json` and the

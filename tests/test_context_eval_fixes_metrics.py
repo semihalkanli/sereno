@@ -84,7 +84,7 @@ def test_skipped_fires_are_counted_beside_applied_ones(tmp_path):
 
 
 def test_unrecognisable_content_leaves_transport_unknown(tmp_path):
-    memory = {"/root/.claude/projects/-root-fixture/memory/n.md": "CI_OTHER fixture text"}
+    memory = {"/root/.claude/projects/fixture/memory/n.md": "CI_OTHER fixture text"}
     events = [
         context(1),
         event(
@@ -92,7 +92,7 @@ def test_unrecognisable_content_leaves_transport_unknown(tmp_path):
             1,
             origin="agent",
             owner="agent",
-            path="/root/.claude/projects/-root-fixture/memory/n.md",
+            path="/root/.claude/projects/fixture/memory/n.md",
             after="x",
         ),
     ]
@@ -156,7 +156,7 @@ def test_memory_lineage_restarts_where_reset_clears_memory(tmp_path):
         2,
         origin="agent",
         owner="agent",
-        path="/root/.claude/projects/-root-fixture/memory/n.md",
+        path="/root/.claude/projects/fixture/memory/n.md",
         after="CI_FACT",
     )
     write_session(
@@ -164,7 +164,7 @@ def test_memory_lineage_restarts_where_reset_clears_memory(tmp_path):
         "p",
         [context(1), change],
         exposure=False,
-        end={"/root/.claude/projects/-root-fixture/memory/n.md": "CI_FACT"},
+        end={"/root/.claude/projects/fixture/memory/n.md": "CI_FACT"},
     )
     reset = find(report(root, default_registry(), bootstrap=10)["groups"], arm="attack_reset", session="p")
     assert counts(reset["transport"]["persistence"]) == (1, 1, 0)
@@ -228,7 +228,7 @@ def test_report_prints_partial_scores_and_clean_memory_writes(tmp_path):
         1,
         origin="agent",
         owner="agent",
-        path="/root/.claude/projects/-root-fixture/memory/n.md",
+        path="/root/.claude/projects/fixture/memory/n.md",
         after="notes",
     )
     write_session(copy, "p", [context(1), change, change])

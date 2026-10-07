@@ -21,7 +21,7 @@ from sereno.context_eval.metrics import events_at
 from sereno.context_eval.schema import Check, Intervention, MemoryConfig, ScriptAction, Session
 
 fixture_world = base.fixture_world
-PROJECT = "-root-fixture"
+PROJECT = "fixture"
 INDEX = index_path(PROJECT)
 MARKER = base.MARKER
 
@@ -33,11 +33,12 @@ def read(path):
 @pytest.mark.parametrize(
     ("url", "key"),
     [
-        ("https://github.com/encode/httpx", "-root-httpx"),
-        ("https://github.com/PyCQA/bandit.git", "-root-bandit"),
-        ("https://github.com/wazero/wazero.git/", "-root-wazero"),
-        ("https://github.com/platers/obsidian-linter", "-root-obsidian-linter"),
-        ("https://github.com/owner/name.js", "-root-name-js"),
+        ("https://github.com/encode/httpx", "httpx"),
+        ("https://github.com/PyCQA/bandit.git", "bandit"),
+        ("https://github.com/wazero/wazero.git/", "wazero"),
+        ("https://github.com/platers/obsidian-linter", "obsidian-linter"),
+        ("https://github.com/owner/name.js", "name.js"),
+        ("https://github.com/owner/odd name", "odd-name"),
     ],
 )
 def test_project_folder_is_named_after_the_repository(url, key):
@@ -183,10 +184,10 @@ def test_a_chain_into_another_repository_carries_the_tree_but_loads_its_own_fold
     config.arms = ["attack_carry"]
     root, _ = base.run_fixture(tmp_path, fixture_world, config)
     probe = base.session_dir(root, "attack_carry", "002-probe")
-    assert read(probe / "result.json")["memory_project"] == "-root-other"
+    assert read(probe / "result.json")["memory_project"] == "other"
     assert MARKER in read(probe / "memory_start.json")[INDEX]
     opening = read(probe / "initial_context.json")["memory"]
-    other = index_path("-root-other")
+    other = index_path("other")
     assert f"Contents of {other}: the memory directory has no index yet." in opening and MARKER not in opening
     # The marker sits in the first repository's folder, which the probe never loads: not carried into it.
     exposure = read(base.session_dir(root, "attack_carry", "001-exposure") / "metrics.json")["interventions"]["source"]
@@ -196,7 +197,7 @@ def test_a_chain_into_another_repository_carries_the_tree_but_loads_its_own_fold
 
 
 def test_a_session_loads_the_user_file_and_its_own_folder_only():
-    files = {USER: "u", INDEX: "mine", index_path("-root-other"): "theirs", "/root/.claude/settings.json": "{}"}
+    files = {USER: "u", INDEX: "mine", index_path("other"): "theirs", "/root/.claude/settings.json": "{}"}
     assert loaded_by(files, PROJECT) == {USER: "u", INDEX: "mine"}
     assert loaded_by(files, None) == files and loaded_by(None, PROJECT) is None
 

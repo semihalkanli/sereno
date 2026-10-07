@@ -18,14 +18,14 @@ from sereno.context_eval.metrics import reinfection, report, reset_corrected
 from sereno.context_eval.runner import ablate, run_campaign
 from sereno.context_eval.schema import ExperimentConfig, Intervention
 
-INDEX = index_path("-root-fixture")
+INDEX = index_path("fixture")
 
 fixture_world = base.fixture_world
 MARKER = base.MARKER
 ARMS = ["clean", "clean_reset", "attack_carry", "attack_reset", "attack_ablate"]
 IDENTITIES = {task: {"id": "sha256:fixture", "reference": "fixture:local"} for task in ("first", "second")}
-NOTE = "/root/.claude/projects/-root-fixture/memory/note.md"
-BUILD = "/root/.claude/projects/-root-fixture/memory/build.md"
+NOTE = "/root/.claude/projects/fixture/memory/note.md"
+BUILD = "/root/.claude/projects/fixture/memory/build.md"
 CARRIED_INDEX = f"- [Note](note.md) - {MARKER}\n- [Build](build.md) - fixture build\n"
 
 
@@ -127,31 +127,31 @@ def test_ablation_removes_only_matching_lines():
     ]
     memory = {
         INDEX: "- [Alpha](alpha.md) - CI_ALPHA\r\n- [Build](build.md) - build\r\n",
-        "/root/.claude/projects/-root-fixture/memory/alpha.md": "CI_ALPHA\n\n",
-        "/root/.claude/projects/-root-fixture/memory/mixed.md": "keep this\nuse ci-beta and CI_ALPHA here\nkeep that",
+        "/root/.claude/projects/fixture/memory/alpha.md": "CI_ALPHA\n\n",
+        "/root/.claude/projects/fixture/memory/mixed.md": "keep this\nuse ci-beta and CI_ALPHA here\nkeep that",
         USER: "Prefer small patches.\nAlso note ci beta.\n",
         BUILD: "Run the fixture build.\n",
     }
     kept, record = ablate(memory, events)
     assert kept == {
         INDEX: "- [Build](build.md) - build\r\n",
-        "/root/.claude/projects/-root-fixture/memory/mixed.md": "keep this\nkeep that",
+        "/root/.claude/projects/fixture/memory/mixed.md": "keep this\nkeep that",
         USER: "Prefer small patches.\n",
         BUILD: "Run the fixture build.\n",
     }
     assert record == {
         "removed_lines": 4,
-        "removed_files": ["/root/.claude/projects/-root-fixture/memory/alpha.md"],
+        "removed_files": ["/root/.claude/projects/fixture/memory/alpha.md"],
         "files": {
             USER: {"removed_lines": 1, "kept_merged_lines": 0, "deleted": False, "interventions": ["copied"]},
             INDEX: {"removed_lines": 1, "kept_merged_lines": 0, "deleted": False, "interventions": ["marked"]},
-            "/root/.claude/projects/-root-fixture/memory/alpha.md": {
+            "/root/.claude/projects/fixture/memory/alpha.md": {
                 "removed_lines": 1,
                 "kept_merged_lines": 0,
                 "deleted": True,
                 "interventions": ["marked"],
             },
-            "/root/.claude/projects/-root-fixture/memory/mixed.md": {
+            "/root/.claude/projects/fixture/memory/mixed.md": {
                 "removed_lines": 1,
                 "kept_merged_lines": 0,
                 "deleted": False,
@@ -162,9 +162,9 @@ def test_ablation_removes_only_matching_lines():
     }
     # Nothing to match is a valid outcome: the memory is unchanged and the record says so.
     assert ablate(
-        {BUILD: "Run the fixture build.\n", "/root/.claude/projects/-root-fixture/memory/empty.md": ""}, events
+        {BUILD: "Run the fixture build.\n", "/root/.claude/projects/fixture/memory/empty.md": ""}, events
     ) == (
-        {BUILD: "Run the fixture build.\n", "/root/.claude/projects/-root-fixture/memory/empty.md": ""},
+        {BUILD: "Run the fixture build.\n", "/root/.claude/projects/fixture/memory/empty.md": ""},
         {"removed_lines": 0, "removed_files": [], "files": {}, "interventions": {"marked": 0, "copied": 0}},
     )
 
@@ -480,7 +480,7 @@ def build_campaign(root, variants=("fact", "other"), repeats=4):
                     2,
                     origin="agent",
                     owner="agent",
-                    path="/root/.claude/projects/-root-fixture/memory/n.md",
+                    path="/root/.claude/projects/fixture/memory/n.md",
                     after="CI_FACT",
                 )
             )
@@ -669,7 +669,7 @@ def test_report_reads_the_ablation_record_for_reinfection(tmp_path):
         sessions = root / f"cases/t1--fact--r{repeat:03d}/arms/attack_ablate/sessions"
         # The first two cases removed a line; the second probe of the first case held the content at its end.
         synthetic.write(sessions / "002-p" / "ablation.json", {"removed_lines": int(repeat < 3)})
-        end = {"/root/.claude/projects/-root-fixture/memory/n.md": "CI_FACT\n"} if repeat == 1 else {}
+        end = {"/root/.claude/projects/fixture/memory/n.md": "CI_FACT\n"} if repeat == 1 else {}
         synthetic.write_session(sessions / "003-q", "q", [synthetic.context(1)], exposure=False, end=end)
     summary = report(root, default_registry(), bootstrap=50)
     removed = {

@@ -19,7 +19,7 @@ from sereno.context_eval.metrics import events_at
 from sereno.context_eval.runner import COMPLETE, ended_by, run_campaign
 from sereno.context_eval.schema import MemoryConfig, Session, Target
 
-PROJECT = "-root-fixture"
+PROJECT = "fixture"
 INDEX = index_path(PROJECT)
 
 fixture_world = base.fixture_world
@@ -205,7 +205,7 @@ def test_reminder_loads_the_user_file_then_the_head_of_the_index():
         {
             USER: "Prefer small patches.\n",
             INDEX: index,
-            "/root/.claude/projects/-root-fixture/memory/note-0.md": "CI_TOPIC_FIXTURE",
+            "/root/.claude/projects/fixture/memory/note-0.md": "CI_TOPIC_FIXTURE",
         },
         PROJECT,
     )

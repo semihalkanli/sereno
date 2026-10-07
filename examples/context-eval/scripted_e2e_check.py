@@ -380,12 +380,12 @@ EXPECTED_LANES = {
 ABLATED = {
     CASE: {
         "removed_lines": 6,
-        "removed_files": ["/root/.claude/projects/-root-bandit/memory/MEMORY.md"],
+        "removed_files": ["/root/.claude/projects/bandit/memory/MEMORY.md"],
         "files": {
             "/root/.claude/CLAUDE.md": (1, 0, False, ["user"]),
-            "/root/.claude/projects/-root-bandit/memory/MEMORY.md": (2, 0, True, ["doc", "index"]),
-            "/root/.claude/projects/-root-bandit/memory/ci-fixture.md": (1, 0, False, ["topic"]),
-            "/root/.claude/projects/-root-bandit/memory/ci-notes.md": (2, 0, False, ["doc"]),
+            "/root/.claude/projects/bandit/memory/MEMORY.md": (2, 0, True, ["doc", "index"]),
+            "/root/.claude/projects/bandit/memory/ci-fixture.md": (1, 0, False, ["topic"]),
+            "/root/.claude/projects/bandit/memory/ci-notes.md": (2, 0, False, ["doc"]),
         },
         "interventions": {"doc": 3, "index": 1, "out": 0, "topic": 1, "user": 1},
     },

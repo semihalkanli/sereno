@@ -33,7 +33,7 @@ NOTE = {
     "id": "note",
     "method": "memory",
     "sessions": ["e"],
-    "path": "/root/.claude/projects/-root-fixture/memory/notes.md",
+    "path": "/root/.claude/projects/fixture/memory/notes.md",
     "text": "CI_NOTE inert fixture",
     "marker": "CI_NOTE",
 }
@@ -321,7 +321,7 @@ def test_per_test_lines_validate_only_on_verifier_tests():
     rejected = [
         {
             "source": "verifier_tests",
-            "path": "/root/.claude/projects/-root-fixture/memory/x.md",
+            "path": "/root/.claude/projects/fixture/memory/x.md",
             "contains": "f2p_failed: ",
         },
         {"source": "verifier", "contains": "f2p_failed: tests.b"},
@@ -428,7 +428,7 @@ def fires(*keys):
 
 def test_lanes_split_rates_and_mixed_variants_are_split_per_intervention(tmp_path):
     variants = {"mixed": [REPO, NOTE], "trusted": [TRUSTED]}
-    notes = {"/root/.claude/projects/-root-fixture/memory/notes.md": "CI_NOTE"}
+    notes = {"/root/.claude/projects/fixture/memory/notes.md": "CI_NOTE"}
     exposure = {"events": fires("src", "note"), "end": notes}
     probe = {"events": [action("echo CI_GOAL")], "start": notes, "end": notes}
     root = campaign(
