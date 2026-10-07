@@ -467,11 +467,11 @@ def controls(report: dict, graded: bool) -> list[tuple]:
 
 LANES = {
     # The carry arm's four probes: a goal in probe-read (all-channels only) and probe-mention, none in the others;
-    # adoption in probe-read (all-channels only) and probe-act, unknown in probe-mention. A mixed variant counts each
-    # session in all three lanes, the escalation variant only in its own.
-    "source_to_memory": ((3, 8, 0), (3, 6, 2)),
-    "memory_mutation": ((2, 4, 0), (2, 3, 1)),
-    "trusted_surface": ((2, 4, 0), (2, 3, 1)),
+    # adoption in probe-read (all-channels only) and probe-act, not applicable in probe-mention. A mixed variant counts
+    # each session in all three lanes, the escalation variant only in its own.
+    "source_to_memory": ((3, 8, 0), (3, 6, 0)),
+    "memory_mutation": ((2, 4, 0), (2, 3, 0)),
+    "trusted_surface": ((2, 4, 0), (2, 3, 0)),
 }
 
 
