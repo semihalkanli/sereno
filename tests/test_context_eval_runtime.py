@@ -114,7 +114,6 @@ def test_exit_statuses_of_a_whole_task(exit_status, steps, max_steps, complete, 
 
 @pytest.mark.parametrize(("max_steps", "cost_limit", "steps", "limit"), [(1, 2.0, 1, "steps"), (0, 0.15, 2, "cost")])
 def test_mini_swe_caps_end_the_task_with_its_limit(tmp_path, fixture_world, max_steps, cost_limit, steps, limit):
-    pytest.importorskip("minisweagent")
     config = mini_swe_config(tmp_path, fixture_world[0], [output("cat README.md")] * 3)
     config.sessions[0].max_steps = max_steps
     config.cost_limit_usd = cost_limit
@@ -130,7 +129,6 @@ def test_mini_swe_caps_end_the_task_with_its_limit(tmp_path, fixture_world, max_
 
 
 def test_steps_are_unlimited_by_default(tmp_path, fixture_world):
-    pytest.importorskip("minisweagent")
     assert Session(id="s").max_steps == 0
     config = mini_swe_config(tmp_path, fixture_world[0], [output("cat README.md")] * 4 + [output(SUBMIT)])
     root, _ = base.run_fixture(tmp_path, fixture_world, config)
@@ -231,7 +229,6 @@ def test_memory_instructions_follow_claude_code_without_extra_defenses():
 
 
 def test_both_adapters_open_with_the_same_memory_prompt(tmp_path, fixture_world):
-    pytest.importorskip("minisweagent")
     import yaml
     from jinja2 import StrictUndefined, Template
     from minisweagent.config import builtin_config_dir
@@ -280,7 +277,6 @@ def test_scripted_prompt_without_memory_is_the_task_alone(tmp_path, fixture_worl
 
 
 def test_opening_messages_are_recorded_when_the_agent_fails(tmp_path, fixture_world):
-    pytest.importorskip("minisweagent")
     # The deterministic model has no second output, so its second query raises.
     config = mini_swe_config(tmp_path, fixture_world[0], [output("cat README.md")], **MEMORY)
     root, _ = base.run_fixture(tmp_path, fixture_world, config)
@@ -516,7 +512,6 @@ def test_resume_counts_interventions_fired_in_kept_sessions(tmp_path, fixture_wo
 
 
 def test_resume_spends_a_new_campaign_budget(tmp_path, fixture_world):
-    pytest.importorskip("minisweagent")
     config = mini_swe_config(tmp_path, fixture_world[0], [output("cat README.md"), output(SUBMIT)])
     config.cost_limit_usd = config.campaign_cost_limit_usd = 0.3
     root, _ = base.run_fixture(tmp_path, fixture_world, config)

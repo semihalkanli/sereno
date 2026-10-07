@@ -382,7 +382,6 @@ def test_model_config_rejects_inline_credentials(tmp_path, fixture_world):
 
 @pytest.mark.parametrize("max_steps, expected_status", [(2, "Submitted"), (1, "LimitsExceeded")])
 def test_mini_swe_adapter_offline_with_upstream_model(tmp_path, fixture_world, max_steps, expected_status):
-    pytest.importorskip("minisweagent")
     import yaml
     from minisweagent.models.test_models import make_output
 
@@ -486,7 +485,6 @@ def test_memory_index_byte_limit_preserves_utf8():
 
 
 def test_openrouter_httpx_transport_without_network(monkeypatch):
-    pytest.importorskip("minisweagent")
     import httpx
 
     from sereno.context_eval.models import TrackedOpenRouterModel

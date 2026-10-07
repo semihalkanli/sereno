@@ -75,7 +75,6 @@ def test_session_cap_cannot_exceed_the_campaign_cap(fixture_world):
 
 
 def test_an_unaffordable_session_is_missing_and_resumable(tmp_path, fixture_world):
-    pytest.importorskip("minisweagent")
     config = runtime_tests.mini_swe_config(tmp_path, fixture_world[0], [output(SUBMIT, cost=0.3)])
     config.sessions = [Session(id="first-task"), Session(id="second-task"), Session(id="third-task")]
     config.cost_limit_usd, config.campaign_cost_limit_usd = 0.5, 0.7
@@ -101,7 +100,6 @@ def test_an_unaffordable_session_is_missing_and_resumable(tmp_path, fixture_worl
 
 
 def test_a_failed_model_call_after_priced_calls_stops_the_campaign(tmp_path, fixture_world):
-    pytest.importorskip("minisweagent")
     # The deterministic model has no second output, so its second query raises after a priced first call.
     config = runtime_tests.mini_swe_config(tmp_path, fixture_world[0], [output("cat README.md", cost=0.4)])
     config.arms = ["clean", "attack_carry"]
@@ -115,7 +113,6 @@ def test_a_failed_model_call_after_priced_calls_stops_the_campaign(tmp_path, fix
 
 
 def test_a_failed_model_call_after_a_reply_with_a_line_separator_still_settles_its_cost(tmp_path, fixture_world):
-    pytest.importorskip("minisweagent")
     # The event log keeps U+2028 raw, so the cost settlement must not split the log on it.
     config = runtime_tests.mini_swe_config(tmp_path, fixture_world[0], [output("printf 'a\u2028b'", cost=0.4)])
     config.arms = ["clean"]
@@ -128,7 +125,6 @@ def test_a_failed_model_call_after_a_reply_with_a_line_separator_still_settles_i
 
 
 def test_copies_of_sessions_that_never_started_are_missing(tmp_path, fixture_world):
-    pytest.importorskip("minisweagent")
     config = runtime_tests.mini_swe_config(tmp_path, fixture_world[0], [output(SUBMIT, cost=0.3)])
     config.arms = ["clean", "attack_carry", "attack_reset"]
     config.sessions = [Session(id="exposure", exposure=True), Session(id="probe")]
@@ -178,7 +174,6 @@ def openrouter_reply(monkeypatch, usage):
 
 
 def test_zero_billed_cost_falls_back_to_the_upstream_cost(monkeypatch):
-    pytest.importorskip("minisweagent")
     extra = openrouter_reply(monkeypatch, ZERO_COST_USAGE)["extra"]
     assert (extra["cost"], extra["cost_source"]) == (0.00410435, "upstream")
     assert extra["actions"][0]["command"] == "ls"
@@ -188,7 +183,6 @@ def test_zero_billed_cost_falls_back_to_the_upstream_cost(monkeypatch):
 
 @pytest.mark.parametrize(("cost", "cost_details"), [(0, None), (0, {}), (None, {"upstream_inference_cost": 0})])
 def test_a_response_without_any_cost_still_fails(monkeypatch, cost, cost_details):
-    pytest.importorskip("minisweagent")
     usage = {key: value for key, value in ZERO_COST_USAGE.items() if key != "cost_details"} | {"cost": cost}
     if cost_details is not None:
         usage["cost_details"] = cost_details
@@ -207,7 +201,6 @@ def system_message(directory):
 
 
 def test_sessions_run_with_the_frozen_agent_configuration(tmp_path, fixture_world, monkeypatch):
-    pytest.importorskip("minisweagent")
     import minisweagent.config
     import yaml
 
@@ -250,7 +243,6 @@ def test_sessions_run_with_the_frozen_agent_configuration(tmp_path, fixture_worl
     ],
 )
 def test_resume_refuses_other_code(tmp_path, fixture_world, key, value):
-    pytest.importorskip("minisweagent")
     config = two_task_campaign(tmp_path, fixture_world)
     root, _ = base.run_fixture(tmp_path, fixture_world, config)
     manifest = read(root / "manifest.json")
@@ -260,7 +252,6 @@ def test_resume_refuses_other_code(tmp_path, fixture_world, key, value):
 
 
 def test_resume_refuses_a_changed_frozen_agent_configuration(tmp_path, fixture_world):
-    pytest.importorskip("minisweagent")
     config = two_task_campaign(tmp_path, fixture_world)
     root, _ = base.run_fixture(tmp_path, fixture_world, config)
     with (root / "mini-swe-config.yaml").open("a") as stream:
@@ -270,7 +261,6 @@ def test_resume_refuses_a_changed_frozen_agent_configuration(tmp_path, fixture_w
 
 
 def test_a_campaign_started_before_freezing_freezes_on_resume(tmp_path, fixture_world):
-    pytest.importorskip("minisweagent")
     from sereno.context_eval.agents import mini_swe_config
 
     config = two_task_campaign(tmp_path, fixture_world)
@@ -326,7 +316,6 @@ def test_the_action_limit_is_set_by_the_runner_and_recorded(tmp_path, fixture_wo
 
     dataset, factory, created, _ = fixture_world
     if agent == "mini-swe":
-        pytest.importorskip("minisweagent")
         config = runtime_tests.mini_swe_config(tmp_path, dataset, [output(SUBMIT)])
         model = yaml.safe_load(config.model_config_file.read_text()) | {"environment": {"timeout": 42}}
         config.model_config_file.write_text(yaml.safe_dump(model))
@@ -432,7 +421,6 @@ def test_snapshot_failures_caused_by_memory_content(message, agent):
 
 
 def test_mini_swe_memory_violation_keeps_its_trajectory(tmp_path, fixture_world):
-    pytest.importorskip("minisweagent")
     config = runtime_tests.mini_swe_config(
         tmp_path, fixture_world[0], [output(base.write_command(NOTE, "CI_NOTE")), output(OVERSIZED)], max_bytes=25000
     )
@@ -505,7 +493,6 @@ def test_resume_continues_the_intervention_rng(tmp_path, fixture_world):
 
 
 def test_an_error_body_with_http_200_is_retried(monkeypatch):
-    pytest.importorskip("minisweagent")
     import time
 
     import httpx
