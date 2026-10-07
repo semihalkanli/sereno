@@ -72,9 +72,11 @@ class EventLog:
         self.path, self.run_id = path, run_id
         self.sequence = 0
         self.step = 0
+        self.kinds = Counter()
 
     def emit(self, kind: str, **data) -> str:
         self.sequence += 1
+        self.kinds[kind] += 1
         event_id = f"e{self.sequence:06d}"
         record = {
             "schema_version": "1.0",

@@ -114,6 +114,19 @@ def test_a_failed_model_call_after_priced_calls_stops_the_campaign(tmp_path, fix
     assert rows[("attack_carry", "exposure")] == "missing"
 
 
+def test_a_failed_model_call_after_a_reply_with_a_line_separator_still_settles_its_cost(tmp_path, fixture_world):
+    pytest.importorskip("minisweagent")
+    # The event log keeps U+2028 raw, so the cost settlement must not split the log on it.
+    config = runtime_tests.mini_swe_config(tmp_path, fixture_world[0], [output("printf 'a\u2028b'", cost=0.4)])
+    config.arms = ["clean"]
+    config.sessions = [Session(id="exposure", exposure=True), Session(id="probe")]
+    root, _ = base.run_fixture(tmp_path, fixture_world, config)
+    first = result_of(root / "clean" / "first--r001" / "sessions" / "001-exposure")
+    assert (first["steps"], first["cost_usd"], first["cost_status"]) == (2, pytest.approx(0.4), "unknown")
+    campaign = read(root / "campaign.json")
+    assert campaign["cost_usd"] == pytest.approx(0.4) and campaign["unknown_cost"] is True
+
+
 def test_copies_of_sessions_that_never_started_are_missing(tmp_path, fixture_world):
     pytest.importorskip("minisweagent")
     config = runtime_tests.mini_swe_config(tmp_path, fixture_world[0], [output(SUBMIT, cost=0.3)])
