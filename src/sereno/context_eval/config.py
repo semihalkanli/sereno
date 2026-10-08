@@ -55,11 +55,12 @@ def fingerprint(value) -> str:
 
 
 def default_registry(plugins: list[str] = ()) -> Registry:
-    from sereno.context_eval.agents import MiniSweAdapter, ScriptedAdapter
+    from sereno.context_eval.agents import AnthropicAdapter, MiniSweAdapter, ScriptedAdapter
     from sereno.context_eval.engine import BoundedStrategy
 
     registry = Registry()
     registry.register_agent("mini-swe", MiniSweAdapter())
+    registry.register_agent("anthropic", AnthropicAdapter())
     registry.register_agent("scripted", ScriptedAdapter())
     for name in ("once", "repeat", "sequence"):
         registry.register_strategy(name, BoundedStrategy(name))
@@ -77,6 +78,7 @@ def default_registry(plugins: list[str] = ()) -> Registry:
 
 
 def validate(config: ExperimentConfig, registry: Registry) -> dict:
+    from sereno.context_eval.agents import MINI_SWE_AGENTS
     from sereno.context_eval.dataset import load_task
     from sereno.context_eval.memory import instructions
 
@@ -85,8 +87,8 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
 
     if config.agent not in registry.agents:
         raise ValueError(f"unknown agent adapter: {config.agent}")
-    if config.agent == "mini-swe" and not config.model_config_file:
-        raise ValueError("mini-swe requires model_config_file")
+    if config.agent in MINI_SWE_AGENTS and not config.model_config_file:
+        raise ValueError(f"{config.agent} requires model_config_file")
     if not instructions(config.memory).strip():
         raise ValueError("memory instructions cannot be empty")
     if config.model_config_file:
@@ -113,7 +115,9 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
             "requesty",
             "deterministic",
         }
-        if model["model"].get("model_class", "") not in builtin_models:
+        if config.agent == "anthropic":
+            validate_anthropic_model(config.model_config_file)
+        elif model["model"].get("model_class", "") not in builtin_models:
             raise ValueError("model_class must name a built-in mini-swe model, not an import path")
         reject_inline_credentials(model)
     tasks = {}
@@ -140,6 +144,18 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
         "tasks": sorted(tasks),
         "agent": config.agent,
     }
+
+
+def validate_anthropic_model(model_config_file: Path):
+    """The Anthropic agent's model config before any session starts: known fields and messages.create arguments,
+    max_tokens set, and a price for the model, so a session never runs unpriced."""
+    from sereno.context_eval.agents import mini_swe_config
+    from sereno.context_eval.anthropic_model import AnthropicModelConfig
+    from sereno.pricing import ANTHROPIC_PRICES
+
+    model = AnthropicModelConfig(**mini_swe_config(model_config_file, "anthropic")["model"])
+    if model.model_name not in ANTHROPIC_PRICES:
+        raise ValueError(f"no price for model {model.model_name} in sereno.pricing")
 
 
 def reject_inline_credentials(value):

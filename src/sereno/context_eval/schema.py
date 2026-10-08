@@ -20,6 +20,8 @@ class AgentOutcome(Contract):
     cost_usd: float = Field(ge=0, allow_inf_nan=False)
     final: str = ""
     messages: list[dict[str, Any]] = []
+    # Why the provider refused the request, for a session that ended Refused.
+    stop_details: dict[str, Any] | None = None
 
 
 class Target(Contract):

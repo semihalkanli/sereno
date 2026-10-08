@@ -1,4 +1,5 @@
-"""mini-swe-agent adapter and a deterministic fixture oracle using the same runtime hooks and memory prompt."""
+"""mini-swe-agent adapters (litellm and the Anthropic SDK) and a deterministic fixture oracle using the same runtime
+hooks and memory prompt."""
 
 import json
 import time
@@ -10,29 +11,33 @@ from sereno.context_eval.engine import message_text
 from sereno.context_eval.environment import DEFAULT_ACTION_TIMEOUT
 from sereno.context_eval.memory import instructions
 
+# Adapters that run mini-swe's agent with mini.yaml merged with the experiment's model config.
+MINI_SWE_AGENTS = ("mini-swe", "anthropic")
 
-def mini_swe_config(model_config_file: Path) -> dict:
-    """mini-swe's built-in mini.yaml merged with the experiment's model config."""
+
+def mini_swe_config(model_config_file: Path, agent: str = "mini-swe") -> dict:
+    """mini-swe's built-in mini.yaml merged with the experiment's model config. The Anthropic agent passes its
+    model_kwargs verbatim, so it takes none from mini.yaml, whose drop_params is a litellm option."""
     from minisweagent.config import builtin_config_dir
     from minisweagent.utils.serialize import recursive_merge
 
-    return recursive_merge(
-        yaml.safe_load((builtin_config_dir / "mini.yaml").read_text()),
-        yaml.safe_load(model_config_file.read_text()),
-    )
+    builtin = yaml.safe_load((builtin_config_dir / "mini.yaml").read_text())
+    if agent == "anthropic":
+        del builtin["model"]["model_kwargs"]
+    return recursive_merge(builtin, yaml.safe_load(model_config_file.read_text()))
 
 
-def agent_config(config) -> dict:
+def agent_config(config, agent: str) -> dict:
     """The mini-swe configuration a session runs with: the campaign's frozen copy once the runner set one."""
     frozen = getattr(config, "_agent_config_file", None)
-    return yaml.safe_load(frozen.read_text()) if frozen else mini_swe_config(config.model_config_file)
+    return yaml.safe_load(frozen.read_text()) if frozen else mini_swe_config(config.model_config_file, agent)
 
 
 def action_timeout(config) -> int:
     """Seconds an action may run: environment.timeout of the merged mini-swe config, else the default."""
-    if config.agent != "mini-swe" or config.model_config_file is None:
+    if config.agent not in MINI_SWE_AGENTS or config.model_config_file is None:
         return DEFAULT_ACTION_TIMEOUT
-    return int((agent_config(config).get("environment") or {}).get("timeout") or DEFAULT_ACTION_TIMEOUT)
+    return int((agent_config(config, config.agent).get("environment") or {}).get("timeout") or DEFAULT_ACTION_TIMEOUT)
 
 
 def rendered_output(output: dict) -> dict:
@@ -53,8 +58,12 @@ def final_text(messages: list[dict]) -> str:
 
 def format_error_reply(error) -> dict:
     """The model reply a mini-swe FormatError carries: the provider message when the response has one."""
+    from sereno.context_eval.anthropic_model import assistant_message
+
     extra = dict((error.messages[0] if error.messages else {}).get("extra") or {})
     response = extra.get("response")
+    if isinstance(response, dict) and response.get("type") == "message":
+        return assistant_message(response) | {"extra": extra}
     choices = (response.get("choices") if isinstance(response, dict) else None) or [{}]
     message = choices[0].get("message") if isinstance(choices[0], dict) else None
     return {"role": "assistant", "content": "", **(message if isinstance(message, dict) else {}), "extra": extra}
@@ -106,13 +115,25 @@ class ScriptedAdapter:
 
 
 class MiniSweAdapter:
+    agent = "mini-swe"
+
+    def model(self, settings: dict):
+        from minisweagent.models import get_model
+
+        settings["cost_tracking"] = "default"
+        if settings.get("model_class") == "openrouter":
+            from sereno.context_eval.models import TrackedOpenRouterModel
+
+            return TrackedOpenRouterModel(**settings)
+        return get_model(config=settings)
+
     def run(self, runtime, instruction, memory_context, config, session):
         from minisweagent.agents.default import DefaultAgent
         from minisweagent.exceptions import FormatError, Submitted
-        from minisweagent.models import get_model
 
-        merged = agent_config(config)
-        merged["model"]["cost_tracking"] = "default"
+        from sereno.context_eval.anthropic_model import Refused
+
+        merged = agent_config(config, self.agent)
         # env settings from model configs must not forward host credentials or mount host paths.
         environment_vars = merged.get("environment", {}).get("env", {})
 
@@ -132,12 +153,7 @@ class MiniSweAdapter:
             def serialize(self):
                 return {"info": {"environment": "sereno-context-eval-docker"}}
 
-        if merged["model"].get("model_class") == "openrouter":
-            from sereno.context_eval.models import TrackedOpenRouterModel
-
-            model = TrackedOpenRouterModel(**merged["model"])
-        else:
-            model = get_model(config=merged["model"])
+        model = self.model(merged["model"])
 
         class ModelProxy:
             def __init__(self):
@@ -148,6 +164,18 @@ class MiniSweAdapter:
                 runtime.context_sent(messages)
                 try:
                     message = model.query(messages)
+                except Refused as error:
+                    reply = error.messages[0]
+                    self.replies.append(reply)
+                    runtime.log.emit(
+                        "model_result",
+                        session_id=runtime.session.id,
+                        cost_usd=reply["extra"]["cost"],
+                        message=reply,
+                        refusal=True,
+                        stop_details=error.messages[-1]["extra"]["stop_details"],
+                    )
+                    raise
                 except FormatError as error:
                     reply = format_error_reply(error)
                     self.replies.append(reply)
@@ -158,6 +186,17 @@ class MiniSweAdapter:
                         message=reply,
                         format_error=True,
                     )
+                    raise
+                except Exception as error:
+                    # The provider's id of a failed request, after the SDK's own retries.
+                    if request_id := getattr(error, "request_id", None):
+                        runtime.log.emit(
+                            "model_error",
+                            session_id=runtime.session.id,
+                            error_type=type(error).__name__,
+                            status_code=getattr(error, "status_code", None),
+                            request_id=request_id,
+                        )
                     raise
                 self.replies.append(message)
                 runtime.log.emit(
@@ -172,6 +211,14 @@ class MiniSweAdapter:
                 return getattr(model, name)
 
         class InstrumentedAgent(DefaultAgent):
+            def query(self):
+                try:
+                    return super().query()
+                except Refused as error:
+                    # The refused reply was billed; DefaultAgent charges only replies it keeps or format errors.
+                    self.cost += error.messages[0]["extra"]["cost"]
+                    raise
+
             def execute_actions(self, message):
                 outputs = [self.env.execute(action) for action in message.get("extra", {}).get("actions", [])]
                 observations = self.model.format_observation_messages(message, outputs, self.get_template_vars())
@@ -210,4 +257,20 @@ class MiniSweAdapter:
             "cost_usd": agent.cost,
             "final": final_text(proxy.replies),
             "messages": agent.messages,
+            **({"stop_details": info["stop_details"]} if "stop_details" in info else {}),
         }
+
+
+class AnthropicAdapter(MiniSweAdapter):
+    """mini-swe's agent with Claude through the official Anthropic SDK instead of litellm."""
+
+    agent = "anthropic"
+
+    def __init__(self, client=None):
+        # Tests pass a client; sessions build one from the provider environment.
+        self.client = client
+
+    def model(self, settings: dict):
+        from sereno.context_eval.anthropic_model import AnthropicModel
+
+        return AnthropicModel(client=self.client, **settings)

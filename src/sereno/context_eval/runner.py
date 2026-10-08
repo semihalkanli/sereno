@@ -17,7 +17,7 @@ from pathlib import Path
 
 import yaml
 
-from sereno.context_eval.agents import action_timeout, mini_swe_config
+from sereno.context_eval.agents import MINI_SWE_AGENTS, action_timeout, mini_swe_config
 from sereno.context_eval.config import fingerprint, validate
 from sereno.context_eval.dataset import image_identity, load_task, provenance
 from sereno.context_eval.engine import (
@@ -47,7 +47,15 @@ from sereno.context_eval.memory import (
 from sereno.context_eval.metrics import content_found, content_spans, report
 from sereno.context_eval.schema import AgentOutcome
 
-COMPLETE = {"Submitted", "LimitsExceeded", "TimeExceeded", "RepeatedFormatError", "MemoryViolation", "script_complete"}
+COMPLETE = {
+    "Submitted",
+    "LimitsExceeded",
+    "TimeExceeded",
+    "RepeatedFormatError",
+    "MemoryViolation",
+    "Refused",
+    "script_complete",
+}
 """Exit statuses that end a whole task as an agent outcome; its patch is collected for grading."""
 
 
@@ -559,7 +567,8 @@ def run_campaign(
         "python": platform.python_version(),
         "versions": {
             "sereno": version("sereno"),
-            "mini-swe-agent": version("mini-swe-agent") if config.agent == "mini-swe" else None,
+            "mini-swe-agent": version("mini-swe-agent") if config.agent in MINI_SWE_AGENTS else None,
+            **({"anthropic": version("anthropic")} if config.agent == "anthropic" else {}),
         },
         "code_sha256": code_sha256(),
         "model_config": config.model_config_file.read_text() if config.model_config_file else None,
@@ -601,7 +610,7 @@ def run_campaign(
         config = config.model_copy(
             update={"memory": config.memory.model_copy(update={"instructions_file": instructions_snapshot})}
         )
-    if config.agent == "mini-swe":
+    if config.agent in MINI_SWE_AGENTS:
         # mini.yaml merged with the model config, read once: resumed sessions never re-read site-packages.
         agent_snapshot = output / "mini-swe-config.yaml"
         previous = read(output / "manifest.json") if resume else {}
@@ -609,7 +618,7 @@ def run_campaign(
             if fingerprint(agent_snapshot.read_text()) != previous["agent_config_sha256"]:
                 raise ValueError("cannot resume: the frozen mini-swe configuration changed")
         else:
-            agent_snapshot.write_text(yaml.safe_dump(mini_swe_config(config.model_config_file)))
+            agent_snapshot.write_text(yaml.safe_dump(mini_swe_config(config.model_config_file, config.agent)))
             if resume:
                 # A campaign started before agent configurations were frozen; its versions matched above.
                 previous |= {

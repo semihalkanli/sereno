@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=1.12.1",
     "httpx>=0.28.1",
     "mini-swe-agent==2.4.6",
     "pydantic>=2.13.5",

@@ -281,10 +281,11 @@ class SessionView:
         if response.get("model") or agent.model:
             meta.append(response.get("model") or agent.model)
         if usage:
-            meta.append(
-                f"in {usage.get('prompt_tokens', 0)} (cache read {usage.get('cache_read_input_tokens') or 0}, "
-                f"write {usage.get('cache_creation_input_tokens') or 0}) out {usage.get('completion_tokens', 0)}"
-            )
+            read, write = usage.get("cache_read_input_tokens") or 0, usage.get("cache_creation_input_tokens") or 0
+            # litellm's prompt_tokens, or a native Anthropic usage, whose input_tokens leave out cached tokens.
+            prompt = usage.get("prompt_tokens", (usage.get("input_tokens") or 0) + read + write)
+            out = usage.get("completion_tokens", usage.get("output_tokens") or 0)
+            meta.append(f"in {prompt} (cache read {read}, write {write}) out {out}")
         meta.append(f"${cost:.4f}  total ${total:.4f}")
         header = self.tag(agent) + Text(f"● step {event['step']}", style="bold")
         if self.multi():
@@ -292,6 +293,9 @@ class SessionView:
         header.append("   " + "   ".join(meta), style="dim")
         if event.get("format_error"):
             header.append("   format error: the reply had no valid tool call", style="bold red")
+        if event.get("refusal"):
+            category = (event.get("stop_details") or {}).get("category") or "unspecified"
+            header.append(f"   refused by the provider (category {category}): the session ends", style="bold red")
         self.console.print()
         self.put(agent, header)
         if thinking := reasoning_text(message):
