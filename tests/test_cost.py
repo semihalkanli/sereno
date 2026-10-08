@@ -118,6 +118,31 @@ def test_hook_prices_anthropic_calls_from_their_usage(tmp_path: Path) -> None:
     assert (rows["error"]["cost"], rows["error"]["unpriced"], rows["error"]["status"]) == (None, False, 529)
 
 
+SDK_CHILD = """
+import anthropic, httpx2
+
+def handler(request):
+    usage = {"input_tokens": 1000, "output_tokens": 200, "cache_read_input_tokens": 4000}
+    body = {"id": "msg_sdk", "type": "message", "role": "assistant", "model": "claude-haiku-5-5", "content": [],
+            "stop_reason": "end_turn", "stop_sequence": None, "usage": usage}
+    return httpx2.Response(200, json=body)
+
+client = anthropic.Anthropic(api_key="test", http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
+messages = [{"role": "user", "content": "x"}]
+client.messages.create(model="claude-haiku-5-5", max_tokens=128000, timeout=6000, messages=messages)
+"""
+
+
+def test_hook_records_the_anthropic_sdk_without_streaming(tmp_path: Path) -> None:
+    calls = tmp_path / "calls.jsonl"
+    env = {**os.environ, "PYTHONPATH": str(SCRIPTS / "cost_hook"), "SERENO_COST_CALLS": str(calls)}
+    subprocess.run([sys.executable, "-c", SDK_CHILD], env=env, check=True)
+
+    [row] = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert (row["id"], row["provider"], row["prompt_tokens"]) == ("msg_sdk", "anthropic", 5000)
+    assert row["cost"] == pytest.approx((1000 + 400) * 0.10e-6 + 200 * 0.50e-6)
+
+
 def test_summarize_calls_keeps_unpriced_calls_apart(tmp_path: Path) -> None:
     cost = load_cost()
     calls = tmp_path / "calls.jsonl"
