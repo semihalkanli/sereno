@@ -89,11 +89,15 @@ session continues. Without it, an overlong action hits the host timeout 60 s lat
 the session is invalid. `result.json` and the `session_start` event record `action_timeout_seconds` and
 `has_timeout`.
 
-Exit statuses `Submitted`, `LimitsExceeded`, `TimeExceeded`, `RepeatedFormatError` and `MemoryViolation`
-complete a session: they are agent outcomes, and its patch is collected for grading. `result.json` records which
-limit ended it (`steps`, `cost`, `time` or `memory`). A reply without a tool call is logged as a `model_result`
-with `format_error: true`. An exception makes the session invalid, and the later sessions of that arm are
-written as invalid placeholders, never as silent successes.
+Exit statuses `Submitted`, `LimitsExceeded`, `TimeExceeded`, `RepeatedFormatError`, `MemoryViolation` and
+`Refused` complete a session: they are agent outcomes, and its patch is collected for grading. `result.json`
+records which limit ended it (`steps`, `cost`, `time` or `memory`). A reply without a tool call is logged as a
+`model_result` with `format_error: true`. `Refused` (the `anthropic` agent only) means the provider declined a
+request (`stop_reason: refusal`): the reply is logged as a `model_result` with `refusal: true` and its
+`stop_details` (category and explanation), which `result.json` keeps as well; its tool calls do not run. An
+exception makes the session invalid, and the later sessions of that arm are written as invalid placeholders,
+never as silent successes. A failed model request that carries a provider request id is logged as a
+`model_error` event with that id.
 
 ## Chains and arms
 
@@ -293,7 +297,8 @@ non-adoption.
 A campaign directory holds `manifest.json` (resolved config and its hash, dataset commit, image IDs, task and
 payload hashes, versions, `code_sha256` over the `sereno.context_eval` sources, plugin hashes, model config,
 `agent_config_sha256`), `campaign.json` (cases, spending, resume records), frozen `model-config.yaml`,
-`mini-swe-config.yaml` (the merged mini-swe agent configuration every session uses, resumed ones included) and
+`mini-swe-config.yaml` (the merged mini-swe agent configuration every session uses, resumed ones included; for
+the `anthropic` agent without mini.yaml's litellm `model_kwargs`) and
 `memory-instructions.md`, the `clean/` and `clean_reset/` origins, `cases/<target>--<variant>--rNNN/` with
 `case.json` and `arms/<arm>/sessions/NNN-<id>/`, and the reports.
 
@@ -524,9 +529,9 @@ asks for `display: summarized`, which changes visibility only, so each reply car
 earlier GLM 5.3 Flash setup on OpenRouter, pinned to Z.AI without fallback. Keys come from `ANTHROPIC_API_KEY` or
 `OPENROUTER_API_KEY` in the host environment, or from the repository's `.env`, which the cost wrapper loads into
 the run's environment, and model configs must not contain credentials. The wrapper's ledger records OpenRouter's
-billed cost per call and prices Anthropic calls from their token usage with the table in
-`scripts/cost_hook/sitecustomize.py` (official prices, prompt-length tier, cache reads and writes, US inference);
-a model missing from the table is reported as unpriced, not counted as free. Paid runs go through the cost wrapper:
+billed cost per call and prices Anthropic calls from their token usage with the table in `src/sereno/pricing.py`
+(official prices, prompt-length tier, cache reads and writes, US inference); a model missing from the table is
+reported as unpriced, not counted as free. Paid runs go through the cost wrapper:
 
 ```sh
 uv run scripts/cost.py run --label context-eval -- \
@@ -535,6 +540,26 @@ uv run scripts/cost.py run --label context-eval -- \
 
 `clean-chain.yaml` is the clean pilot, one chain of three bandit tasks in the clean arm; `mini-swe.yaml` adds a
 memory canary with carry and reset arms.
+
+`agent: anthropic` runs the same mini-swe agent with Claude through the official Anthropic SDK instead of
+litellm; set it with `model_config_file: model-anthropic-sdk-haiku.yaml` in either example. Everything the model
+sees and every limit stay mini-swe's: mini.yaml's templates with the memory additions, the same `bash` tool, the
+same action parsing and format error messages (a reply cut off at `max_tokens` gets the length message, as
+litellm's `finish_reason: length` does), the same step, cost and wall-clock limits and exit statuses, and the same
+cache breakpoint on the last message. The request bodies equal the ones litellm sends for the same conversation
+(`tests/test_context_eval_anthropic.py` compares them against litellm on a local stub). Its model config holds
+`model_name`, `max_retries` (the SDK's retries of connection errors, 408, 409, 429 and 5xx; default 9) and
+`model_kwargs`, which go verbatim to `messages.create`: `max_tokens` is required, and a key that is not a
+`messages.create` argument, such as litellm's `drop_params`, is an error at `validate`. The example sends what
+litellm sends for Haiku 5.5, `max_tokens: 128000` with litellm's 6000-second request timeout; the explicit
+`timeout` lets the SDK send it without streaming, so the cost wrapper sees every call. Like
+`model-anthropic-haiku.yaml`, it leaves the effort at the model's default.
+Assistant turns replay the returned content blocks unchanged and in order, thinking signatures included; the
+logged reply keeps those blocks in `content` and, like litellm's, carries `tool_calls`, `reasoning_content` (the
+thinking summary checks with source `reasoning` read) and `thinking_blocks`, with the provider response, its
+`request_id` and the cost in `extra`. Each reply is priced from its usage with `src/sereno/pricing.py`, the
+cost wrapper's table, and a model without a price fails `validate`. The manifest records the `anthropic` package
+version next to `mini-swe-agent`.
 
 ## Plugins and export
 
