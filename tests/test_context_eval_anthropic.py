@@ -76,10 +76,11 @@ class Transport:
     """Scripted replies through the SDK's own HTTP stack; every request body is kept."""
 
     def __init__(self, replies, delay=0.0):
-        self.replies, self.bodies, self.delay = list(replies), [], delay
+        self.replies, self.bodies, self.headers, self.delay = list(replies), [], [], delay
 
     def __call__(self, request):
         self.bodies.append(json.loads(request.content))
+        self.headers.append({k.lower(): v for k, v in request.headers.items()})
         time.sleep(self.delay)
         reply = self.replies[len(self.bodies) - 1]
         headers = {"request-id": f"req_{len(self.bodies)}"}
@@ -95,10 +96,11 @@ class Transport:
 
 
 class Stub(BaseHTTPRequestHandler):
-    bodies, replies = [], []
+    bodies, headers, replies = [], [], []
 
     def do_POST(self):
         Stub.bodies.append(json.loads(self.rfile.read(int(self.headers["content-length"]))))
+        Stub.headers.append({k.lower(): v for k, v in self.headers.items()})
         reply = json.dumps(Stub.replies[len(Stub.bodies) - 1]).encode()
         self.send_response(200)
         self.send_header("content-type", "application/json")
@@ -149,7 +151,7 @@ def test_requests_equal_the_ones_litellm_sends(tmp_path):
 
     server = HTTPServer(("127.0.0.1", 0), Stub)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    Stub.bodies, Stub.replies = [], SCENARIO
+    Stub.bodies, Stub.headers, Stub.replies = [], [], SCENARIO
     try:
         stub = {"api_base": f"http://127.0.0.1:{server.server_port}", "api_key": "test"}
         litellm_file = model_file(
@@ -168,6 +170,9 @@ def test_requests_equal_the_ones_litellm_sends(tmp_path):
 
     assert len(transport.bodies) == len(Stub.bodies) == 4
     assert transport.bodies == Stub.bodies
+    # The headers that change what the API does: the same version, no beta.
+    api = [[{k: v for k, v in h.items() if k.startswith("anthropic-")} for h in t.headers] for t in (transport, Stub)]
+    assert api[0] == api[1] == [{"anthropic-version": "2023-06-01"}] * 4
     first, last = transport.bodies[0], transport.bodies[-1]
     assert first["tools"] == [
         {
