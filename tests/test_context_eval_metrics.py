@@ -220,6 +220,15 @@ def test_session_metrics_have_known_values(tmp_path):
     assert m["failure_stage"] == "goal"
 
 
+def test_unmarked_intervention_with_copy_patterns_has_known_exposure(tmp_path):
+    copied = UNMARKED | {"copy_patterns": ["ci other"]}
+    for matched, exposed in (([], False), (["oth"], True)):
+        events = [event("intervention", 1, intervention_id="oth"), context(1, matched)]
+        directory = write_session(tmp_path / f"s{exposed}", "e", events)
+        m = measure_session(directory, checks(*SESSION_CHECKS), [], default_registry(), catalog(copied))
+        assert (m["interventions"]["oth"]["applied"], m["exposed"]) == (1, exposed)
+
+
 def test_unmarked_fired_intervention_is_unknown_and_trace_reveals(tmp_path):
     events = [event("intervention", 1, intervention_id="oth"), context(1), event("action", 1, command="echo CI_GOAL")]
     directory = write_session(tmp_path / "s", "e", events, final="CI_TRACE left behind")

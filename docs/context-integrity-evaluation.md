@@ -250,7 +250,8 @@ and the file's `owner` (`agent` or `user`).
 - Recognition: `marker`, unique within a variant and not contained in another of its markers, and made only of
   letters, digits and `_ : . -`, recognises verbatim content; `copy_patterns` are regexes that recognise verbatim
   or paraphrased copies (a pattern may not match empty text). Observations reach the model JSON-escaped (mini-swe's `tojson`), and copy patterns are
-  matched against observation text as the model received it. An intervention with neither is not observable.
+  matched against observation text as the model received it. Content without a marker is recognised as fresh
+  exposure by the span of its own text that a copy pattern matches. An intervention with neither is not observable.
 
 ## Checks
 
@@ -625,7 +626,7 @@ enters the patch.
 - Recall evidence relies on commands that name the memory root (`/root/.claude`, `~/.claude`, `$HOME/.claude` or
   `${HOME}/.claude`) and on the startup reminder; it is not full taint tracking. A read through `cd ~` and a
   relative path, a variable, or a script that never names the root can stay unattributed.
-- Markers and copy patterns recognise text. They cannot prove a semantic paraphrase or the agent's intent, and an
-  intervention without a marker that fired has unknown exposure, not no exposure, since fresh exposure is
-  matched by marker only (copy patterns serve recall and transport); one without either is not observable for
-  transport.
+- Markers and copy patterns recognise text. They cannot prove a semantic paraphrase or the agent's intent. Fresh
+  exposure is matched by the marker, or for content without one by the span of its own text that a copy pattern
+  recognises; an intervention with neither that fired has unknown exposure, not no exposure, and is not
+  observable for transport.

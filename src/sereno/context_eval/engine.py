@@ -154,6 +154,15 @@ def decoded(message: dict) -> str:
     return "\n".join(value for value in envelope.values() if isinstance(value, str))
 
 
+def exposed_in(event, text: str) -> bool:
+    """Whether `text` shows this content: its marker, or for content without one the span of its own text that a
+    copy pattern recognises, as the model received it."""
+    if event.marker:
+        return event.marker in text
+    copy = event.copy_match(event.text) if event.text else None
+    return bool(copy) and any(form in text for form in renderings(copy))
+
+
 def recall_evidence(event, sources: list[str], text: str) -> str | None:
     """How memory content reached an incoming context: by its marker, a copy pattern, or not at all."""
     if event.marker and event.marker in text and any(event.marker in source for source in sources):
@@ -452,9 +461,8 @@ class Runtime:
             e.id
             for e in self.engine.events
             if self.session.exposure
-            and e.marker
             and self.engine.session_fires[(e.id, self.session.id)]
-            and e.marker in (text if e.method == "memory" else fresh)
+            and exposed_in(e, text if e.method == "memory" else fresh)
         ]
         recall = {}
         for event in self.engine.events:

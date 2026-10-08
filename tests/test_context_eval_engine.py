@@ -313,6 +313,21 @@ def copied_event(**fields):
     return Intervention(**defaults | fields)
 
 
+@pytest.mark.parametrize(("read", "matched"), [("cat /app/README.md", [["fact"]]), ("echo other", [[]])])
+def test_unmarked_content_is_exposed_when_its_copy_span_reaches_the_model(tmp_path, factory, read, matched):
+    event = copied_event(
+        marker=None,
+        sessions=["s"],
+        text="\nThe fixture keeps ci-fixture-cache outside the repo.\nOther prose.\n",
+        copy_patterns=[r"(?i)\bci[-_ ]fixture[-_ ]cache\b[^\n]{0,40}\boutside\b"],
+    )
+    runtime = runtime_for(tmp_path, factory, [event])
+    runtime.engine.apply(runtime, "session_start")
+    drive(runtime, [[read], ["echo done"]])
+    contexts = [r["matched_interventions"] for r in read_log(runtime.log.path) if r["kind"] == "context_sent"]
+    assert contexts == [[], *matched]
+
+
 def test_paraphrased_memory_copy_is_recalled_at_startup_of_the_next_task(tmp_path, factory):
     from sereno.context_eval.memory import FileMemory
 

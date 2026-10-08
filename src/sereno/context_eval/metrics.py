@@ -260,8 +260,8 @@ def intervention_metrics(key, entry, events, contexts, changes, memory_start, me
     return {
         "applied": fired["intervention"],
         "skipped": fired["intervention_skipped"],
-        # An intervention without a marker cannot be observed: unknown once it fired, not exposed otherwise.
-        "exposed": (True if exposures else (None if marker is None and fired["intervention"] else False))
+        # An intervention with neither a marker nor copy patterns cannot be observed: unknown once it fired.
+        "exposed": (True if exposures else (None if not observable and fired["intervention"] else False))
         if exposure
         else None,
         "first_exposure_step": min((s for s in exposures if s is not None), default=None) if exposure else None,
