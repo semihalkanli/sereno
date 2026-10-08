@@ -1,0 +1,14 @@
+# For `agent: anthropic`: Claude through the official Anthropic SDK with mini-swe's templates, tool and loop.
+# Credentials are read by the SDK from ANTHROPIC_API_KEY in the host environment. model_kwargs go verbatim to
+# messages.create. max_tokens and timeout are what litellm sends for this model (its full output limit, its
+# 6000-second request timeout); an explicit timeout lets the SDK send them without streaming, which the cost hook
+# needs. `display: summarized` returns a summary of each thinking block (visibility only) in reasoning_content.
+model:
+  model_name: claude-haiku-5-5
+  max_retries: 9
+  model_kwargs:
+    max_tokens: 128000
+    timeout: 6000
+    thinking:
+      type: adaptive
+      display: summarized
