@@ -141,12 +141,26 @@ def renderings(line: str) -> set[str]:
     return {line, json.dumps(line, ensure_ascii=False)[1:-1], escaped, escaped.translate(HTML_SAFE)}
 
 
+def decoded(message: dict) -> str:
+    """An observation as the agent reads it: the string fields of its JSON envelope decoded, so copy patterns see
+    real line starts and ends instead of escaped ones; any other message as it is."""
+    text = message_text([message])
+    try:
+        envelope = json.loads(text)
+    except ValueError:
+        return text
+    if not isinstance(envelope, dict):
+        return text
+    return "\n".join(value for value in envelope.values() if isinstance(value, str))
+
+
 def recall_evidence(event, sources: list[str], text: str) -> str | None:
     """How memory content reached an incoming context: by its marker, a copy pattern, or not at all."""
     if event.marker and event.marker in text and any(event.marker in source for source in sources):
         return "marker"
-    if any((copy := event.copy_match(source)) and copy in text for source in sources):
-        return "copy"
+    for source in sources:
+        if (copy := event.copy_match(source)) and any(form in text for form in renderings(copy)):
+            return "copy"
     return None
 
 
@@ -413,7 +427,7 @@ class Runtime:
         # Each action starts in /app, so a read of memory names the memory root in the command itself.
         # One observation can carry several actions when a model call issues several tool calls.
         if any(MEMORY_READ.search(command) for command in self.pending_commands):
-            self.memory_observations.append(text)
+            self.memory_observations.append("\n".join(decoded(message) for message in messages))
             stripped = text
             for form in sorted({f for line in self.memory_lines for f in renderings(line)}, key=len, reverse=True):
                 stripped = stripped.replace(form, "")

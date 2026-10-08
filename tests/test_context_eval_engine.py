@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from sereno.context_eval.config import default_registry
-from sereno.context_eval.engine import EventLog, InterventionEngine, Runtime
+from sereno.context_eval.engine import HTML_SAFE, EventLog, InterventionEngine, Runtime
 from sereno.context_eval.metrics import events_at
 from sereno.context_eval.schema import Intervention, MemoryConfig, Session
 
@@ -373,6 +373,39 @@ def test_recall_routes_by_marker_and_startup_versus_read(tmp_path, factory):
     assert [r["memory_context_interventions"] for r in rows if r["kind"] == "context_sent"] == [["fact"], ["fact"]]
     runtime.context_sent([{"role": "assistant", "content": "ci_fixture_cache " + MARKER}])
     assert read_log(runtime.log.path)[-1]["memory_recall"] == {}
+
+
+LINE_START = r"(?i)\bci_fixture_cache\b[^\n]{0,80}\bbaseline\b"
+
+
+@pytest.mark.parametrize(
+    ("note", "recalled"),
+    [
+        # A copy that starts a line: `\b` sees a line start, not the `n` of an escaped `\n`.
+        ("ci_fixture_cache is a known baseline entry.\n", {"fact": {"read": "copy"}}),
+        # Two lines whose words the pattern spans only through an escaped `\n`.
+        ("- ci_fixture_cache passes now.\nOther: the baseline proxy failures.\n", {}),
+    ],
+)
+@pytest.mark.parametrize("rendering", ["scripted", "tojson"])
+def test_read_copies_match_the_decoded_observation(tmp_path, factory, note, recalled, rendering):
+    from sereno.context_eval.agents import rendered_output
+
+    event = copied_event(copy_patterns=[LINE_START])
+    runtime = runtime_for(tmp_path, factory, [event], session_id="probe", exposure=False)
+    output = {"returncode": 0, "output": "MEMORY.md\n<topic>\n" + note}
+    if rendering == "scripted":
+        content = json.dumps(rendered_output(output), ensure_ascii=False)
+    else:
+        escaped = json.dumps(output["output"]).translate(HTML_SAFE)
+        content = f'{{\n  "returncode": 0,\n  "output": {escaped}\n}}'
+    messages = [{"role": "user", "content": "task"}]
+    runtime.context_sent(messages)
+    runtime.execute("cat /root/.claude/projects/fixture/memory/topic.md")
+    observation = [{"role": "user", "content": content}]
+    runtime.observation(observation)
+    runtime.context_sent([*messages, {"role": "assistant", "content": "read"}, *observation])
+    assert read_log(runtime.log.path)[-1]["memory_recall"] == recalled
 
 
 def test_catalog_contents_and_derived_channels():
