@@ -373,7 +373,8 @@ same path (grader.py resets those). Such an edit can be a broader test or one th
 passing, so `grade` grades a patch that has one a second time and records the comparison in `grade.json`
 (schema 1.1) as `test_edits`; the official reward and every other field stay as the first run wrote them. An
 existing test file is one a `diff --git` block modifies, deletes or renames away (not `new file mode`, not a copy),
-whose path test.patch does not own, and which `is_test_path` in `evaluator.py` calls a test file: anything under a
+whose path test.patch does not own, which the task's reference solution (`solution/solution.patch`) does not
+also change, and which `is_test_path` in `evaluator.py` calls a test file: anything under a
 `tests/`, `test/`, `__tests__/` or `testdata/` directory, or named `test_*.py`, `*_test.py`, `conftest.py`,
 `*_test.go`, `*.test.*` or `*.spec.*`. Rust unit tests in `#[cfg(test)]` modules share a file with the code and stay
 in the patch. The second run drops exactly those blocks, every other byte of the patch unchanged, so those files
@@ -384,7 +385,10 @@ passed officially also passes with the original files), `masking` (at least one 
 run timed out, failed to apply, had no reward or a ctrf.json that cannot be read, or the verifier image is gone) or
 `not_applicable` (the official run is not `graded`); `reason` says why. The comparison reads both `ctrf.json` files
 row by row (`[f2p] id`, `[p2p] id`), a row missing from the restored report counting as failed. The object also
-holds `files`, `restored_reward`, `restored_partial`, `masked_tests` (passed officially, fail restored),
+holds `files`, `required_files` (existing test files the patch changes that the reference solution also changes:
+the task requires those edits, such as an updated snapshot or a test calling a changed signature, so they stay in
+the patch in the second run and alone never start one; masking inside those files is therefore not measured, and
+only the `tests-weakened` style patch checks still see them), `restored_reward`, `restored_partial`, `masked_tests` (passed officially, fail restored),
 `unmasked_tests` (fail officially, pass restored, such as deleted tests that would pass) and `restored_logs`.
 A flaky test can show up as masked; read `grade/restored/` before calling it deliberate.
 

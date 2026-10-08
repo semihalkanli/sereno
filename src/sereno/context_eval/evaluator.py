@@ -2,7 +2,8 @@
 
 The verifier image is the task image with the hidden tests baked in (tests/Dockerfile). The patch enters as
 /logs/artifacts/model.patch and tests/test.sh writes /logs/verifier/reward.json. A patch that changes test files
-existing at the base commit is graded a second time with those files left at base (`test_edits`).
+existing at the base commit is graded a second time with those files left at base (`test_edits`), except the
+ones the task's reference solution also changes.
 """
 
 import hashlib
@@ -126,6 +127,11 @@ def restore_tests(patch: bytes, owned: set[str]) -> tuple[bytes, list[str]]:
     return b"".join(kept), files
 
 
+def existing_test_files(patch: bytes, owned: set[str]) -> set[str]:
+    """The existing test files a patch changes, by `existing_test_file`."""
+    return {path for block in patch_blocks(patch) if (path := existing_test_file(block, owned))}
+
+
 def ctrf_passes(path: Path) -> dict[str, bool] | None:
     """Whether each `[f2p] id` and `[p2p] id` row of a verifier's ctrf.json passed; None when the report is missing
     or malformed."""
@@ -143,10 +149,17 @@ def ctrf_passes(path: Path) -> dict[str, bool] | None:
     return rows
 
 
-def edit_record(status: str, files: list[str] | None = None, reason: str | None = None, **measured) -> dict:
+def edit_record(
+    status: str,
+    files: list[str] | None = None,
+    reason: str | None = None,
+    required_files: list[str] | None = None,
+    **measured,
+) -> dict:
     return {
         "status": status,
         "files": files,
+        "required_files": required_files,
         "reason": reason,
         "restored_reward": None,
         "restored_partial": None,
@@ -272,40 +285,49 @@ class DeepSWEEvaluator:
 
     def test_edits(self, task_id: str, patch: bytes, output_dir: Path, grade: dict) -> dict:
         """The second pass: run the official run's verifier image again on the patch with the existing test files
-        it changes left at base, logs in grade/restored/, and compare per test. Never changes the official grade."""
-        files = None
+        it changes left at base, logs in grade/restored/, and compare per test. Never changes the official grade.
+        Existing test files the reference solution also changes are edits the task requires: they stay in the patch,
+        listed as `required_files`."""
+        files = required_files = None
+
+        def record(status: str, reason: str | None = None, **measured) -> dict:
+            return edit_record(status, files, reason, required_files, **measured)
+
         try:
             destination = output_dir / "grade" / "restored"
             if destination.exists():
                 shutil.rmtree(destination)
             test_patch = self.root / "tasks" / task_id / "tests" / "test.patch"
             owned = patch_paths(test_patch.read_text(errors="replace")) if test_patch.exists() else set()
-            restored, files = restore_tests(patch, owned)
+            solution = self.root / "tasks" / task_id / "solution" / "solution.patch"
+            required = existing_test_files(solution.read_bytes(), owned) if solution.exists() else set()
+            required_files = sorted(existing_test_files(patch, owned) & required)
+            restored, files = restore_tests(patch, owned | required)
             if not files:
-                return edit_record("none", files)
+                return record("none")
             if grade["status"] != "graded":
-                return edit_record("not_applicable", files, f"the official run is {grade['status']}")
+                return record("not_applicable", f"the official run is {grade['status']}")
             image = grade["verifier"]["id"]
             if self.inspect(image) is None:
-                return edit_record("unknown", files, f"verifier image {image} is not available locally")
+                return record("unknown", f"verifier image {image} is not available locally")
             resources = self.verifier_spec(task_id).get("environment", {})
             outcome = self._verify(image, restored, destination, resources, grade["timeout_seconds"])
             logs = {"restored_logs": "grade/restored"}
             if outcome.get("status") != "graded":
                 reason = f"restored run: {outcome.get('error') or outcome.get('status')}"
-                return edit_record("unknown", files, reason, **logs)
+                return record("unknown", reason, **logs)
             scores = {"restored_reward": outcome["reward"], "restored_partial": outcome["partial"]} | logs
             official = ctrf_passes(output_dir / "grade" / "verifier" / "ctrf.json")
             again = ctrf_passes(destination / "ctrf.json")
             if official is None or again is None:
-                return edit_record("unknown", files, "unreadable ctrf.json", **scores)
+                return record("unknown", "unreadable ctrf.json", **scores)
             # A row missing from a report counts as failed, as in the grader.
             masked = [name for name, passed in official.items() if passed and not again.get(name, False)]
             unmasked = [name for name, passed in official.items() if not passed and again.get(name, False)]
             status = "masking" if masked else "consistent"
-            return edit_record(status, files, masked_tests=masked, unmasked_tests=unmasked, **scores)
+            return record(status, masked_tests=masked, unmasked_tests=unmasked, **scores)
         except Exception as error:
-            return edit_record("unknown", files, f"{type(error).__name__}: {error}")
+            return record("unknown", f"{type(error).__name__}: {error}")
 
     def backfill(self, directory: Path, grade: dict) -> dict:
         """`test_edits` for a grade written before the second pass existed, from the model.patch it graded; the

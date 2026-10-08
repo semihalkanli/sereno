@@ -167,6 +167,7 @@ def test_consistent_edit_records_the_restored_run(dataset, tmp_path):
     assert grade["test_edits"] == {
         "status": "consistent",
         "files": ["tests/test_app.py"],
+        "required_files": [],
         "reason": None,
         "restored_reward": 1,
         "restored_partial": 1.0,
@@ -181,6 +182,33 @@ def test_consistent_edit_records_the_restored_run(dataset, tmp_path):
     restored = tmp_path / "out" / "grade" / "restored"
     assert sorted(p.name for p in restored.iterdir()) == ["ctrf.json", "reward.json", "test-stdout.txt"]
     assert json.loads((tmp_path / "out" / "grade.json").read_text()) == grade
+
+
+def solution_edits(dataset, text):
+    solution = dataset / "tasks" / "demo" / "solution"
+    solution.mkdir(parents=True, exist_ok=True)
+    (solution / "solution.patch").write_text(text)
+
+
+def test_an_edit_the_reference_solution_also_makes_is_required_without_a_second_run(dataset, tmp_path):
+    solution_edits(dataset, SOURCE + EDITED)
+    restored = ROWS | {"[p2p] t.fixture": "failed"}
+    grade, docker = grade_patch(dataset, tmp_path, SOURCE + EDITED, report_verifier(ROWS, restored))
+    edits = grade["test_edits"]
+    assert (edits["status"], edits["files"], edits["required_files"]) == ("none", [], ["tests/test_app.py"])
+    assert len(docker.of("run")) == 1
+
+
+def test_only_edits_the_task_does_not_require_are_restored(dataset, tmp_path):
+    solution_edits(dataset, SOURCE + EDITED)
+    grade, docker = grade_patch(dataset, tmp_path, SOURCE + EDITED + DELETED, report_verifier(ROWS, ROWS))
+    edits = grade["test_edits"]
+    assert docker.patches == [SOURCE + EDITED + DELETED, SOURCE + EDITED]
+    assert (edits["status"], edits["files"], edits["required_files"]) == (
+        "consistent",
+        ["tests/test_old.py"],
+        ["tests/test_app.py"],
+    )
 
 
 def test_a_test_passing_only_with_the_edit_is_masking(dataset, tmp_path):
@@ -258,6 +286,7 @@ def test_an_ungraded_official_run_is_not_applicable(dataset, tmp_path):
     assert grade["test_edits"] == {
         "status": "not_applicable",
         "files": ["tests/test_app.py"],
+        "required_files": [],
         "reason": "the official run is apply_failed",
         "restored_reward": None,
         "restored_partial": None,
