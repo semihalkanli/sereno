@@ -34,8 +34,20 @@ GRADE_SCHEMA = "1.1"
 CTRF_ROW = re.compile(r"\[(f2p|p2p)\] (.+)")
 # grader.py's own header pattern; group 2 is the path it resets.
 DIFF_GIT = re.compile(r'^diff --git (?:"?a/(.*?)"?) (?:"?b/(.*?)"?)$')
-TEST_DIRECTORIES = frozenset({"test", "tests", "__tests__", "testdata"})
-TEST_FILES = ("test_*.py", "*_test.py", "conftest.py", "*_test.go", "*.test.*", "*.spec.*")
+TEST_DIRECTORIES = frozenset({"test", "tests", "__tests__", "__tests", "testdata", "testutils"})
+TEST_FILES = ("test_*.py", "*_test.py", "conftest.py", "*_test.go", "*.test.*", "*.spec.*", "*.test-d.*")
+# Source modules that only look like tests by name, found by scanning the base tree of all 113 DeepSWE tasks on
+# 2026-10-08: library code that non-test code imports, a framework base class, a generator script.
+SOURCE_FILES = frozenset(
+    {
+        "bandit/core/test_properties.py",
+        "bandit/core/test_set.py",
+        "mobly/base_instrumentation_test.py",
+        "mobly/base_test.py",
+        "mobly/test_runner.py",
+        "examples/performance_tests/create_performance_test.py",
+    }
+)
 EXTENDED_HEADER_END = ("--- ", "+++ ", "@@", "GIT binary patch", "Binary files ")
 
 
@@ -65,17 +77,23 @@ def base_image(dockerfile: Path) -> str:
 
 
 def is_test_path(path: str) -> bool:
-    """Whether a repository path is a test file, by its directories (`TEST_DIRECTORIES`) or its name (`TEST_FILES`):
+    """Whether a repository path is a test file, by its directories (`TEST_DIRECTORIES`) or its name (`TEST_FILES`),
+    unless `SOURCE_FILES` names it:
 
-    - Python: anything under `tests/` or `test/`, `test_*.py`, `*_test.py`, `conftest.py`;
-    - Go: `*_test.go` and anything under `testdata/`, the directory only tests read;
-    - TypeScript and JavaScript: anything under `__tests__/`, `test/` or `tests/`, `*.test.*`, `*.spec.*`;
+    - Python: anything under `tests/` or `test/`, `test_*.py`, `*_test.py`, `conftest.py`, and a root `test.py`;
+    - Go: `*_test.go` and anything under `testdata/` or `testutils/` (fixtures and golden files);
+    - TypeScript and JavaScript: anything under `__tests__/`, `__tests/`, `test/` or `tests/`, `*.test.*`,
+      `*.spec.*`, `*.test-d.*` (type tests);
     - Rust: anything under `tests/` (integration tests). Unit tests in `#[cfg(test)]` modules share a file with the
       code they test and cannot be separated from it, so those files count as source.
     """
+    if path in SOURCE_FILES:
+        return False
     parts = PurePosixPath(path).parts
-    return any(part in TEST_DIRECTORIES for part in parts[:-1]) or any(
-        fnmatchcase(PurePosixPath(path).name, pattern) for pattern in TEST_FILES
+    return (
+        path == "test.py"
+        or any(part in TEST_DIRECTORIES for part in parts[:-1])
+        or any(fnmatchcase(parts[-1], pattern) for pattern in TEST_FILES)
     )
 
 
@@ -114,16 +132,43 @@ def existing_test_file(block: bytes, owned: set[str]) -> str | None:
     return path if is_test_path(path) and path not in owned else None
 
 
+def as_copy(block: bytes) -> bytes:
+    """A rename block as a copy: the old path stays at base and the new path is still created."""
+    head, separator, rest = block.partition(b"\n")
+    lines = rest.split(b"\n")
+    for index, line in enumerate(lines):
+        if line.startswith(tuple(marker.encode() for marker in EXTENDED_HEADER_END)):
+            break
+        if line.startswith(b"rename from "):
+            lines[index] = b"copy from " + line.removeprefix(b"rename from ")
+        elif line.startswith(b"rename to "):
+            lines[index] = b"copy to " + line.removeprefix(b"rename to ")
+    return head + separator + b"\n".join(lines)
+
+
+def is_rename(block: bytes) -> bool:
+    for line in block.split(b"\n")[1:]:
+        if line.startswith(tuple(marker.encode() for marker in EXTENDED_HEADER_END)):
+            return False
+        if line.startswith(b"rename from "):
+            return True
+    return False
+
+
 def restore_tests(patch: bytes, owned: set[str]) -> tuple[bytes, list[str]]:
-    """The patch without its blocks on existing test files, so those files stay at base, and their paths. Every
-    other block keeps its exact bytes."""
-    kept, files = [], []
-    for block in patch_blocks(patch):
-        path = existing_test_file(block, owned)
-        if path is None:
+    """The patch without its changes to existing test files, so those files stay at base, and their paths. A rename
+    away from such a file becomes a copy, so the new path still exists; any other block on a restored path, such as
+    the second half of a file-to-symlink change, is dropped with it. Every other block keeps its exact bytes."""
+    blocks = patch_blocks(patch)
+    files = [path for block in blocks if (path := existing_test_file(block, owned))]
+    kept = []
+    for block in blocks:
+        header = DIFF_GIT.match(block.split(b"\n", 1)[0].decode(errors="replace"))
+        if existing_test_file(block, owned):
+            if is_rename(block):
+                kept.append(as_copy(block))
+        elif header is None or header.group(2) not in files:
             kept.append(block)
-        else:
-            files.append(path)
     return b"".join(kept), files
 
 
@@ -221,9 +266,12 @@ class DeepSWEEvaluator:
         except Exception as error:
             grade["error"] = f"{type(error).__name__}: {error}"
         grade["duration_seconds"] = round(time.monotonic() - started, 3)
-        if patch is not None:
-            grade["test_edits"] = self.test_edits(submission.task_id, patch, output_dir, grade)
         output_dir.mkdir(parents=True, exist_ok=True)
+        if patch is not None:
+            # The official result is on disk before the second pass, which can run for the whole verifier timeout;
+            # without `test_edits`, so `--test-edits-only` completes a grade the second pass never finished.
+            write_json(output_dir / "grade.json", {k: v for k, v in grade.items() if k != "test_edits"})
+            grade["test_edits"] = self.test_edits(submission.task_id, patch, output_dir, grade)
         write_json(output_dir / "grade.json", grade)
         return grade
 
@@ -340,6 +388,12 @@ class DeepSWEEvaluator:
             return edit_record("unknown", reason=f"{type(error).__name__}: {error}")
         if hashlib.sha256(patch).hexdigest() != grade["patch_sha256"]:
             return edit_record("unknown", reason="model.patch is not the graded patch")
+        tests = self.root / "tasks" / str(grade.get("task_id")) / "tests"
+        tag = (
+            f"sereno-deepswe-verifier:{grade.get('task_id')}-{directory_digest(tests)[:12]}" if tests.is_dir() else None
+        )
+        if tag != (grade.get("verifier") or {}).get("tag"):
+            return edit_record("unknown", reason="the dataset's tests/ no longer match the graded verifier")
         return self.test_edits(grade.get("task_id"), patch, directory, grade)
 
 
@@ -402,7 +456,8 @@ def grade_campaign(
     test_edits_only: bool = False,
     docker=None,
 ):
-    """Grade every complete session. `test_edits_only` adds only the second pass to existing grades that lack it."""
+    """Grade every complete session. `test_edits_only` adds only the second pass to existing grades that lack it or
+    whose second pass is `unknown`."""
     if force and test_edits_only:
         raise ValueError("--force and --test-edits-only exclude each other")
     campaign = Path(campaign).resolve()
@@ -418,7 +473,8 @@ def grade_campaign(
         # A missing grade stays ungraded and an unreadable one is reported below.
         if grade is None:
             return
-        if "test_edits" in grade:
+        # An unknown second pass is retried; it never reruns the official run.
+        if "test_edits" in grade and edit_status(grade) != "unknown":
             kept.append(directory)
             return
         if origin is None:

@@ -94,6 +94,15 @@ def task_test_patch(dataset):
         ("tests/integration.rs", True),
         ("src/lib.rs", False),
         ("docs/testing.md", False),
+        ("lib/__tests/shorthand.js", True),
+        ("pkg/translator/testutils/outputs/hash.yaml", True),
+        ("library/src/recursive.test-d.ts", True),
+        ("test.py", True),
+        ("src/test.py", False),
+        ("t/unit/transport/test_sac_priority.py", True),
+        ("bandit/core/test_properties.py", False),
+        ("mobly/test_runner.py", False),
+        ("mobly/base_test.py", False),
     ],
 )
 def test_test_path_rule(path, expected):
@@ -116,9 +125,55 @@ def test_filter_drops_only_existing_test_files_and_keeps_every_other_byte():
     assert b"".join(patch_blocks(patch)) == patch and len(patch_blocks(patch)) == len(blocks)
     filtered, files = restore_tests(patch, patch_paths(TEST_PATCH))
     assert files == ["tests/test_app.py", "tests/test_old.py", "tests/test_a.py", "tests/data/blob.bin"]
-    assert filtered == source + "".join([MOVED_IN, COPIED, CREATED, OWNED, BINARY]).encode()
+    renamed = RENAMED.replace("rename from", "copy from").replace("rename to", "copy to")
+    assert filtered == source + "".join([renamed, MOVED_IN, COPIED, CREATED, OWNED, BINARY]).encode()
     assert restore_tests(source + CREATED.encode(), set()) == (source + CREATED.encode(), [])
     assert restore_tests(b"", set()) == (b"", [])
+
+
+def test_a_test_file_turned_into_a_symlink_is_restored_whole():
+    deleted = DELETED.replace("tests/test_old.py", "tests/conftest.py").encode()
+    link = b"diff --git a/tests/conftest.py b/tests/conftest.py\nnew file mode 120000\nindex 0..1\n--- /dev/null\n"
+    link += b"+++ b/tests/conftest.py\n@@ -0,0 +1 @@\n+../conftest.py\n\\ No newline at end of file\n"
+    assert restore_tests(deleted + link + SOURCE.encode(), set()) == (SOURCE.encode(), ["tests/conftest.py"])
+
+
+def git(repo, *args):
+    command = ["git", "-c", "user.name=CI", "-c", "user.email=ci@example.invalid", *args]
+    return subprocess.run(command, cwd=repo, capture_output=True, check=True).stdout
+
+
+def test_a_test_file_moved_into_the_source_tree_still_exists_in_the_restored_run(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "helpers.py").write_text("def helper():\n    return 1\n")
+    git(repo, "init", "-q")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "base")
+    base = git(repo, "rev-parse", "HEAD").decode().strip()
+    (repo / "src").mkdir()
+    git(repo, "mv", "tests/helpers.py", "src/helpers.py")
+    (repo / "src" / "helpers.py").write_text("def helper():\n    return 2\n")
+    git(repo, "add", "-A")
+    patch = git(repo, "diff", "--cached", "--binary", "-M", base)
+    restored, files = restore_tests(patch, set())
+    assert files == ["tests/helpers.py"]
+    git(repo, "reset", "-q", "--hard", base)
+    subprocess.run(["git", "apply"], cwd=repo, input=restored, check=True)
+    assert (repo / "src" / "helpers.py").read_text().endswith("return 2\n")
+    assert (repo / "tests" / "helpers.py").read_text().endswith("return 1\n")
+
+
+def test_the_official_grade_is_on_disk_before_the_second_run(dataset, tmp_path):
+    seen = []
+
+    def verifier(logs, patch):
+        if "tests/test_app.py" not in patch:
+            seen.append(json.loads((tmp_path / "out" / "grade.json").read_text()))
+        report_verifier(ROWS, ROWS)(logs, patch)
+
+    grade, _ = grade_patch(dataset, tmp_path, SOURCE + EDITED, verifier)
+    assert len(seen) == 1 and seen[0] == {k: v for k, v in grade.items() if k != "test_edits"}
 
 
 def apply_failed(logs):
@@ -346,6 +401,50 @@ def test_backfill_never_reruns_a_changed_patch_or_a_missing_verifier(campaign):
     assert missing["reason"] == "verifier image sha256:verifier-0 is not available locally"
     copy = json.loads((one / "attack_reset/sessions/001-exposure/grade.json").read_text())
     assert copy["test_edits"] == missing and copy["shared_from"].endswith("attack_carry/sessions/001-exposure")
+
+
+def test_backfill_retries_an_unknown_second_pass(campaign):
+    grade_campaign(edited_campaign(campaign), docker=grader.FakeDocker(report_verifier(ROWS, ROWS)))
+    strip_test_edits(campaign)
+    docker = grader.FakeDocker(report_verifier(ROWS, ROWS))
+    assert grade_campaign(campaign, docker=docker, test_edits_only=True)["test_edits"]["unknown"] == 4
+    docker.images["sereno-deepswe-verifier:any"] = {"Id": "sha256:verifier-0"}
+    summary = grade_campaign(campaign, docker=docker, test_edits_only=True)
+    assert summary["backfilled"] == 4 and summary["kept"] == 1
+    assert summary["test_edits"] == {"consistent": 4, "not_applicable": 1} and docker.patches == [SOURCE, SOURCE]
+
+
+def test_backfill_refuses_tests_that_changed_since_grading(campaign, dataset):
+    grade_campaign(edited_campaign(campaign), docker=grader.FakeDocker(report_verifier(ROWS, ROWS)))
+    strip_test_edits(campaign)
+    (dataset / "tasks" / "demo" / "tests" / "test.sh").write_text("echo changed\n")
+    docker = grader.FakeDocker(report_verifier(ROWS, ROWS))
+    docker.images["sereno-deepswe-verifier:any"] = {"Id": "sha256:verifier-0"}
+    summary = grade_campaign(campaign, docker=docker, test_edits_only=True)
+    assert not docker.of("run") and summary["test_edits"] == {"not_applicable": 1, "unknown": 4}
+    grade = json.loads(next(campaign.rglob("clean/sessions/001-exposure/grade.json")).read_text())
+    assert grade["test_edits"]["reason"] == "the dataset's tests/ no longer match the graded verifier"
+
+
+def test_patch_collection_ignores_the_repository_diff_config(tmp_path):
+    from sereno.context_eval.environment import DIFF
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_text("x\n")
+    git(repo, "init", "-q")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "base")
+    base = git(repo, "rev-parse", "HEAD").decode().strip()
+    for key, value in (("diff.mnemonicPrefix", "true"), ("diff.noprefix", "true"), ("color.ui", "always")):
+        git(repo, "config", key, value)
+    (repo / "a.py").write_text("y\n")
+    git(repo, "add", "-A")
+    assert git(repo, "diff", "--cached", base).startswith(b"\x1b") or b"a/a.py" not in git(
+        repo, "diff", "--cached", base
+    )
+    patch = subprocess.run(f"{DIFF} {base}", shell=True, cwd=repo, capture_output=True, check=True).stdout
+    assert patch.startswith(b"diff --git a/a.py b/a.py\n") and b"--- a/a.py\n+++ b/a.py\n" in patch
 
 
 def test_shared_copies_carry_the_second_pass(campaign):

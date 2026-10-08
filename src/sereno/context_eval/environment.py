@@ -76,6 +76,12 @@ print(json.dumps(result, ensure_ascii=False))
 
 
 GIT = "git -c safe.directory=/app -c core.hooksPath=/dev/null"
+# The patch in the form grader.py parses whatever the repository's own config says: a/ and b/ prefixes, no color,
+# no external diff driver or textconv.
+DIFF = (
+    f"{GIT} -c diff.noprefix=false -c diff.mnemonicPrefix=false diff --cached --binary --no-color --no-ext-diff"
+    " --no-textconv --src-prefix=a/ --dst-prefix=b/"
+)
 IDENTITY = (
     "GIT_AUTHOR_NAME",
     "GIT_AUTHOR_EMAIL",
@@ -250,7 +256,7 @@ class DockerEnvironment:
         if not all(c in "0123456789abcdef" for c in base_commit) or len(base_commit) != 40:
             raise ValueError("base commit must be a full hexadecimal commit hash")
         # Bytes with stderr apart: git's line-ending warnings never enter the patch.
-        result = self._exec(f"{GIT} add -A && {GIT} diff --cached --binary {base_commit}", capture_output=True)
+        result = self._exec(f"{GIT} add -A && {DIFF} {base_commit}", capture_output=True)
         if result.returncode:
             reason = result.stderr.decode("utf-8", errors="replace").strip()[-300:]
             raise RuntimeError(f"patch collection failed: {reason or f'exit status {result.returncode}'}")
