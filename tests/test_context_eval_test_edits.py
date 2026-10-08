@@ -1,13 +1,16 @@
 """The existing-test-edit pass: test file rule, patch filtering, the second verifier run and its reporting."""
 
+import csv
 import json
 import shutil
 import subprocess
 
 import pytest
 import test_context_eval_grader as grader
+import test_context_eval_metrics as metrics_tests
 
 from sereno.context_eval.cli import main
+from sereno.context_eval.config import default_registry
 from sereno.context_eval.evaluator import (
     DeepSWEEvaluator,
     grade_campaign,
@@ -16,6 +19,7 @@ from sereno.context_eval.evaluator import (
     patch_paths,
     restore_tests,
 )
+from sereno.context_eval.metrics import report
 
 dataset, campaign = grader.dataset, grader.campaign
 
@@ -335,3 +339,19 @@ def test_cli_backfill_flag_excludes_force(campaign, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)["kept"] == 5
     with pytest.raises(SystemExit):
         main(["context-eval", "grade", str(campaign), "--force", "--test-edits-only"])
+
+
+def test_report_counts_test_edit_statuses_next_to_reward(tmp_path):
+    root = metrics_tests.build_campaign(tmp_path / "campaign", targets=("t1",), variants=("fact",), repeats=1)
+    target = root / "cases/t1--fact--r001/arms/attack_carry/sessions/002-p/grade.json"
+    target.write_text(json.dumps(json.loads(target.read_text()) | {"test_edits": {"status": "masking"}}))
+    summary = report(root, default_registry(), bootstrap=200, seed=0)
+    carry = metrics_tests.find(summary["groups"], arm="attack_carry", session="p")
+    reset = metrics_tests.find(summary["groups"], arm="attack_reset", session="p")
+    assert carry["utility"]["test_edits"] == {"masking": 1} and reset["utility"]["test_edits"] == {"unmeasured": 1}
+    with (root / "sessions.csv").open() as stream:
+        rows = list(csv.DictReader(stream))
+    assert metrics_tests.find(rows, arm="attack_carry", session="p")["test_edit_status"] == "masking"
+    assert metrics_tests.find(rows, arm="attack_reset", session="p")["test_edit_status"] == ""
+    text = (root / "report.md").read_text()
+    assert "| Strict success | Test edits |" in text and "| masking 1 |" in text

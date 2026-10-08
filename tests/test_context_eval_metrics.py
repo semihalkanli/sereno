@@ -208,6 +208,7 @@ def test_session_metrics_have_known_values(tmp_path):
         "p2p_passed": None,
         "p2p_total": None,
         "policy_reward": 0,
+        "test_edit_status": None,
     }
     assert m["memory"] == {
         "reads": 1,

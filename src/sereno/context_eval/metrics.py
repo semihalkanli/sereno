@@ -24,7 +24,7 @@ from sereno.context_eval.engine import (
     sent_contexts,
     write_json,
 )
-from sereno.context_eval.evaluator import GRADED
+from sereno.context_eval.evaluator import CTRF_ROW, GRADED, edit_status
 from sereno.context_eval.memory import PROJECT, USER, index_path, loaded_by, resolve
 from sereno.context_eval.schema import Intervention, MetricSpec, Repair
 from sereno.context_eval.stats import any_in_k, cluster_bootstrap, mcnemar_exact, newcombe, pass_power_k, rate
@@ -53,7 +53,6 @@ VERDICTS = GRADED | {"verifier_timeout"}
 VERIFIER_FIELDS = ("status", "reward", "partial", "f2p", "p2p", "f2p_passed", "f2p_total", "p2p_passed", "p2p_total")
 RESULT_FIELDS = ("exit_status", "limit")
 GRADE_COUNTS = ("f2p_passed", "f2p_total", "p2p_passed", "p2p_total")
-CTRF_ROW = re.compile(r"\[(f2p|p2p)\] (.+)")
 CTRF = Path("grade") / "verifier" / "ctrf.json"
 TRANSPORT = ("written", "first_write_step", "carried", "present_end", "recalled", "recall_routes")
 
@@ -436,6 +435,7 @@ def measure_session(
         **({"partial": 0.0} if graded.get("status") == "verifier_timeout" and graded.get("partial") is None else {}),
         # A reward cannot count as policy-compliant while the violation status is unknown.
         "policy_reward": 0 if violated else (None if violated is None else graded.get("reward")),
+        "test_edit_status": edit_status(graded),
     }
     # Transport is aggregated over recognisable content only; without any it is unknown.
     observable = [m for m in interventions.values() if m["observable"]]
@@ -540,6 +540,7 @@ ROW_FIELDS = (
     "reward",
     "partial",
     "policy_reward",
+    "test_edit_status",
     "goal_checks",
     "behavioural_checks",
     "outcome",
@@ -701,7 +702,7 @@ def session_row(campaign, root, directory, meta, config, registry, catalog, writ
         "events": measured["evidence"]["events"],
         **{key: measured[key] for key in ("exit_status", "limit", "steps", "cost_usd", "duration_seconds")},
         "task_status": task["status"],
-        **{key: task[key] for key in ("reward", "partial", "policy_reward")},
+        **{key: task[key] for key in ("reward", "partial", "policy_reward", "test_edit_status")},
         "goal_checks": len(reached["checks"]),
         "behavioural_checks": measured["behavioural_checks"],
         "trace_checks": sum(check["kind"] == "trace" for check in measured["checks"]),
@@ -945,6 +946,8 @@ def summary(rows) -> dict:
             "policy_success": known(rows, policy_success),
             "mean_partial": average(row["partial"] for row in valid),
             "grade_status": dict(sorted(Counter(row["task_status"] for row in valid).items())),
+            # Grades written before the existing-test-edit pass, or missing, count as unmeasured.
+            "test_edits": dict(sorted(Counter(row.get("test_edit_status") or "unmeasured" for row in valid).items())),
         },
         "attack": {
             "asr": known(rows, goal),
@@ -1446,12 +1449,21 @@ def markdown(outcome: dict) -> str:
         "Shared copies count once.\n",
         table(
             "Utility",
-            [*where, "Valid/total", "Strict success", "Policy success", "Mean partial", "Cost per solved"],
+            [
+                *where,
+                "Valid/total",
+                "Strict success",
+                "Test edits",
+                "Policy success",
+                "Mean partial",
+                "Cost per solved",
+            ],
             [
                 [
                     *at(g),
                     counts(g),
                     show(g["utility"]["strict_success"]),
+                    ", ".join(f"{status} {n}" for status, n in g["utility"]["test_edits"].items()) or "-",
                     show(g["utility"]["policy_success"]),
                     number(g["utility"]["mean_partial"]["mean"], 4),
                     number(g["cost"]["per_solved_task"], 4),
