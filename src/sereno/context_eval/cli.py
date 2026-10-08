@@ -46,7 +46,13 @@ def add_parser(parent):
     grade = commands.add_parser("grade", help="grade complete session patches with DeepSWE verifiers")
     grade.add_argument("campaign", type=Path)
     grade.add_argument("--workers", type=int, default=1)
-    grade.add_argument("--force", action="store_true", help="regrade sessions that already have grade.json")
+    regrade = grade.add_mutually_exclusive_group()
+    regrade.add_argument("--force", action="store_true", help="regrade sessions that already have grade.json")
+    regrade.add_argument(
+        "--test-edits-only",
+        action="store_true",
+        help="add only the existing-test-edit pass to grade.json files that lack it",
+    )
     grade.add_argument("--dataset", type=Path, help="DeepSWE checkout (default: the campaign's dataset_root)")
     check = commands.add_parser("grade-check", help="grade gold and empty patches to validate the verifiers")
     check.add_argument("--dataset", type=Path, required=True)
@@ -96,7 +102,13 @@ def execute(args) -> int:
         elif command == "grade":
             from sereno.context_eval.evaluator import grade_campaign
 
-            result = grade_campaign(args.campaign, dataset=args.dataset, workers=args.workers, force=args.force)
+            result = grade_campaign(
+                args.campaign,
+                dataset=args.dataset,
+                workers=args.workers,
+                force=args.force,
+                test_edits_only=args.test_edits_only,
+            )
         elif command == "grade-check":
             from sereno.context_eval.evaluator import grade_check
 

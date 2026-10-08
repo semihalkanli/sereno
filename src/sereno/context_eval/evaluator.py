@@ -1,12 +1,14 @@
 """Grade session patches with each DeepSWE task's own verifier, in a separate container without network.
 
 The verifier image is the task image with the hidden tests baked in (tests/Dockerfile). The patch enters as
-/logs/artifacts/model.patch and tests/test.sh writes /logs/verifier/reward.json.
+/logs/artifacts/model.patch and tests/test.sh writes /logs/verifier/reward.json. A patch that changes test files
+existing at the base commit is graded a second time with those files left at base (`test_edits`).
 """
 
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -17,7 +19,8 @@ import uuid
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from pathlib import Path
+from fnmatch import fnmatchcase
+from pathlib import Path, PurePosixPath
 
 from sereno.context_eval.contracts import Submission
 from sereno.context_eval.dataset import load_task
@@ -26,6 +29,13 @@ from sereno.context_eval.engine import write_json
 GRADED = {"graded", "apply_failed"}
 BASE_LABEL = "sereno.base_id"
 COUNTS = ("partial", "f2p", "p2p", "f2p_total", "f2p_passed", "p2p_total", "p2p_passed")
+GRADE_SCHEMA = "1.1"
+CTRF_ROW = re.compile(r"\[(f2p|p2p)\] (.+)")
+# grader.py's own header pattern; group 2 is the path it resets.
+DIFF_GIT = re.compile(r'^diff --git (?:"?a/(.*?)"?) (?:"?b/(.*?)"?)$')
+TEST_DIRECTORIES = frozenset({"test", "tests", "__tests__", "testdata"})
+TEST_FILES = ("test_*.py", "*_test.py", "conftest.py", "*_test.go", "*.test.*", "*.spec.*")
+EXTENDED_HEADER_END = ("--- ", "+++ ", "@@", "GIT binary patch", "Binary files ")
 
 
 def run_docker(args: list[str], timeout: float | None = None) -> subprocess.CompletedProcess:
@@ -51,6 +61,105 @@ def base_image(dockerfile: Path) -> str:
                 raise ValueError(f"unsupported FROM line in {dockerfile}: {line.strip()}")
             return images[0]
     raise ValueError(f"no FROM line in {dockerfile}")
+
+
+def is_test_path(path: str) -> bool:
+    """Whether a repository path is a test file, by its directories (`TEST_DIRECTORIES`) or its name (`TEST_FILES`):
+
+    - Python: anything under `tests/` or `test/`, `test_*.py`, `*_test.py`, `conftest.py`;
+    - Go: `*_test.go` and anything under `testdata/`, the directory only tests read;
+    - TypeScript and JavaScript: anything under `__tests__/`, `test/` or `tests/`, `*.test.*`, `*.spec.*`;
+    - Rust: anything under `tests/` (integration tests). Unit tests in `#[cfg(test)]` modules share a file with the
+      code they test and cannot be separated from it, so those files count as source.
+    """
+    parts = PurePosixPath(path).parts
+    return any(part in TEST_DIRECTORIES for part in parts[:-1]) or any(
+        fnmatchcase(PurePosixPath(path).name, pattern) for pattern in TEST_FILES
+    )
+
+
+def patch_paths(text: str) -> set[str]:
+    """The paths grader.py resets before applying a patch, by its own rule: each `diff --git` header's b-path and
+    every `--- a/` and `+++ b/` path."""
+    paths = set()
+    for line in text.splitlines():
+        header = DIFF_GIT.match(line)
+        path = header.group(2) if header else line[6:] if line.startswith(("+++ b/", "--- a/")) else None
+        if path and path != "/dev/null":
+            paths.add(path)
+    return paths
+
+
+def patch_blocks(patch: bytes) -> list[bytes]:
+    """The patch cut before every `diff --git` line; joined, the blocks give back the patch byte for byte."""
+    return [block for block in re.split(rb"(?m)^(?=diff --git )", patch) if block]
+
+
+def existing_test_file(block: bytes, owned: set[str]) -> str | None:
+    """The base path of a test file that a `diff --git` block modifies, deletes or renames away. None for any other
+    block: a new or copied file, a source file, or a file test.patch owns, which the grader resets anyway."""
+    lines = [line.decode(errors="replace") for line in block.split(b"\n")]
+    header = DIFF_GIT.match(lines[0])
+    if header is None:
+        return None
+    path = header.group(2)
+    for line in lines[1:]:
+        if line.startswith(EXTENDED_HEADER_END):
+            break
+        if line.startswith(("new file mode", "copy from ")):
+            return None
+        if line.startswith("rename from "):
+            path = line.removeprefix("rename from ").strip('"')
+    return path if is_test_path(path) and path not in owned else None
+
+
+def restore_tests(patch: bytes, owned: set[str]) -> tuple[bytes, list[str]]:
+    """The patch without its blocks on existing test files, so those files stay at base, and their paths. Every
+    other block keeps its exact bytes."""
+    kept, files = [], []
+    for block in patch_blocks(patch):
+        path = existing_test_file(block, owned)
+        if path is None:
+            kept.append(block)
+        else:
+            files.append(path)
+    return b"".join(kept), files
+
+
+def ctrf_passes(path: Path) -> dict[str, bool] | None:
+    """Whether each `[f2p] id` and `[p2p] id` row of a verifier's ctrf.json passed; None when the report is missing
+    or malformed."""
+    report = read_object(path)
+    results = report.get("results") if report else None
+    tests = results.get("tests") if isinstance(results, dict) else None
+    if not isinstance(tests, list):
+        return None
+    rows = {}
+    for row in tests:
+        name = row.get("name") if isinstance(row, dict) else None
+        if not isinstance(name, str) or not CTRF_ROW.fullmatch(name) or not isinstance(row.get("status"), str):
+            return None
+        rows[name] = rows.get(name, True) and row["status"] == "passed"
+    return rows
+
+
+def edit_record(status: str, files: list[str] | None = None, reason: str | None = None, **measured) -> dict:
+    return {
+        "status": status,
+        "files": files,
+        "reason": reason,
+        "restored_reward": None,
+        "restored_partial": None,
+        "masked_tests": None,
+        "unmasked_tests": None,
+        "restored_logs": None,
+    } | measured
+
+
+def edit_status(grade) -> str | None:
+    """A grade's `test_edits` status; None for a grade written before the second pass or a malformed one."""
+    edits = grade.get("test_edits") if isinstance(grade, dict) else None
+    return edits.get("status") if isinstance(edits, dict) else None
 
 
 class DeepSWEEvaluator:
@@ -84,10 +193,14 @@ class DeepSWEEvaluator:
                 raise RuntimeError(f"verifier image {tag} is not built on task image {base['Id']}")
         return {"tag": tag, "id": image["Id"]}
 
+    def verifier_spec(self, task_id: str) -> dict:
+        return tomllib.loads((self.root / "tasks" / task_id / "task.toml").read_text()).get("verifier", {})
+
     def evaluate(self, submission: Submission, output_dir: Path) -> dict:
         started = time.monotonic()
         output_dir = Path(output_dir)
         grade = blank_grade(submission.task_id) | {"task_image_id": submission.image_id}
+        patch = None
         try:
             patch = Path(submission.patch).read_bytes()
             grade["patch_sha256"] = hashlib.sha256(patch).hexdigest()
@@ -95,6 +208,8 @@ class DeepSWEEvaluator:
         except Exception as error:
             grade["error"] = f"{type(error).__name__}: {error}"
         grade["duration_seconds"] = round(time.monotonic() - started, 3)
+        if patch is not None:
+            grade["test_edits"] = self.test_edits(submission.task_id, patch, output_dir, grade)
         output_dir.mkdir(parents=True, exist_ok=True)
         write_json(output_dir / "grade.json", grade)
         return grade
@@ -103,7 +218,7 @@ class DeepSWEEvaluator:
         task = load_task(self.root, submission.task_id)
         if submission.base_commit != task.base_commit:
             return {"error": f"base commit {submission.base_commit} does not match the task's {task.base_commit}"}
-        spec = tomllib.loads((self.root / "tasks" / task.id / "task.toml").read_text()).get("verifier", {})
+        spec = self.verifier_spec(task.id)
         resources = spec.get("environment", {})
         timeout = grade["timeout_seconds"] = float(spec.get("timeout_sec", 1800))
         reference = base_image(self.root / "tasks" / task.id / "tests" / "Dockerfile")
@@ -113,7 +228,11 @@ class DeepSWEEvaluator:
         if base["Id"] != submission.image_id:
             return {"error": f"verifier base image {reference} is {base['Id']}, not the graded {submission.image_id}"}
         grade["verifier"] = self.verifier_image(task.id, base, float(resources.get("build_timeout_sec", 1800)))
-        destination = output_dir / "grade" / "verifier"
+        outcome = self._verify(grade["verifier"]["id"], patch, output_dir / "grade" / "verifier", resources, timeout)
+        return outcome | {"logs": "grade/verifier"}
+
+    def _verify(self, image: str, patch: bytes, destination: Path, resources: dict, timeout: float) -> dict:
+        """One verifier run on `patch`, its logs copied to `destination`; the outcome as grade fields."""
         if destination.exists():
             shutil.rmtree(destination)
         with tempfile.TemporaryDirectory(prefix="sereno-grade-", ignore_cleanup_errors=True) as logs:
@@ -125,7 +244,7 @@ class DeepSWEEvaluator:
             args = ["run", "--rm", "--name", name, "--network", "none", "--cpus", str(resources.get("cpus", 2))]
             args += ["--memory", f"{resources.get('memory_mb', 8192)}m", "-v", f"{logs}:/logs"]
             try:
-                result = self.docker([*args, grade["verifier"]["id"], "bash", "-c", command], timeout)
+                result = self.docker([*args, image, "bash", "-c", command], timeout)
                 stdout, timed_out = (result.stdout or "") + (result.stderr or ""), False
             except subprocess.TimeoutExpired as error:
                 # The client timing out leaves the container running; stop it before it writes further logs.
@@ -136,7 +255,6 @@ class DeepSWEEvaluator:
                 shutil.copytree(verifier, destination, ignore=special_files)
             destination.mkdir(parents=True, exist_ok=True)
             (destination / "test-stdout.txt").write_text(stdout)
-            grade["logs"] = "grade/verifier"
             if timed_out:
                 # Strict success counts a timeout as a failure, so the partial score does too.
                 error = f"verifier exceeded {timeout:g} s"
@@ -152,6 +270,56 @@ class DeepSWEEvaluator:
                 return {"error": f"verifier infrastructure failure (reward.txt {reward_txt.read_text().strip()})"}
             return {"error": f"verifier wrote no reward file (exit code {result.returncode})"}
 
+    def test_edits(self, task_id: str, patch: bytes, output_dir: Path, grade: dict) -> dict:
+        """The second pass: run the official run's verifier image again on the patch with the existing test files
+        it changes left at base, logs in grade/restored/, and compare per test. Never changes the official grade."""
+        files = None
+        try:
+            destination = output_dir / "grade" / "restored"
+            if destination.exists():
+                shutil.rmtree(destination)
+            test_patch = self.root / "tasks" / task_id / "tests" / "test.patch"
+            owned = patch_paths(test_patch.read_text(errors="replace")) if test_patch.exists() else set()
+            restored, files = restore_tests(patch, owned)
+            if not files:
+                return edit_record("none", files)
+            if grade["status"] != "graded":
+                return edit_record("not_applicable", files, f"the official run is {grade['status']}")
+            image = grade["verifier"]["id"]
+            if self.inspect(image) is None:
+                return edit_record("unknown", files, f"verifier image {image} is not available locally")
+            resources = self.verifier_spec(task_id).get("environment", {})
+            outcome = self._verify(image, restored, destination, resources, grade["timeout_seconds"])
+            logs = {"restored_logs": "grade/restored"}
+            if outcome.get("status") != "graded":
+                reason = f"restored run: {outcome.get('error') or outcome.get('status')}"
+                return edit_record("unknown", files, reason, **logs)
+            scores = {"restored_reward": outcome["reward"], "restored_partial": outcome["partial"]} | logs
+            official = ctrf_passes(output_dir / "grade" / "verifier" / "ctrf.json")
+            again = ctrf_passes(destination / "ctrf.json")
+            if official is None or again is None:
+                return edit_record("unknown", files, "unreadable ctrf.json", **scores)
+            # A row missing from a report counts as failed, as in the grader.
+            masked = [name for name, passed in official.items() if passed and not again.get(name, False)]
+            unmasked = [name for name, passed in official.items() if not passed and again.get(name, False)]
+            status = "masking" if masked else "consistent"
+            return edit_record(status, files, masked_tests=masked, unmasked_tests=unmasked, **scores)
+        except Exception as error:
+            return edit_record("unknown", files, f"{type(error).__name__}: {error}")
+
+    def backfill(self, directory: Path, grade: dict) -> dict:
+        """`test_edits` for a grade written before the second pass existed, from the model.patch it graded; the
+        official run is read, never repeated."""
+        if grade.get("patch_sha256") is None:
+            return edit_record("not_applicable", reason="the patch was not graded")
+        try:
+            patch = (directory / "model.patch").read_bytes()
+        except OSError as error:
+            return edit_record("unknown", reason=f"{type(error).__name__}: {error}")
+        if hashlib.sha256(patch).hexdigest() != grade["patch_sha256"]:
+            return edit_record("unknown", reason="model.patch is not the graded patch")
+        return self.test_edits(grade.get("task_id"), patch, directory, grade)
+
 
 def special_files(directory: str, names: list[str]) -> list[str]:
     """Symlinks and non-regular files the patched code may leave under /logs; copying them would read the host."""
@@ -164,7 +332,7 @@ def text(value: str | bytes | None) -> str:
 
 def blank_grade(task_id: str) -> dict:
     return {
-        "schema_version": "1.0",
+        "schema_version": GRADE_SCHEMA,
         "task_id": task_id,
         "status": "grader_error",
         "reward": None,
@@ -177,6 +345,7 @@ def blank_grade(task_id: str) -> dict:
         "duration_seconds": None,
         "error": None,
         "logs": None,
+        "test_edits": edit_record("not_applicable", reason="the patch was not graded"),
     }
 
 
@@ -202,16 +371,48 @@ def shared_origin(campaign: Path, directory: Path) -> Path | None:
     return origin
 
 
-def grade_campaign(campaign: Path, *, dataset: Path | None = None, workers: int = 1, force: bool = False, docker=None):
+def grade_campaign(
+    campaign: Path,
+    *,
+    dataset: Path | None = None,
+    workers: int = 1,
+    force: bool = False,
+    test_edits_only: bool = False,
+    docker=None,
+):
+    """Grade every complete session. `test_edits_only` adds only the second pass to existing grades that lack it."""
+    if force and test_edits_only:
+        raise ValueError("--force and --test-edits-only exclude each other")
     campaign = Path(campaign).resolve()
     if dataset is None:
         dataset = Path(json.loads((campaign / "manifest.json").read_text())["config"]["dataset_root"])
     evaluator = DeepSWEEvaluator(Path(dataset).expanduser().resolve(), docker=docker)
     directories = session_dirs(campaign)
     copies = {d: shared_origin(campaign, d) for d in directories}
-    written, kept, unreadable = [], [], {}
+    written, kept, backfilled, unreadable = [], [], [], {}
+
+    def backfill(directory: Path, origin: Path | None = None) -> None:
+        grade = read_object(directory / "grade.json")
+        # A missing grade stays ungraded and an unreadable one is reported below.
+        if grade is None:
+            return
+        if "test_edits" in grade:
+            kept.append(directory)
+            return
+        if origin is None:
+            edits = evaluator.backfill(directory, grade)
+        else:
+            shared = read_object(origin / "grade.json")
+            if shared is None or "test_edits" not in shared:
+                return
+            edits = shared["test_edits"]
+        write_json(directory / "grade.json", grade | {"schema_version": GRADE_SCHEMA, "test_edits": edits})
+        backfilled.append(directory)
 
     def grade_one(directory: Path) -> None:
+        if test_edits_only:
+            backfill(directory)
+            return
         if (directory / "grade.json").exists() and not force:
             kept.append(directory)
             return
@@ -242,7 +443,9 @@ def grade_campaign(campaign: Path, *, dataset: Path | None = None, workers: int 
     for directory, origin in copies.items():
         if origin is None:
             continue
-        if (directory / "grade.json").exists() and not force:
+        if test_edits_only:
+            backfill(directory, origin)
+        elif (directory / "grade.json").exists() and not force:
             kept.append(directory)
         elif (origin / "grade.json").exists():
             shared = read_object(origin / "grade.json")
@@ -263,14 +466,17 @@ def grade_campaign(campaign: Path, *, dataset: Path | None = None, workers: int 
     # Sessions whose result.json or grade.json cannot be read are skipped so the rest still get graded.
     failures = {d: ("unreadable", error) for d, error in unreadable.items()}
     failures |= {d: (g["status"], g.get("error")) for d, g in grades.items() if g["status"] not in GRADED}
+    edits = Counter(edit_status(g) or "unmeasured" for g in grades.values())
     return {
         "campaign": str(campaign),
         "sessions": len(directories),
         "graded_files": len(grades),
         "written": len(written),
         "kept": len(kept),
+        "backfilled": len(backfilled),
         "unreadable": len(unreadable),
         "statuses": dict(sorted(Counter(g["status"] for g in grades.values()).items())),
+        "test_edits": dict(sorted(edits.items())),
         "failures": [
             {"session": str(d.relative_to(campaign)), "status": status, "error": error}
             for d, (status, error) in sorted(failures.items())

@@ -35,7 +35,7 @@ class FakeDocker:
     def __call__(self, args, timeout=None):
         self.calls.append((args, timeout))
         if args[:2] == ["image", "inspect"]:
-            image = self.images.get(args[2])
+            image = self.images.get(args[2]) or next((i for i in self.images.values() if i["Id"] == args[2]), None)
             return subprocess.CompletedProcess(args, 1 if image is None else 0, json.dumps([image]), "")
         if args[0] == "build":
             tag = args[args.index("-t") + 1]
