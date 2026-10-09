@@ -3,6 +3,7 @@
 import json
 import shlex
 import subprocess
+import threading
 import time
 import uuid
 
@@ -135,11 +136,13 @@ def commit_planted(env, paths: list[str]) -> dict:
 
 DEFAULT_ACTION_TIMEOUT = 300
 KILLED = 128 + 9
-# Under host load the daemon can take minutes to remove a container. A client timeout leaves the removal running,
-# so `docker rm -f` is retried until docker reports the container gone.
+# Under host load the daemon can take minutes to remove a container, and a client timeout leaves the removal running.
+# A session makes one attempt; `sweep` retries what is left once the campaign's sessions are done.
 REMOVE_TIMEOUT = 120
 REMOVE_ATTEMPTS = 4
 REMOVE_PAUSE = 10
+UNREMOVED: set[str] = set()
+UNREMOVED_LOCK = threading.Lock()
 
 
 def action_result(command: str, output: str, returncode: int, timed_out_after: int | None = None) -> dict:
@@ -267,25 +270,48 @@ class DockerEnvironment:
             raise RuntimeError(f"patch collection failed: {reason or f'exit status {result.returncode}'}")
         return result.stdout
 
-    def close(self) -> None:
+    def close(self) -> str | None:
+        """Remove the container. Return why it could not be removed, leaving it to `sweep`, instead of raising: a
+        failed removal must not replace the error that closed the session."""
         if self.closed:
-            return
-        reason = ""
+            return None
+        self.closed = True
+        reason = remove(self.name)
+        if reason:
+            with UNREMOVED_LOCK:
+                UNREMOVED.add(self.name)
+        return reason
+
+
+def remove(name: str) -> str | None:
+    """One `docker rm -f`; None once docker reports the container gone, else the reason."""
+    try:
+        result = subprocess.run(["docker", "rm", "-f", name], capture_output=True, text=True, timeout=REMOVE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return f"docker rm -f timed out after {REMOVE_TIMEOUT} s"
+    # "No such container": an earlier timed-out attempt finished the removal.
+    if result.returncode == 0 or "No such container" in result.stderr:
+        return None
+    # Such as "removal of container ... is already in progress" from an earlier attempt.
+    lines = result.stderr.strip().splitlines()
+    return lines[-1] if lines else f"docker rm -f exit status {result.returncode}"
+
+
+def sweep() -> dict[str, str]:
+    """Retry the containers this process failed to remove; return those still present with the last reason."""
+    with UNREMOVED_LOCK:
+        names = sorted(UNREMOVED)
+    left = {}
+    for name in names:
         for attempt in range(REMOVE_ATTEMPTS):
             if attempt:
                 time.sleep(REMOVE_PAUSE)
-            try:
-                result = subprocess.run(
-                    ["docker", "rm", "-f", self.name], capture_output=True, text=True, timeout=REMOVE_TIMEOUT
-                )
-            except subprocess.TimeoutExpired:
-                reason = f"timed out after {REMOVE_TIMEOUT} s"
-                continue
-            # "No such container": an earlier timed-out attempt finished the removal.
-            if result.returncode == 0 or "No such container" in result.stderr:
-                self.closed = True
-                return
-            # Such as "removal of container ... is already in progress" from an earlier attempt.
-            lines = result.stderr.strip().splitlines()
-            reason = lines[-1] if lines else f"exit status {result.returncode}"
-        raise RuntimeError(f"docker rm -f {self.name} failed after {REMOVE_ATTEMPTS} attempts: {reason}")
+            reason = remove(name)
+            if reason is None:
+                break
+        if reason is None:
+            with UNREMOVED_LOCK:
+                UNREMOVED.discard(name)
+        else:
+            left[name] = reason
+    return left

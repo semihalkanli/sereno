@@ -308,9 +308,13 @@ class DeepSWEEvaluator:
                 result = self.docker([*args, image, "bash", "-c", command], timeout)
                 stdout, timed_out = (result.stdout or "") + (result.stderr or ""), False
             except subprocess.TimeoutExpired as error:
-                # The client timing out leaves the container running; stop it before it writes further logs.
-                self.docker(["rm", "-f", name], 120)
                 stdout, timed_out = text(error.stdout) + text(error.stderr), True
+                # The client timing out leaves the container running; stop it before it writes further logs. A slow
+                # daemon finishes that removal on its own and must not discard the verifier_timeout grade.
+                try:
+                    self.docker(["rm", "-f", name], 120)
+                except subprocess.TimeoutExpired:
+                    pass
             verifier = logs / "verifier"
             if verifier.is_dir() and not verifier.is_symlink():
                 shutil.copytree(verifier, destination, ignore=special_files)

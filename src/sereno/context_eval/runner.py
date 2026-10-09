@@ -30,7 +30,7 @@ from sereno.context_eval.engine import (
     separate_patch,
     write_json,
 )
-from sereno.context_eval.environment import DockerEnvironment
+from sereno.context_eval.environment import DockerEnvironment, sweep
 from sereno.context_eval.memory import (
     PROJECT,
     REPO_INSTRUCTIONS,
@@ -248,10 +248,14 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
     finally:
         if env:
             try:
-                env.close()
+                problem = env.close()
             except Exception as error:
-                result["status"] = "invalid"
-                result["cleanup_error"] = str(error)
+                problem = str(error)
+            if problem:
+                # Removal follows the saved evidence, so a slow daemon leaves a container for the sweep at the end of
+                # the campaign, not an invalid session that a resume would pay for again.
+                result["cleanup_error"] = problem
+                log.emit("cleanup_error", session_id=session.id, message=problem)
         if config.agent != "scripted":
             # A model call that raised logged no model_result, so its cost is unknown even after priced calls.
             unknown = bool(result.get("error")) and result["steps"] > log.model_results
@@ -887,18 +891,24 @@ def run_campaign(
                 )
         return case_id
 
-    with ThreadPoolExecutor(max_workers=config.workers) as pool:
-        origin_starts = {}
-        if "clean" in config.arms:
-            origin_starts = dict(pool.map(run_origin, itertools.product(config.targets, range(config.repeats))))
-        cases = list(
-            pool.map(run_case, itertools.product(config.targets, config.variants.items(), range(config.repeats)))
-        )
+    try:
+        with ThreadPoolExecutor(max_workers=config.workers) as pool:
+            origin_starts = {}
+            if "clean" in config.arms:
+                origin_starts = dict(pool.map(run_origin, itertools.product(config.targets, range(config.repeats))))
+            cases = list(
+                pool.map(run_case, itertools.product(config.targets, config.variants.items(), range(config.repeats)))
+            )
+    finally:
+        # Also when a session raised out of the pool: no container this run failed to remove is left behind unretried.
+        unremoved = sweep()
     spending = {
         "cost_usd": budget.spent,
         "cost_limit_usd": budget.limit,
         "overshoot_usd": max(0, budget.spent - budget.limit),
         "unknown_cost": budget.unknown_cost,
+        # Containers still present after the sweep, with the last reason; empty when every removal succeeded.
+        "unremoved_containers": unremoved,
     }
     if resume:
         # An interrupted campaign has no campaign.json yet; its own spending then goes unrecorded here.

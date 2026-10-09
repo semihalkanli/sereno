@@ -445,31 +445,36 @@ def docker_rm(monkeypatch, replies):
 
     monkeypatch.setattr(environment.subprocess, "run", run)
     monkeypatch.setattr(environment, "REMOVE_PAUSE", 0)
+    monkeypatch.setattr(environment, "UNREMOVED", set())
     env = environment.DockerEnvironment.__new__(environment.DockerEnvironment)
     env.name, env.closed = "fixture", False
     return env, calls
 
 
-@pytest.mark.parametrize(
-    "replies",
-    [
-        [(0, "")],
-        [None, (1, "Error response from daemon: No such container: fixture")],
-        [None, (1, "Error response from daemon: removal of container fixture is already in progress"), (0, "")],
-    ],
-)
-def test_container_removal_survives_a_slow_daemon(monkeypatch, replies):
-    env, calls = docker_rm(monkeypatch, replies)
-    env.close()
-    env.close()
-    assert env.closed and calls == [["docker", "rm", "-f", "fixture"]] * len(replies)
+RM = ["docker", "rm", "-f", "fixture"]
+GONE = (1, "Error response from daemon: No such container: fixture")
+BUSY = (1, "Error response from daemon: removal of container fixture is already in progress")
 
 
-def test_container_removal_fails_after_every_attempt_times_out(monkeypatch):
-    env, calls = docker_rm(monkeypatch, [None] * environment.REMOVE_ATTEMPTS)
-    with pytest.raises(RuntimeError, match="failed after 4 attempts: timed out after 120 s"):
-        env.close()
-    assert not env.closed and len(calls) == environment.REMOVE_ATTEMPTS
+@pytest.mark.parametrize("reply", [(0, ""), GONE])
+def test_container_removal_succeeds_once(monkeypatch, reply):
+    env, calls = docker_rm(monkeypatch, [reply])
+    assert env.close() is None and env.close() is None
+    assert calls == [RM] and environment.UNREMOVED == set() and environment.sweep() == {}
+
+
+def test_slow_container_removal_is_returned_and_swept_later(monkeypatch):
+    env, calls = docker_rm(monkeypatch, [None, BUSY, GONE])
+    assert env.close() == "docker rm -f timed out after 120 s"
+    assert env.close() is None and environment.UNREMOVED == {"fixture"}
+    assert environment.sweep() == {} and environment.UNREMOVED == set() and calls == [RM] * 3
+
+
+def test_sweep_reports_a_container_every_attempt_failed_to_remove(monkeypatch):
+    env, calls = docker_rm(monkeypatch, [None] * (1 + environment.REMOVE_ATTEMPTS))
+    env.close()
+    assert environment.sweep() == {"fixture": "docker rm -f timed out after 120 s"}
+    assert environment.UNREMOVED == {"fixture"} and len(calls) == 1 + environment.REMOVE_ATTEMPTS
 
 
 def test_timed_out_action_is_an_observation_like_stock_mini_swe(monkeypatch):

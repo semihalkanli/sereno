@@ -10,6 +10,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from sereno.context_eval import runner
 from sereno.context_eval.agents import rendered_output
 from sereno.context_eval.config import default_registry, load_config, validate
 from sereno.context_eval.engine import EventLog, InterventionEngine, Runtime, separate_patch
@@ -444,6 +445,30 @@ def test_collection_error_invalidates_completed_agent(tmp_path, fixture_world):
     )
     assert all(row["status"] == "invalid" for row in summary["sessions"])
     assert all(g["attack"]["asr"]["rate"] is None for g in summary["groups"])
+
+
+def test_failed_container_removal_keeps_the_session_and_reaches_the_sweep(tmp_path, fixture_world, monkeypatch):
+    dataset, factory, _, _ = fixture_world
+
+    class SlowRemoval(factory):
+        def close(self):
+            super().close()
+            return "docker rm -f timed out after 120 s"
+
+    monkeypatch.setattr(runner, "sweep", lambda: {"sereno-context-eval-left": "docker rm -f timed out after 120 s"})
+    root = tmp_path / "campaign"
+    summary = run_campaign(
+        campaign_config(dataset),
+        root,
+        default_registry(),
+        env_factory=SlowRemoval,
+        identities={"first": {"id": "fixture"}},
+    )
+    assert summary["sessions"] and all(row["status"] == "complete" for row in summary["sessions"])
+    results = [json.loads(path.read_text()) for path in root.rglob("result.json")]
+    assert results and all(r["cleanup_error"] == "docker rm -f timed out after 120 s" for r in results)
+    campaign = json.loads((root / "campaign.json").read_text())
+    assert campaign["unremoved_containers"] == {"sereno-context-eval-left": "docker rm -f timed out after 120 s"}
 
 
 def test_sequential_strategy_fires_once_per_selected_session(tmp_path, fixture_world):
