@@ -159,7 +159,8 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         env.action_timeout = result["action_timeout_seconds"] = action_timeout(config)
         result["has_timeout"] = getattr(env, "has_timeout", None)
         head = env.execute("git -c safe.directory=/app rev-parse HEAD")["output"].strip()
-        # Task metadata may abbreviate the base commit, as DeepSWE does; Git resolves it or rejects an ambiguous one.
+        # Task metadata may abbreviate the base commit, as DeepSWE does; Git resolves it or rejects an ambiguous one,
+        # and the patches are collected against the resolved full id.
         base = env.execute(
             f"git -c safe.directory=/app rev-parse --verify --quiet {shlex.quote(task.base_commit + '^{commit}')}"
         )
@@ -233,9 +234,9 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         for check in config.checks:
             if check.source == "workspace" and (not check.sessions or session.id in check.sessions):
                 result["workspace"][check.path] = env.read(check.path) or ""
-        (directory / "raw.patch").write_bytes(env.collect_patch(task.base_commit))
+        (directory / "raw.patch").write_bytes(env.collect_patch(head))
         try:
-            patch = separate_patch(env, runtime.journal, task.base_commit)
+            patch = separate_patch(env, runtime.journal, head)
             (directory / "model.patch").write_bytes(patch)
             result["patch_status"] = "ready"
         except ValueError as error:

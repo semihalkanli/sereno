@@ -92,6 +92,9 @@ def fixture_world(tmp_path):
             return files
 
         def collect_patch(self, base_commit):
+            # The Docker environment's contract: a full commit id, never an abbreviation.
+            if not re.fullmatch(r"[0-9a-f]{40}", base_commit):
+                raise ValueError("base commit must be a full hexadecimal commit hash")
             subprocess.run(["git", "add", "-A"], cwd=self.app, check=True)
             return subprocess.check_output(["git", "diff", "--cached", "--binary", base_commit], cwd=self.app)
 
@@ -438,6 +441,8 @@ def test_abbreviated_base_commit_matches_the_image_head(tmp_path, fixture_world,
     toml.write_text(toml.read_text().replace(base, commit(base)))
     _, summary = run_fixture(tmp_path, fixture_world, campaign_config(dataset))
     assert {row["status"] for row in summary["sessions"]} == {status}
+    if status == "complete":
+        assert {json.loads(p.read_text())["patch_status"] for p in tmp_path.rglob("result.json")} == {"ready"}
 
 
 def test_collection_error_invalidates_completed_agent(tmp_path, fixture_world):
