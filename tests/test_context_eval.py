@@ -428,6 +428,18 @@ def test_mini_swe_adapter_offline_with_upstream_model(tmp_path, fixture_world, m
     assert len([e for e in events_at(directory) if e["kind"] == "context_sent"]) == max_steps
 
 
+@pytest.mark.parametrize(
+    ("commit", "status"),
+    [(lambda b: b[:7], "complete"), (lambda b: b[:39], "complete"), (lambda b: "0" * 40, "invalid")],
+)
+def test_abbreviated_base_commit_matches_the_image_head(tmp_path, fixture_world, commit, status):
+    dataset, _, _, base = fixture_world
+    toml = dataset / "tasks" / "first" / "task.toml"
+    toml.write_text(toml.read_text().replace(base, commit(base)))
+    _, summary = run_fixture(tmp_path, fixture_world, campaign_config(dataset))
+    assert {row["status"] for row in summary["sessions"]} == {status}
+
+
 def test_collection_error_invalidates_completed_agent(tmp_path, fixture_world):
     dataset, factory, _, _ = fixture_world
 

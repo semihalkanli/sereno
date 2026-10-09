@@ -5,6 +5,7 @@ import hashlib
 import itertools
 import json
 import platform
+import shlex
 import shutil
 import threading
 import time
@@ -157,7 +158,12 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         # The runner's own commands, such as patch collection, run under the agent's action limit too.
         env.action_timeout = result["action_timeout_seconds"] = action_timeout(config)
         result["has_timeout"] = getattr(env, "has_timeout", None)
-        if env.execute("git -c safe.directory=/app rev-parse HEAD")["output"].strip() != task.base_commit:
+        head = env.execute("git -c safe.directory=/app rev-parse HEAD")["output"].strip()
+        # Task metadata may abbreviate the base commit, as DeepSWE does; Git resolves it or rejects an ambiguous one.
+        base = env.execute(
+            f"git -c safe.directory=/app rev-parse --verify --quiet {shlex.quote(task.base_commit + '^{commit}')}"
+        )
+        if base["returncode"] or base["output"].strip() != head:
             raise ValueError("image HEAD does not match the task base commit")
         mem = FileMemory(project)
         # The memory instructions say the directory already exists.
