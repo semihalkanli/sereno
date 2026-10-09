@@ -477,6 +477,38 @@ def test_sweep_reports_a_container_every_attempt_failed_to_remove(monkeypatch):
     assert environment.UNREMOVED == {"fixture"} and len(calls) == 1 + environment.REMOVE_ATTEMPTS
 
 
+@pytest.mark.parametrize(("removal", "left"), [((0, ""), set()), (None, {"started"})])
+def test_a_start_that_timed_out_removes_its_container(monkeypatch, removal, left):
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append((args[:2], kwargs["timeout"]))
+        if args[1] == "run" or removal is None:
+            raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+        return subprocess.CompletedProcess(args, removal[0], stdout="", stderr=removal[1])
+
+    monkeypatch.setattr(environment.subprocess, "run", run)
+    monkeypatch.setattr(environment, "UNREMOVED", set())
+    monkeypatch.setattr(environment.uuid, "uuid4", lambda: SimpleNamespace(hex="started"))
+    with pytest.raises(subprocess.TimeoutExpired):
+        environment.DockerEnvironment("sha256:fixture", 60)
+    assert calls == [(["docker", "run"], 300), (["docker", "rm"], 120)]
+    assert {name.removeprefix("sereno-context-eval-") for name in environment.UNREMOVED} == left
+
+
+def test_bridge_waits_for_a_loaded_daemon(monkeypatch):
+    timeouts = []
+
+    def run(args, **kwargs):
+        timeouts.append(kwargs["timeout"])
+        return subprocess.CompletedProcess(args, 0, stdout="null", stderr="")
+
+    monkeypatch.setattr(environment.subprocess, "run", run)
+    env = environment.DockerEnvironment.__new__(environment.DockerEnvironment)
+    env.name = "fixture"
+    assert env.read("/app/x.py") is None and timeouts == [120]
+
+
 def test_timed_out_action_is_an_observation_like_stock_mini_swe(monkeypatch):
     env, calls = docker_free(monkeypatch, 137)
     result = env.execute("sleep 9")

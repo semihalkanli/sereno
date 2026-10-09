@@ -98,6 +98,8 @@ request (`stop_reason: refusal`): the reply is logged as a `model_result` with `
 exception makes the session invalid, and the later sessions of that arm are written as invalid placeholders,
 never as silent successes. A failed model request that carries a provider request id is logged as a
 `model_error` event with that id.
+Docker calls leave room for a loaded host: starting a container waits up to 300 s and each file transfer up to
+120 s, and a start that fails removes the container it may have created.
 The container is removed after the session's evidence is saved, with one `docker rm -f` of up to 120 s. A slow
 daemon under host load does not make the session invalid: `result.json` keeps the reason in `cleanup_error`, a
 `cleanup_error` event is logged, and once the campaign's sessions are done the runner retries such containers

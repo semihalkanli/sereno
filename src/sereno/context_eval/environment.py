@@ -139,6 +139,9 @@ KILLED = 128 + 9
 # Under host load the daemon can take minutes to remove a container, and a client timeout leaves the removal running.
 # A session makes one attempt; `sweep` retries what is left once the campaign's sessions are done.
 REMOVE_TIMEOUT = 120
+# Starting a container and the file bridge wait on the same loaded daemon; their timeouts leave room for it.
+START_TIMEOUT = 300
+BRIDGE_TIMEOUT = 120
 REMOVE_ATTEMPTS = 4
 REMOVE_PAUSE = 10
 UNREMOVED: set[str] = set()
@@ -165,6 +168,17 @@ class DockerEnvironment:
         self.action_env: dict[str, str] = {}
         self.action_timeout = DEFAULT_ACTION_TIMEOUT
         self.has_timeout = False
+        try:
+            self._start(image_id, wall_seconds)
+            self._bridge({"op": "memory", "max_files": 100, "max_bytes": 1_000_000})
+            # Without coreutils timeout, an overlong action hits the host timeout and invalidates the session.
+            self.has_timeout = self.execute("command -v timeout")["returncode"] == 0
+        except Exception:
+            # A `docker run` that timed out may still create the container: remove it now or in the sweep.
+            self.close()
+            raise
+
+    def _start(self, image_id: str, wall_seconds: int) -> None:
         subprocess.run(
             [
                 "docker",
@@ -187,15 +201,8 @@ class DockerEnvironment:
             capture_output=True,
             text=True,
             check=True,
-            timeout=120,
+            timeout=START_TIMEOUT,
         )
-        try:
-            self._bridge({"op": "memory", "max_files": 100, "max_bytes": 1_000_000})
-            # Without coreutils timeout, an overlong action hits the host timeout and invalidates the session.
-            self.has_timeout = self.execute("command -v timeout")["returncode"] == 0
-        except Exception:
-            self.close()
-            raise
 
     def _exec(self, command: str, **capture) -> subprocess.CompletedProcess:
         """Run a bash command in /app under the action limit; `capture` sets the subprocess output handling."""
@@ -236,7 +243,7 @@ class DockerEnvironment:
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=30,
+                timeout=BRIDGE_TIMEOUT,
             )
         except subprocess.CalledProcessError as error:
             # The bridge's last stderr line names the rejected path or limit; keep it in result.json.
