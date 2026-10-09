@@ -135,6 +135,11 @@ def commit_planted(env, paths: list[str]) -> dict:
 
 DEFAULT_ACTION_TIMEOUT = 300
 KILLED = 128 + 9
+# Under host load the daemon can take minutes to remove a container. A client timeout leaves the removal running,
+# so `docker rm -f` is retried until docker reports the container gone.
+REMOVE_TIMEOUT = 120
+REMOVE_ATTEMPTS = 4
+REMOVE_PAUSE = 10
 
 
 def action_result(command: str, output: str, returncode: int, timed_out_after: int | None = None) -> dict:
@@ -263,6 +268,24 @@ class DockerEnvironment:
         return result.stdout
 
     def close(self) -> None:
-        if not self.closed:
-            self.closed = True
-            subprocess.run(["docker", "rm", "-f", self.name], capture_output=True, timeout=30, check=True)
+        if self.closed:
+            return
+        reason = ""
+        for attempt in range(REMOVE_ATTEMPTS):
+            if attempt:
+                time.sleep(REMOVE_PAUSE)
+            try:
+                result = subprocess.run(
+                    ["docker", "rm", "-f", self.name], capture_output=True, text=True, timeout=REMOVE_TIMEOUT
+                )
+            except subprocess.TimeoutExpired:
+                reason = f"timed out after {REMOVE_TIMEOUT} s"
+                continue
+            # "No such container": an earlier timed-out attempt finished the removal.
+            if result.returncode == 0 or "No such container" in result.stderr:
+                self.closed = True
+                return
+            # Such as "removal of container ... is already in progress" from an earlier attempt.
+            lines = result.stderr.strip().splitlines()
+            reason = lines[-1] if lines else f"exit status {result.returncode}"
+        raise RuntimeError(f"docker rm -f {self.name} failed after {REMOVE_ATTEMPTS} attempts: {reason}")

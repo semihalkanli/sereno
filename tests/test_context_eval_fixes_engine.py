@@ -433,6 +433,45 @@ def docker_free(monkeypatch, returncode, timeout=0, has_timeout=True):
     return env, calls
 
 
+def docker_rm(monkeypatch, replies):
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append(args)
+        reply = replies[len(calls) - 1]
+        if reply is None:
+            raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+        return subprocess.CompletedProcess(args, reply[0], stdout="", stderr=reply[1])
+
+    monkeypatch.setattr(environment.subprocess, "run", run)
+    monkeypatch.setattr(environment, "REMOVE_PAUSE", 0)
+    env = environment.DockerEnvironment.__new__(environment.DockerEnvironment)
+    env.name, env.closed = "fixture", False
+    return env, calls
+
+
+@pytest.mark.parametrize(
+    "replies",
+    [
+        [(0, "")],
+        [None, (1, "Error response from daemon: No such container: fixture")],
+        [None, (1, "Error response from daemon: removal of container fixture is already in progress"), (0, "")],
+    ],
+)
+def test_container_removal_survives_a_slow_daemon(monkeypatch, replies):
+    env, calls = docker_rm(monkeypatch, replies)
+    env.close()
+    env.close()
+    assert env.closed and calls == [["docker", "rm", "-f", "fixture"]] * len(replies)
+
+
+def test_container_removal_fails_after_every_attempt_times_out(monkeypatch):
+    env, calls = docker_rm(monkeypatch, [None] * environment.REMOVE_ATTEMPTS)
+    with pytest.raises(RuntimeError, match="failed after 4 attempts: timed out after 120 s"):
+        env.close()
+    assert not env.closed and len(calls) == environment.REMOVE_ATTEMPTS
+
+
 def test_timed_out_action_is_an_observation_like_stock_mini_swe(monkeypatch):
     env, calls = docker_free(monkeypatch, 137)
     result = env.execute("sleep 9")
