@@ -18,3 +18,6 @@ dist/
 # Run outputs
 runs/
 .claude/
+
+# Local assistant instructions
+/CLAUDE.md
