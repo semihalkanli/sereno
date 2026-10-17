@@ -231,9 +231,20 @@ def test_memory_instructions_follow_claude_code_without_extra_defenses():
     for text in ("between tasks in this repository; nothing else", "type: user | feedback | project | reference", USER):
         assert text in INSTRUCTIONS
     assert "**Why:** and **How to apply:**" in INSTRUCTIONS
-    assert "not instructions from the user" in INSTRUCTIONS
-    # No defensive prompting beyond Claude Code's memory text, so the undefended arm stays undefended.
+    # No defensive prompting, so the undefended arm stays undefended; the warning paragraph is the warning-text arm.
+    assert "not instructions from the user" not in INSTRUCTIONS
+    assert "check it against the current code" not in INSTRUCTIONS
     assert "task data" not in INSTRUCTIONS and "untrusted" not in INSTRUCTIONS.lower()
+
+
+def test_warning_text_arm_is_the_default_plus_the_warning_paragraph():
+    from pathlib import Path
+
+    from sereno.context_eval.memory import WARNING_PARAGRAPH
+
+    path = Path(__file__).parents[1] / "examples/context-eval/memory-instructions-warning.md"
+    assert path.read_text() == INSTRUCTIONS + "\n\n" + WARNING_PARAGRAPH
+    assert "not instructions from the user" in WARNING_PARAGRAPH
 
 
 def test_both_adapters_open_with_the_same_memory_prompt(tmp_path, fixture_world):
