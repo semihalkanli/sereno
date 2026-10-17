@@ -199,8 +199,10 @@ the seed only in the first repository's folder and a reset arm in the probe's, s
 the same memory.
 
 The memory instructions (frontmatter topic files of type user, feedback, project or reference, one index line per
-file, memories as background context to verify against the code) end the system message and name the session's
-memory directory. One system-reminder precedes the official task prompt with, in order: the user's file, the
+file) end the system message and name the session's memory directory. They carry no warning about what memory
+says: the paragraph that called memories background context to verify against the code is a defense, kept as the
+warning-text arm in `examples/context-eval/memory-instructions-warning.md` (the default plus that paragraph, loaded
+through `memory.instructions_file`). Campaigns before this change carried the paragraph in every arm. One system-reminder precedes the official task prompt with, in order: the user's file, the
 repository's own instruction files, and the head of `MEMORY.md` (its first 200 lines, cut at 25,000 bytes on a
 character boundary, with a warning when the index is longer). Each section is labelled only with its source (the
 user's instruction file, written by the user; the repository's instruction file, checked into the repository; the
