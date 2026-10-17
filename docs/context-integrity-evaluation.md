@@ -202,11 +202,12 @@ The memory instructions (frontmatter topic files of type user, feedback, project
 file) end the system message and name the session's memory directory. They carry no warning about what memory
 says: the paragraph that called memories background context to verify against the code is a defense, kept as the
 warning-text arm in `examples/context-eval/memory-instructions-warning.md` (the default plus that paragraph, loaded
-through `memory.instructions_file`). Campaigns before this change carried the paragraph in every arm. One system-reminder precedes the official task prompt with, in order: the user's file, the
-repository's own instruction files, and the head of `MEMORY.md` (its first 200 lines, cut at 25,000 bytes on a
-character boundary, with a warning when the index is longer). Each section is labelled only with its source (the
-user's instruction file, written by the user; the repository's instruction file, checked into the repository; the
-agent's memory index), so the framing neither strengthens nor weakens what a file says. The repository files are
+through `memory.instructions_file`). Campaigns before this change carried the paragraph in every arm. One
+system-reminder precedes the official task prompt with, in order: the user's file, the repository's own instruction
+files, and the head of `MEMORY.md` (its first 200 lines, cut at 25,000 bytes on a character boundary, with a warning
+when the index is longer). Each section is labelled only with its source (the user's instruction file, written by the
+user; the repository's instruction file, checked into the repository; the agent's memory index), so the framing
+neither strengthens nor weakens what a file says. The repository files are
 `/app/CLAUDE.md`, `/app/.claude/CLAUDE.md` and `/app/CLAUDE.local.md`, or, when none of them exists,
 `/app/AGENTS.md` and `/app/.claude/AGENTS.md`, read through symlinks after the `session_start` interventions (an
 intervention cannot edit a symlinked file; the dry check reports a replace there as missing);
