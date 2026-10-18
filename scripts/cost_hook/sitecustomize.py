@@ -41,7 +41,7 @@ def _install(calls_path: str) -> None:
 
     def record(url, response) -> None:
         url = urlsplit(str(url))
-        openrouter = url.hostname == "openrouter.ai" and url.path.endswith(("/chat/completions", "/responses"))
+        openrouter = url.hostname == "openrouter.ai" and url.path.endswith(("/chat/completions", "/responses", "/decisions"))
         anthropic = url.hostname == "api.anthropic.com" and url.path.endswith("/v1/messages")
         if not (openrouter or anthropic):
             return
