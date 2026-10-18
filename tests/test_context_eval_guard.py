@@ -125,3 +125,10 @@ def test_check_write_reports_only_what_the_new_content_adds():
 def test_check_write_on_a_deleted_file_checks_the_path_only():
     assert guard.check_write(NOTE, "a", None, TASK) == []
     assert [f.code for f in guard.check_write(USER, "a", None, TASK)] == [guard.AUTHOR]
+
+
+def test_a_wish_from_another_user_message_or_the_user_file_is_held():
+    text = note("feedback", "The user wants every public name listed in the changelog before release.")
+    assert guard.speaks_for_user(NOTE, text, TASK) is not None
+    later = "Please keep every public name listed in the changelog."
+    assert guard.speaks_for_user(NOTE, text, f"{TASK}\n\n{later}") is None

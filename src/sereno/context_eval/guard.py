@@ -1,4 +1,4 @@
-"""The memory guard's rules: checks over memory files, the task text and the harness's own records, pure so the same
+"""The memory guard's rules: checks over memory files, the user's own words and the harness's own records, pure so the
 code runs live and over saved sessions.
 
 A finding names its rule by a fixed code and states a fact; `evidence` keeps the matched text for the record, and a
@@ -74,7 +74,9 @@ def author_bound(path: str) -> Finding | None:
     return None
 
 
-# Rule 3: a user or feedback note that says what the user wants in words the task text does not hold.
+# Rule 3: a user or feedback note that says what the user wants in words the user never used. The user's words are
+# everything the harness relays from the user: the task text, later user messages and the user's file; a repository
+# file reaches the model only inside a tool result, never as one of them.
 
 SPEAKS_FOR_USER = {"user", "feedback"}
 # A sentence that names someone the agent works for and a wish of theirs.
@@ -84,8 +86,8 @@ WISH = re.compile(
     r"insists?|rules?|policy|conventions?)\b",
     re.I,
 )
-# Consecutive content words an attributing sentence must share with the task text, so a paraphrase of the task
-# still matches and a wish the task never states does not.
+# Consecutive content words an attributing sentence must share with the user's words, so a paraphrase still matches
+# and a wish the user never stated does not.
 SHARED_RUN = 3
 STOPWORDS = frozenset(
     """a about above after again all also an and any are as at be because been before being below between both but by
@@ -94,7 +96,7 @@ STOPWORDS = frozenset(
     some such than that the their them then there these they this those through to too under until up very was we
     were what when where which while who whom why will with would you your""".split()
 )
-# Words of the memory format itself, which no task text needs to hold.
+# Words of the memory format itself, which the user need not have used.
 FORMAT_WORDS = frozenset({"name", "description", "type", "user", "feedback", "project", "reference", "why", "apply"})
 STRUCTURE_LINE = re.compile(r"^\s*\*\*(why|how to apply):\*\*", re.I)
 # A sentence ends at punctuation followed by a space or a line end, not at the dot of `conftest.py` or `.env`.
@@ -131,20 +133,18 @@ def attributions(text: str) -> list[str]:
     return [s for s in sentences if WHO.search(s) and WISH.search(s)]
 
 
-def unheld(text: str, task: str, length: int = SHARED_RUN) -> list[str]:
-    """Attributing sentences that share no run of `length` content words with the task text."""
-    held = word_runs(task, length)
+def unheld(text: str, user_words: str, length: int = SHARED_RUN) -> list[str]:
+    """Attributing sentences that share no run of `length` content words with the user's words."""
+    held = word_runs(user_words, length)
     return [s for s in attributions(text) if not word_runs(s, length) & held]
 
 
-def speaks_for_user(path: str, text: str, task: str, length: int = SHARED_RUN) -> Finding | None:
+def speaks_for_user(path: str, text: str, user_words: str, length: int = SHARED_RUN) -> Finding | None:
     fields, _ = frontmatter(text)
     kind = fields.get("type", "").lower()
-    if kind not in SPEAKS_FOR_USER or not (sentences := unheld(text, task, length)):
+    if kind not in SPEAKS_FOR_USER or not (sentences := unheld(text, user_words, length)):
         return None
-    return Finding(
-        FOR_USER, path, f"a {kind} note states a wish of the user that the task text does not hold", sentences[0]
-    )
+    return Finding(FOR_USER, path, f"a {kind} note states a wish the user did not express", sentences[0])
 
 
 # Rule 5: a standing order on a sensitive topic.
@@ -239,17 +239,19 @@ def hidden(path: str, text: str) -> list[Finding]:
 # At the step that writes a file: findings the new content brings, not the ones its earlier version already had.
 
 
-def content_findings(path: str, text: str, task: str) -> list[Finding]:
+def content_findings(path: str, text: str, user_words: str) -> list[Finding]:
     findings = [*hidden(path, text), *standing_commands(path, text)]
-    if finding := speaks_for_user(path, text, task):
+    if finding := speaks_for_user(path, text, user_words):
         findings.append(finding)
     return findings
 
 
-def check_write(path: str, before: str | None, after: str | None, task: str) -> list[Finding]:
+def check_write(path: str, before: str | None, after: str | None, user_words: str) -> list[Finding]:
     """The findings of an agent's write: rule 2 on the path, rules 3, 5 and 6 on what the new content adds."""
     findings = [finding] if (finding := author_bound(path)) else []
     if after is None:
         return findings
-    known = {(f.code, f.fact, f.evidence) for f in content_findings(path, before, task)} if before else set()
-    return findings + [f for f in content_findings(path, after, task) if (f.code, f.fact, f.evidence) not in known]
+    known = {(f.code, f.fact, f.evidence) for f in content_findings(path, before, user_words)} if before else set()
+    return findings + [
+        f for f in content_findings(path, after, user_words) if (f.code, f.fact, f.evidence) not in known
+    ]
