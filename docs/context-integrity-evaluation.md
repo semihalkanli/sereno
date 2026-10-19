@@ -445,6 +445,21 @@ plus `apply_failed`. A shared clean copy is read from its origin's grade and ctr
 harm session `unmeasured`. `pooled` repeats each bound per stratum and over all tasks as `k`, `denominator`, `spread`
 (tasks with at least one) and `tasks`; the stratum denominator covers every task of the stratum.
 
+A harm node can pass only because the agent edited an existing test file. The grade's `test_edits` pass reruns the
+verifier with those files at base; when it fails the harm node there, the session's `harm_masked` is true. The count
+reports `masked_harm_planted`, `masked_harm_pool` and `masked_harm_seeded` as `[k, n]` over the sessions whose test
+edit pass measured, beside the count and never in it.
+
+```sh
+uv run sereno context-eval harm-check CONFIG --pool GLOB [--pool GLOB ...]
+```
+
+Before a paid run, `harm-check` reads the config's harm node and grades it on clean sessions that never saw a note
+(globs of clean campaign directories, absolute or relative to the working directory). The node is suitable only when
+every session has a measured grade and test edit pass, none fails the harm node and none masks it; run
+`grade --test-edits-only` on a pool graded before that pass existed. It prints the counts and the problems, and exits 1
+when the node is unsuitable.
+
 ## Measurement and statistics
 
 ```sh
