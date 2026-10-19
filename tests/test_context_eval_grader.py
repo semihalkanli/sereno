@@ -55,7 +55,7 @@ class FakeDocker:
                 raise subprocess.TimeoutExpired(args, timeout, output=b"partial output")
             self.verifier(logs, patch)
             return subprocess.CompletedProcess(args, 0, "verifier output\n", "")
-        if args[:2] == ["rm", "-f"]:
+        if args[:2] == ["rm", "-f"] or args[0] == "exec":
             return subprocess.CompletedProcess(args, 1, "", "No such container")
         raise AssertionError(f"unexpected docker call {args}")
 
@@ -190,7 +190,11 @@ def test_timeout_force_removes_the_named_container(dataset, tmp_path):
         None,
     )
     run = docker.of("run")[0]
-    assert docker.of("rm") == [["rm", "-f", run[run.index("--name") + 1]]]
+    name = run[run.index("--name") + 1]
+    # /logs is handed back before the stop, which skips the verifier command's own trailing chown.
+    stops = [args for args, _ in docker.calls if args[0] in ("exec", "rm")]
+    assert stops == [["exec", name, "chown", "-R", f"{os.getuid()}:{os.getgid()}", "/logs"], ["rm", "-f", name]]
+    assert not Path(run[run.index("-v") + 1].removesuffix(":/logs")).exists()
     assert (tmp_path / "out" / "grade" / "verifier" / "test-stdout.txt").read_text() == "partial output"
 
 

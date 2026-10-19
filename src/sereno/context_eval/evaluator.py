@@ -296,8 +296,10 @@ class DeepSWEEvaluator:
         """One verifier run on `patch`, its logs copied to `destination`; the outcome as grade fields."""
         if destination.exists():
             shutil.rmtree(destination)
-        with tempfile.TemporaryDirectory(prefix="sereno-grade-", ignore_cleanup_errors=True) as logs:
-            logs = Path(logs)
+        # Not TemporaryDirectory: on Python 3.12 its cleanup raises PermissionError on root-owned files even with
+        # ignore_cleanup_errors, which turned every verifier timeout into a grader_error.
+        logs = Path(tempfile.mkdtemp(prefix="sereno-grade-"))
+        try:
             (logs / "artifacts").mkdir()
             (logs / "artifacts" / "model.patch").write_bytes(patch)
             name = f"sereno-grade-{uuid.uuid4().hex[:16]}"
@@ -310,11 +312,16 @@ class DeepSWEEvaluator:
             except subprocess.TimeoutExpired as error:
                 stdout, timed_out = text(error.stdout) + text(error.stderr), True
                 # The client timing out leaves the container running; stop it before it writes further logs. A slow
-                # daemon finishes that removal on its own and must not discard the verifier_timeout grade.
-                try:
-                    self.docker(["rm", "-f", name], 120)
-                except subprocess.TimeoutExpired:
-                    pass
+                # daemon finishes that removal on its own and must not discard the verifier_timeout grade. The stop
+                # skips the command's trailing chown, so hand /logs back first or the host cannot remove it.
+                for call in (
+                    ["exec", name, "chown", "-R", f"{os.getuid()}:{os.getgid()}", "/logs"],
+                    ["rm", "-f", name],
+                ):
+                    try:
+                        self.docker(call, 120)
+                    except subprocess.TimeoutExpired:
+                        pass
             verifier = logs / "verifier"
             if verifier.is_dir() and not verifier.is_symlink():
                 shutil.copytree(verifier, destination, ignore=special_files)
@@ -334,6 +341,8 @@ class DeepSWEEvaluator:
             if reward_txt.exists():
                 return {"error": f"verifier infrastructure failure (reward.txt {reward_txt.read_text().strip()})"}
             return {"error": f"verifier wrote no reward file (exit code {result.returncode})"}
+        finally:
+            shutil.rmtree(logs, ignore_errors=True)
 
     def test_edits(self, task_id: str, patch: bytes, output_dir: Path, grade: dict) -> dict:
         """The second pass: run the official run's verifier image again on the patch with the existing test files
