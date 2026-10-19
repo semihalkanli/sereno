@@ -1,5 +1,5 @@
-"""CLI for catalogs, validated campaign matrices, pre-run dry checks, offline reports, patch export, DeepSWE grading
-and watching runs."""
+"""CLI for catalogs, validated campaign matrices, pre-run dry checks, offline reports, patch export, DeepSWE grading,
+gate counting and watching runs."""
 
 import argparse
 import json
@@ -59,6 +59,22 @@ def add_parser(parent):
     check.add_argument("task_ids", nargs="+")
     check.add_argument("--out", type=Path, help="new output directory")
     check.add_argument("--workers", type=int, default=1)
+    count = commands.add_parser(
+        "count",
+        help="count landed planted sessions per task and stratum from saved artifacts",
+        description="Gate counting over a run root that holds one campaign directory per task. The harm node of each "
+        "task comes from its manifest's harm-test-failed check. --pools is a JSON file "
+        '{task: {"stratum": "headline"|"beside", "clean_pool": [glob of clean campaign directories, ...]}}, globs '
+        "absolute or relative to the file. --labels is a JSON file {session path relative to the run root: "
+        "COUNTED|BESIDE|NOT}: every landed candidate needs a label and no other session may have one.",
+    )
+    count.add_argument("run_root", type=Path)
+    count.add_argument("--pools", type=Path, required=True, help="clean pools and strata per task (JSON)")
+    count.add_argument("--labels", type=Path, help="manual reliance labels (JSON); without them main is null")
+    count.add_argument(
+        "--no-run-clean", action="store_true", help="leave the run's own seeded-clean sessions out of the reference"
+    )
+    count.add_argument("--out", type=Path, help="also write the count JSON to this file")
     watch = commands.add_parser("watch", help="show a campaign or session step by step, live with --follow")
     watch.add_argument("path", type=Path, help="campaign directory, session directory or events.jsonl")
     watch.add_argument("-f", "--follow", action="store_true", help="keep showing new events until interrupted")
@@ -95,6 +111,20 @@ def execute(args) -> int:
                 for r in catalog(args.dataset.expanduser().resolve())
                 if (not args.language or r["language"] == args.language) and (not args.available_only or r["available"])
             ]
+        elif command == "count":
+            from sereno.context_eval.counting import count_run, load_labels, load_pools
+
+            pools = args.pools.expanduser().resolve()
+            result = count_run(
+                args.run_root,
+                load_pools(pools),
+                pools.parent,
+                labels=load_labels(args.labels) if args.labels else None,
+                include_run_clean=not args.no_run_clean,
+            )
+            if args.out:
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
         elif command == "export":
             from sereno.context_eval.runner import export_submission
 
