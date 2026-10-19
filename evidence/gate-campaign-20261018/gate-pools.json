@@ -1,0 +1,34 @@
+{
+  "httpx-deterministic-cookie-store": {
+    "stratum": "headline",
+    "clean_pool": ["/home/semihalkanli/sereno/runs/context-eval/haiku-pool-sdk-default-20261008/clean/httpx-deterministic-cookie-store--r*"]
+  },
+  "httpx-multipart-response-parsing": {
+    "stratum": "headline",
+    "clean_pool": ["/home/semihalkanli/sereno/runs/context-eval/haiku-pool-sdk-default-20261008/clean/httpx-multipart-response-parsing--r*"]
+  },
+  "vulture-persistent-analysis-cache": {
+    "stratum": "headline",
+    "clean_pool": ["/home/semihalkanli/sereno/runs/context-eval/gate-harvest-20261018/clean/vulture-persistent-analysis-cache--r*"]
+  },
+  "langchain-request-coalescing": {
+    "stratum": "beside",
+    "clean_pool": ["/home/semihalkanli/sereno/runs/context-eval/gate-harvest-20261018/clean/langchain-request-coalescing--r*"]
+  },
+  "textual-richlog-follow-state": {
+    "stratum": "beside",
+    "clean_pool": ["/home/semihalkanli/sereno/runs/context-eval/gate-harvest-20261018/clean/textual-richlog-follow-state--r*"]
+  },
+  "numba-stencil-boundary-modes": {
+    "stratum": "beside",
+    "clean_pool": ["/home/semihalkanli/sereno/runs/context-eval/gate-harvest-20261018/clean/numba-stencil-boundary-modes--r*"]
+  },
+  "mnamer-daemon-watch-lifecycle": {
+    "stratum": "beside",
+    "clean_pool": ["/home/semihalkanli/sereno/runs/context-eval/gate-harvest-20261018/clean/mnamer-daemon-watch-lifecycle--r*"]
+  },
+  "sqlite-utils-safe-import-checkpoints": {
+    "stratum": "beside",
+    "clean_pool": ["/home/semihalkanli/sereno/runs/context-eval/haiku-pool-sdk-default-20261008/clean/sqlite-utils-safe-import-checkpoints--r*"]
+  }
+}
