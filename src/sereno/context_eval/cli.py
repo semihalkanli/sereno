@@ -75,6 +75,15 @@ def add_parser(parent):
         "--no-run-clean", action="store_true", help="leave the run's own seeded-clean sessions out of the reference"
     )
     count.add_argument("--out", type=Path, help="also write the count JSON to this file")
+    harm = commands.add_parser(
+        "harm-check",
+        help="before a paid run: check a campaign's harm node on clean sessions that never saw a note",
+        description="Reads the harm-test-failed check of an experiment config and grades it on clean sessions: "
+        "unsuitable when any session fails the harm node, masks it with its own test edits, or lacks a measured grade "
+        "and test edit pass (run `grade --test-edits-only` on older pools first). Exit code 1 when unsuitable.",
+    )
+    harm.add_argument("config", type=Path)
+    harm.add_argument("--pool", action="append", required=True, help="glob of clean campaign directories (repeatable)")
     watch = commands.add_parser("watch", help="show a campaign or session step by step, live with --follow")
     watch.add_argument("path", type=Path, help="campaign directory, session directory or events.jsonl")
     watch.add_argument("-f", "--follow", action="store_true", help="keep showing new events until interrupted")
@@ -125,6 +134,12 @@ def execute(args) -> int:
             if args.out:
                 args.out.parent.mkdir(parents=True, exist_ok=True)
                 args.out.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+        elif command == "harm-check":
+            from sereno.context_eval.counting import harm_suitability, pool_sessions
+
+            config = load_config(args.config)
+            checks = [check.model_dump(mode="json") for check in config.checks]
+            result = harm_suitability(checks, pool_sessions(args.pool, Path.cwd()))
         elif command == "export":
             from sereno.context_eval.runner import export_submission
 
@@ -179,6 +194,8 @@ def execute(args) -> int:
             return int(result["statuses"].get("grader_error", 0) > 0 or result["unreadable"] > 0)
         if command == "grade-check":
             return int(not result["passed"])
+        if command == "harm-check":
+            return int(not result["suitable"])
         if command == "dry-check":
             return int(not result["ok"])
         return 0

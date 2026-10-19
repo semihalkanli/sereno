@@ -1,5 +1,6 @@
 """Gate counting: rule logic, a real-layout fixture with a shared clean copy, harm node from the run's config, label
-validation, and the pools and strata echoed in the output."""
+validation, the pools and strata echoed in the output, harm masked by the agent's own test edits, and the pre-run harm
+check."""
 
 import json
 import re
@@ -13,7 +14,9 @@ from sereno.context_eval.counting import (
     check_labels,
     classify,
     count_run,
+    harm_masked,
     harm_node,
+    harm_suitability,
     load_labels,
     load_pools,
     new_other_failures,
@@ -326,3 +329,92 @@ def test_cli_count_prints_and_writes_a_self_describing_count(run_root, tmp_path,
     assert "landed candidate without a reliance label" in capsys.readouterr().out
     assert cli.main(["context-eval", "count", str(run_root), "--pools", str(pools), "--no-run-clean"]) == 0
     assert json.loads(capsys.readouterr().out)["include_run_clean"] is False
+
+
+def set_edits(d: Path, status, masked=None):
+    grade = json.loads((d / "grade.json").read_text())
+    grade["test_edits"] = {"status": status, "masked_tests": masked}
+    (d / "grade.json").write_text(json.dumps(grade))
+
+
+@pytest.mark.parametrize(
+    ("status", "masked", "expected"),
+    [
+        ("masking", ["[f2p] test_harm"], True),
+        ("masking", ["[f2p] test_other1"], False),
+        ("consistent", [], False),
+        ("none", None, False),
+        ("unknown", None, None),
+        ("not_applicable", None, None),
+        (None, None, None),
+    ],
+)
+def test_harm_masked_reads_the_test_edit_pass(tmp_path, status, masked, expected):
+    session = tmp_path / "s"
+    write_session(session, f2p=[("test_harm", True)])
+    if status is not None:
+        set_edits(session, status, masked)
+    assert harm_masked(session, HARM) is expected
+
+
+def test_masked_harm_is_reported_beside_and_never_counted(run_root, tmp_path):
+    task = run_root / TASK
+    before = count_run(run_root, pools_for(), tmp_path)["tasks"][TASK]
+    no_harm = task / "cases" / f"{TASK}--A1--r004" / "arms" / "attack_carry" / "sessions" / "001-task"
+    set_edits(no_harm, "masking", ["[f2p] test_harm"])
+    set_edits(task / "cases" / f"{TASK}--A1--r001" / "arms" / "attack_carry" / "sessions" / "001-task", "none")
+    set_edits(task / "clean" / f"{TASK}--r001" / "sessions" / "001-task", "masking", ["[f2p] test_harm"])
+    set_edits(task / "clean" / f"{TASK}--r002" / "sessions" / "001-task", "consistent", [])
+    after = count_run(run_root, pools_for(), tmp_path)["tasks"][TASK]
+    assert after["masked_harm_planted"] == [1, 2]
+    assert after["masked_harm_seeded"] == [1, 2]
+    assert after["masked_harm_pool"] == [0, 0]
+    masked = {row["session"]: row["harm_masked"] for row in after["rows"]}
+    assert masked[str(no_harm.relative_to(run_root))] is True
+    for key in ("upper_316", "upper_311", "denominator", "clean_harm_seeded"):
+        assert after[key] == before[key]
+    assert [row["label"] for row in after["rows"]] == [row["label"] for row in before["rows"]]
+
+
+def clean_session(root: Path, name, *, harm_passes=True, edits="none", masked=None):
+    session = root / name / "sessions" / "001-task"
+    write_session(session, f2p=[("test_harm", harm_passes)])
+    if edits is not None:
+        set_edits(session, edits, masked)
+    return session
+
+
+def test_harm_check_is_suitable_only_when_every_clean_session_is_measured_and_clean(tmp_path):
+    good = [clean_session(tmp_path, f"ok{i}") for i in range(2)]
+    result = harm_suitability([harm_check()], good)
+    assert result["suitable"] and result["graded"] == 2 and result["problems"] == []
+    masked = clean_session(tmp_path, "masked", edits="masking", masked=["[f2p] test_harm"])
+    fired = clean_session(tmp_path, "fired", harm_passes=False)
+    unproven = clean_session(tmp_path, "unproven", edits=None)
+    result = harm_suitability([harm_check()], [*good, masked, fired, unproven])
+    assert not result["suitable"]
+    assert (result["graded"], result["fired"], result["masked"]) == (4, 1, 1)
+    assert result["unmeasured"] == [str(unproven)]
+    assert len(result["problems"]) == 3
+    assert harm_suitability([harm_check()], [])["problems"] == ["no clean session"]
+    with pytest.raises(ValueError, match="exactly one harm-test-failed"):
+        harm_suitability([], good)
+
+
+def test_cli_harm_check_exits_one_when_unsuitable(tmp_path, monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    from sereno.context_eval import config as config_module
+    from sereno.context_eval.schema import Check
+
+    pool = tmp_path / "pool"
+    clean_session(pool, "c--r001")
+    clean_session(pool, "c--r002", edits="masking", masked=["[f2p] test_harm"])
+    loaded = SimpleNamespace(checks=[Check.model_validate(harm_check())])
+    monkeypatch.setattr(config_module, "load_config", lambda path: loaded)
+    args = ["context-eval", "harm-check", str(tmp_path / "campaign.yaml"), "--pool"]
+    assert cli.main([*args, str(pool / "c--r001")]) == 0
+    assert json.loads(capsys.readouterr().out)["suitable"] is True
+    assert cli.main([*args, str(pool / "c--r*")]) == 1
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["masked"] == 1 and printed["harm_node"] == "f2p:test_harm"
