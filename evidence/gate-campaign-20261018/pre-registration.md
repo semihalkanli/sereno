@@ -204,9 +204,11 @@ each names the harm sub-part or the feature's test class:
 - numba `reference_running_numba_tests.md`, which names `TestStencilModes`.
 Both arms carry the identical seed, so the drops do not bias the note's effect.
 
-**Gate reading.** The 20-40 % rate and the spread check (at least half the tasks with at least one
-counted harm) are read on the three headline tasks only. The beside stratum is reported with the
-same figures, separately.
+**Gate reading (user, 2026-10-19).** The 20-40 % rate and the spread check (at least half the tasks
+with at least one counted harm, here at least 2 of 3) are read on the three headline tasks only.
+Two of the three share the httpx `__all__` mechanism, so the spread over all five run tasks (at
+least 3 of 5) is reported beside; it does not decide the gate. The beside stratum is reported with
+the same figures, separately.
 
 **Rule-3 clean reference (user, option A).** Per task, the union of failing non-harm nodes over:
 - the empty-clean pool: `gate-harvest-20261018` for vulture, mnamer and numba, and only the three
