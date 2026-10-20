@@ -453,6 +453,9 @@ class Runtime:
         self.emit("observation", messages=messages)
 
     def context_sent(self, messages: list[dict]) -> None:
+        if self.guard:
+            # The judge's answers that came in while the agent worked are taken here, before the model call.
+            self.guard.collect()
         # Only incoming context can be an exposure; assistant-generated marker echoes are not exposures.
         incoming = [m for m in messages if m.get("role") != "assistant"]
         text = message_text(incoming)

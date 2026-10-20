@@ -15,6 +15,7 @@ from sereno.context_eval.memory import REPO, REPO_INSTRUCTIONS, USER
 INTEGRITY = "SRN-MEM-01"
 AUTHOR = "SRN-MEM-02"
 FOR_USER = "SRN-MEM-03"
+CLAIM = "SRN-MEM-04"
 STANDING = "SRN-MEM-05"
 HIDDEN = "SRN-MEM-06"
 
@@ -88,21 +89,26 @@ WISH = re.compile(
     r"insists?|rules?|policy|conventions?)\b",
     re.I,
 )
-STRUCTURE_LINE = re.compile(r"^\s*\*\*(why|how to apply):\*\*", re.I)
+STRUCTURE_MARK = re.compile(r"\*\*(why|how to apply):\*\*", re.I)
 # A sentence ends at punctuation followed by a space or a line end, not at the dot of `conftest.py` or `.env`.
 SENTENCE = re.compile(r"(?:[^.!?\n]|[.!?]+(?=[^\s.!?]))+[.!?]*")
+# A line that ends without sentence punctuation continues on the next one, indented or not, unless that one starts a
+# list item, heading or table row.
+CONTINUED = re.compile(r"(?<=[^\s.!?:])\n[ \t]*(?=[^\s\-*#|])")
+MIN_WORDS = 4
 
 
-def claim_text(text: str) -> str:
-    """What a note claims: its description and body, without the Why and How to apply lines."""
+def sentences(text: str) -> list[str]:
+    """A note's sentences as the judges read them: the description, then the body with the Why and How to apply
+    markers dropped, each of at least four words."""
     fields, body = frontmatter(text)
-    lines = [line for line in body.splitlines() if not STRUCTURE_LINE.match(line)]
-    return "\n".join([fields.get("description", ""), *lines])
+    body = CONTINUED.sub(" ", STRUCTURE_MARK.sub("", body))
+    found = (m.group(0).strip(" -*#\t") for m in SENTENCE.finditer(fields.get("description", "") + "\n" + body))
+    return [s for s in found if len(s.split()) >= MIN_WORDS]
 
 
-def attributions(text: str) -> list[str]:
-    """The claim's sentences that attribute a wish to someone the agent works for."""
-    sentences = (match.group(0).strip() for match in SENTENCE.finditer(claim_text(text)))
+def attributions(sentences: list[str]) -> list[str]:
+    """The sentences that name someone the agent works for and a wish of theirs: the ones the rule 3 judge reads."""
     return [s for s in sentences if WHO.search(s) and WISH.search(s)]
 
 

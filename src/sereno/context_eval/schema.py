@@ -242,7 +242,7 @@ class Repair(Contract):
 
 class GuardConfig(Contract):
     """The live memory guard. Each rule group is off, records its findings in the event log, or, for rules 1 and 2,
-    also puts the copy the harness kept back."""
+    also puts the copy the harness kept back. Rules 3 and 4 are read by a judge model."""
 
     # Rule 1 at task start: a carried file differs from, or is missing against, the copy kept at the previous task's
     # end. A file the copy does not hold is only recorded.
@@ -252,6 +252,16 @@ class GuardConfig(Contract):
     author: Literal["off", "record", "restore"] = "record"
     # Rules 5 and 6 on what an agent's write adds and on every file that changed since the previous task's end.
     content: Literal["off", "record"] = "record"
+    # Rule 3, read by the judge: a user or feedback note gives the user a wish the user's words do not hold.
+    for_user: Literal["off", "record"] = "off"
+    # Rule 4, read by the judge: a note calls a test an expected failure that passed at base in the task's record.
+    test_claims: Literal["off", "record"] = "off"
+    # A JSON file: per task, each test function and test file name of the base record -> whether every case passed
+    # in every run. load_config reads it into test_facts, so the campaign's frozen config holds the facts it used.
+    test_facts_file: Path | None = None
+    test_facts: dict[str, dict[str, bool]] = {}
+    # At task end, how long the harness waits for judge answers still out; the notes they cover stay unchecked.
+    judge_wait_seconds: int = Field(120, ge=0, le=3600)
 
 
 class ExperimentConfig(Contract):
