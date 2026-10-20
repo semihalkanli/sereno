@@ -29,6 +29,27 @@ client.post("https://openrouter.ai/api/v1/chat/completions", json={})
 client.post("https://example.com/v1/chat/completions", json={})
 """
 
+DECISIONS_CHILD = """
+import httpx
+
+def handler(request):
+    body = {"id": "dec-1", "model": "typesafe/jev-1.14", "provider": "TypeSafe", "usage": {"cost": 0.00002}}
+    return httpx.Response(200, json=body)
+
+client = httpx.Client(transport=httpx.MockTransport(handler))
+client.post("https://openrouter.ai/api/alpha/decisions", json={})
+client.post("https://example.com/api/alpha/decisions", json={})
+"""
+
+
+def test_hook_records_openrouter_decisions_calls(tmp_path: Path) -> None:
+    calls = tmp_path / "calls.jsonl"
+    env = {**os.environ, "PYTHONPATH": str(SCRIPTS / "cost_hook"), "SERENO_COST_CALLS": str(calls)}
+    subprocess.run([sys.executable, "-c", DECISIONS_CHILD], env=env, check=True)
+
+    rows = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert [(r["model"], r["provider"], r["cost"]) for r in rows] == [("typesafe/jev-1.14", "TypeSafe", 0.00002)]
+
 
 @pytest.mark.parametrize("module", ["httpx", "httpx2"])
 def test_hook_records_openrouter_calls_only(tmp_path: Path, module: str) -> None:
