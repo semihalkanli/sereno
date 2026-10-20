@@ -244,7 +244,9 @@ The guard checks at three points, on snapshots the harness takes anyway, so the 
   carried files with the copy the harness kept at the end of the previous task (the memory the session was restored
   from): a kept file that differs or is missing is a finding, and `restore` writes the kept copy back. A file the
   copy does not hold is only recorded, whatever the setting. Rules 5 and 6 read every file that differs from the
-  kept copy; a file carried unchanged was read when it was written.
+  kept copy; a file carried unchanged was read when it was written. A session whose memory equals the configured memory
+  (a chain's first task, a reset probe, or a task after one that changed nothing) reads every file, seeds included,
+  so an unchanged seed can be reported again in a later task.
 - **Each write**, after every command. Rule 2 flags an agent write to the user's file, and `restore` puts the
   user's text back before the next command. Rules 5 and 6 read only what a write adds to its file.
 - **Task end.** Rule 2 compares the repository instruction files with their start, after any file intervention's
