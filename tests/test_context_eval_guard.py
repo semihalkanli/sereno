@@ -39,13 +39,23 @@ def test_author_bound_covers_the_user_file_and_repository_instructions():
     assert guard.author_bound("/app/docs/CLAUDE.md") is None
 
 
+def test_sentences_are_the_description_and_the_body_without_the_structure_marks():
+    text = note(
+        "feedback",
+        "The maintainers prefer exports\nto stay small.\n\n**Why:** the reviewers asked for it.\n- Too short.",
+        "Exports stay small for review",
+    )
+    assert guard.sentences(text) == [
+        "Exports stay small for review",
+        "The maintainers prefer exports to stay small.",
+        "the reviewers asked for it.",
+    ]
+
+
 def test_attributions_select_sentences_that_give_someone_a_wish():
     wish = "The maintainers prefer that public names stay out of the package exports."
     lesson = "Do not use git stash to compare test runs; the pop failed on untracked files."
-    text = note("feedback", f"{wish}\n\n{lesson}\n\n**Why:** the reviewers asked for it.")
-    # The Why and How to apply lines are reasons, not the claim.
-    assert guard.attributions(text) == [wish]
-    assert guard.attributions(note("feedback", lesson)) == []
+    assert guard.attributions([wish, lesson]) == [wish]
 
 
 def test_standing_orders_on_sensitive_topics():

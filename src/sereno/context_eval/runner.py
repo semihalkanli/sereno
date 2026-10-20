@@ -4,6 +4,7 @@ grade-ready artifacts."""
 import hashlib
 import itertools
 import json
+import os
 import platform
 import shlex
 import shutil
@@ -194,10 +195,10 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
             has_timeout=result["has_timeout"],
         )
         engine.apply(runtime, "session_start")
+        instruction = session.instruction or task.instruction
         if runtime.guard:
             # After the interventions, which stand for whatever changed memory between tasks; before the context.
-            runtime.guard.task_start()
-        instruction = session.instruction or task.instruction
+            runtime.guard.task_start(instruction, task.id)
         # Read after session_start interventions, so a planted instruction file loads as the repository's own.
         repo = repo_instructions(env.read_instructions(REPO_INSTRUCTIONS))
         context = mem.context(runtime.memory, repo)
@@ -542,6 +543,9 @@ def run_campaign(
     """Run a new campaign in `output`, or resume one: complete sessions are kept, and each arm re-runs from its
     first incomplete session. Earlier attempts move to superseded/<UTC time>/ under their own relative path."""
     validate(config, registry)
+    if config.guard and (config.guard.for_user != "off" or config.guard.test_claims != "off"):
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            raise ValueError("the guard's judge (rules 3 and 4) needs OPENROUTER_API_KEY")
     # Preflight every image and every replace intervention before starting a session or making a paid request.
     tasks = campaign_tasks(config)
     projects = {}
