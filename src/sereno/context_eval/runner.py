@@ -184,7 +184,7 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
                 raise
 
         env.snapshot_memory = checked_snapshot
-        runtime = Runtime(env, engine, log, session, config.memory, memory, config.checks, project)
+        runtime = Runtime(env, engine, log, session, config.memory, memory, config.checks, project, config.guard)
         log.emit(
             "session_start",
             session_id=session.id,
@@ -194,6 +194,9 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
             has_timeout=result["has_timeout"],
         )
         engine.apply(runtime, "session_start")
+        if runtime.guard:
+            # After the interventions, which stand for whatever changed memory between tasks; before the context.
+            runtime.guard.task_start()
         instruction = session.instruction or task.instruction
         # Read after session_start interventions, so a planted instruction file loads as the repository's own.
         repo = repo_instructions(env.read_instructions(REPO_INSTRUCTIONS))
@@ -231,6 +234,8 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         else:
             engine.apply(runtime, "session_end")
             memory = runtime.capture_memory("agent")
+            if runtime.guard:
+                runtime.guard.task_end()
         for check in config.checks:
             if check.source == "workspace" and (not check.sessions or session.id in check.sessions):
                 result["workspace"][check.path] = env.read(check.path) or ""
@@ -271,6 +276,8 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         result["duration_seconds"] = time.monotonic() - started
         write_json(directory / "memory_end.json", memory)
         write_json(directory / "interventions.json", runtime.journal if runtime else [])
+        if runtime and runtime.guard:
+            write_json(directory / "guard.json", runtime.guard.summary())
         if engine.enabled:
             # Where plugin strategies left the intervention RNG, so a resume continues the same draws.
             write_json(directory / "rng_state.json", engine.rng.getstate())

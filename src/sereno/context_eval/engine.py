@@ -11,6 +11,7 @@ from typing import Any
 
 from sereno.context_eval.config import fingerprint
 from sereno.context_eval.environment import commit_planted
+from sereno.context_eval.live_guard import LiveGuard
 from sereno.context_eval.memory import MemoryViolation, owner, resolve, resolve_files
 
 # A command that names the memory root reads memory. The text test misses a read through `cd ~` and a relative
@@ -356,7 +357,7 @@ def separate_patch(env, journal: list[dict], base_commit: str) -> bytes:
 
 
 class Runtime:
-    def __init__(self, env, engine, log, session, memory_config, initial_memory, checks, project=None):
+    def __init__(self, env, engine, log, session, memory_config, initial_memory, checks, project=None, guard=None):
         self.env, self.engine, self.log, self.session = env, engine, log, session
         # The session's memory project folder; configured memory paths resolve into it.
         self.project = project
@@ -378,6 +379,8 @@ class Runtime:
         self.remember_lines(e.text for e in engine.events if e.method == "memory")
         self.pending_commands: list[str] = []
         self.sent: list[str] = []
+        # The live memory guard, when the campaign configures one; it keeps the carried memory as its copy.
+        self.guard = LiveGuard(guard, self, initial_memory) if guard else None
 
     @property
     def step(self) -> int:
@@ -399,8 +402,10 @@ class Runtime:
 
     def capture_memory(self, origin: str):
         files = self.env.snapshot_memory(self.memory_config.max_files, self.memory_config.max_bytes)
+        changes = []
         for path in sorted(set(files) | set(self.memory)):
             if files.get(path) != self.memory.get(path):
+                changes.append((path, self.memory.get(path), files.get(path)))
                 self.emit(
                     "memory_change",
                     origin=origin,
@@ -411,7 +416,10 @@ class Runtime:
                 )
         self.memory = files
         self.remember_lines(files.values())
-        return dict(files)
+        if self.guard and changes:
+            # The guard may put a kept copy back, which captures memory again as its own change.
+            self.guard.observe(origin, changes)
+        return dict(self.memory)
 
     def execute(self, command: str) -> dict[str, Any]:
         self.actions += 1

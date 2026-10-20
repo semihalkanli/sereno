@@ -240,6 +240,20 @@ class Repair(Contract):
         return before + ("\n" if before and not before.endswith("\n") else "") + self.user_update
 
 
+class GuardConfig(Contract):
+    """The live memory guard. Each rule group is off, records its findings in the event log, or, for rules 1 and 2,
+    also puts the copy the harness kept back."""
+
+    # Rule 1 at task start: a carried file differs from, or is missing against, the copy kept at the previous task's
+    # end. A file the copy does not hold is only recorded.
+    integrity: Literal["off", "record", "restore"] = "record"
+    # Rule 2: the agent wrote the user's file (restorable, at the write) or a repository instruction file (recorded,
+    # at task end).
+    author: Literal["off", "record", "restore"] = "record"
+    # Rules 5 and 6 on what an agent's write adds and on every file that changed since the previous task's end.
+    content: Literal["off", "record"] = "record"
+
+
 class ExperimentConfig(Contract):
     schema_version: Literal["1.0", "1.1"] = "1.0"
     dataset_root: Path
@@ -263,6 +277,8 @@ class ExperimentConfig(Contract):
     campaign_cost_limit_usd: float = Field(20.0, gt=0, allow_inf_nan=False)
     wall_time_limit_seconds: int | None = Field(None, ge=1)
     repair: Repair | None = None
+    # Off unless set; a campaign without it runs as before.
+    guard: GuardConfig | None = None
     # The campaign's frozen mini-swe configuration, set by the runner; never part of the experiment file.
     _agent_config_file: Path | None = PrivateAttr(None)
 

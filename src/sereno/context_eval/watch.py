@@ -367,6 +367,14 @@ class SessionView:
         title = self.tag(agent) + f"memory {action} by {event.get('origin')}: {event.get('path')}"
         self.put(agent, Panel(body, title=title, title_align="left", border_style="yellow"))
 
+    def on_guard_finding(self, event: dict, agent) -> None:
+        done = "put the kept copy back" if event.get("response") == "restore" else "recorded"
+        self.line(
+            agent,
+            f"guard {event.get('code')} at {event.get('point')}: {event.get('fact')}: {event.get('path')} ({done})",
+            "bold yellow",
+        )
+
     def on_memory_violation(self, event: dict, agent) -> None:
         self.line(agent, f"memory violation: {event.get('message')}", "bold red")
 
