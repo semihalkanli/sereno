@@ -20,7 +20,7 @@ from sereno.context_eval.config import default_registry, validate
 from sereno.context_eval.engine import EventLog, InterventionEngine, Runtime
 from sereno.context_eval.memory import ROOT
 from sereno.context_eval.runner import run_campaign
-from sereno.context_eval.schema import ExperimentConfig, Intervention, MemoryConfig, Notice, Session
+from sereno.context_eval.schema import ExperimentConfig, GuardConfig, Intervention, MemoryConfig, Notice, Session
 
 fixture_world = base.fixture_world
 template, factory = engine_tests.template, engine_tests.factory
@@ -84,6 +84,32 @@ def test_the_notice_follows_the_task_turn_once_and_is_not_exposure(tmp_path, fac
     # The same text in an incoming message would count.
     runtime.context_sent([{"role": "system", "content": "SYSTEM"}, {"role": "user", "content": MARKER}])
     assert read_log(runtime.log.path)[-1]["matched_interventions"] == ["plant"]
+
+
+def test_the_notice_and_the_live_guard_work_in_one_session(tmp_path, factory):
+    engine = InterventionEngine([PLANT], default_registry(), notices=[NOTICE])
+    engine.session_fires[("plant", "s")] = 1
+    runtime = Runtime(
+        factory(),
+        engine,
+        EventLog(tmp_path / "s.jsonl", "s"),
+        Session(id="s", exposure=True),
+        MemoryConfig(),
+        {},
+        [],
+        guard=GuardConfig(),
+    )
+    runtime.guard.task_start("task", "t")
+    transport = Transport([native(bash("t1", "ls")), native(bash("t2", SUBMIT))])
+    outcome = AnthropicAdapter(client=transport.client()).run(
+        runtime, "task", "", adapter_config(tmp_path), runtime.session
+    )
+    assert outcome["exit_status"] == "Submitted"
+    assert transport.bodies[0]["messages"][1]["content"] == NOTICE.text
+    events = read_log(runtime.log.path)
+    assert [e["notice_id"] for e in events if e["kind"] == "notice"] == ["guard"]
+    assert [c["matched_interventions"] for c in events if c["kind"] == "context_sent"] == [[], []]
+    assert runtime.guard.summary()["config"]["integrity"] == "record"
 
 
 @pytest.mark.parametrize(
