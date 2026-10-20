@@ -205,6 +205,15 @@ def test_a_command_that_did_not_finish_is_named(tmp_path):
     assert "command did not finish normally: timed out after 300 s" in render(write_log(tmp_path / "s", events))
 
 
+def test_a_guard_finding_is_named_with_its_response(tmp_path):
+    finding = {"code": "SRN-MEM-01", "fact": "the file differs from its integrity record", "path": "/m/MEMORY.md"}
+    events = [event("guard_finding", 1, 0, point="task_start", response="restore", **finding)]
+    assert (
+        "guard SRN-MEM-01 at task_start: the file differs from its integrity record: /m/MEMORY.md "
+        "(put the kept copy back)" in render(write_log(tmp_path / "s", events))
+    )
+
+
 def test_follow_prints_events_as_they_are_written_and_stops_at_session_end(tmp_path):
     session = tmp_path / "s"
     session.mkdir()
