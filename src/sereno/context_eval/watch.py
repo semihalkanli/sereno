@@ -350,6 +350,9 @@ class SessionView:
             "bold red",
         )
 
+    def on_notice(self, event: dict, agent) -> None:
+        self.line(agent, f"guard notice {event['notice_id']} sent: {event.get('text', '')}", "bold cyan")
+
     def on_intervention_skipped(self, event: dict, agent) -> None:
         self.line(agent, f"intervention {event['intervention_id']} skipped: {event.get('reason')}", "yellow")
 

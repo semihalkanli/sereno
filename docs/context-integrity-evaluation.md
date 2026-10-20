@@ -166,6 +166,28 @@ before the update (null when absent) and after it. Every arm repairs its own mem
 arms in their origin run, copied into each case with it, and the attack arms in their own repair session, which
 is never a shared copy.
 
+## Guard notices
+
+An experiment may send a fixed message from the harness's memory guard, for measuring whether the agent acts on a
+notice about a loaded note:
+
+```yaml
+notices:
+- id: guard-rule3          # unique
+  variants: [C1N]          # the variants whose attack_carry sessions get it
+  sessions: [task]         # the sessions that get it
+  payload_file: notices/C1.txt   # or text: "..."
+```
+
+A notice needs the `anthropic` agent and the `attack_carry` arm. Before the session's first model call it is
+appended after the task turn as a mid-conversation system message (`{"role": "system", ...}` inside `messages`,
+not the top-level `system`), each notice once per session. Clean arms and other variants never get it, so two
+variants with the same interventions, one with a notice and one without, run the same chain with and without it.
+The `anthropic` agent sends every system message after the first in its place and puts the cache breakpoint on the
+last other message; a session without a notice sends the request it sent before. A `notice` event records the id,
+the text and its sha256; `initial_context.json` and `traj.json` hold the message. The notice is the harness's own
+text, so what it names never counts as exposure or recall.
+
 ## Memory
 
 Every session has memory; it cannot be switched off. Memory lives under `/root/.claude` (the images run as root

@@ -91,11 +91,17 @@ def assistant_message(response: dict) -> dict:
 
 def native_request(messages: list[dict], cache: bool) -> dict:
     """The system prompt and turns litellm builds from mini-swe messages: tool results and the user text after them
-    form one user turn, and with cache control the last message carries the only breakpoint."""
+    form one user turn, and with cache control the last message carries the only breakpoint. A system message after
+    the first one is a mid-conversation system message and keeps its place; the API takes no breakpoint on it, so
+    the last other message carries the breakpoint."""
     system, turns = [], []
+    last = max(i for i, m in enumerate(messages) if i == 0 or m["role"] != "system")
     for index, message in enumerate(messages):
         role, content = message["role"], message["content"]
-        mark = {"cache_control": {"type": "ephemeral"}} if cache and index == len(messages) - 1 else {}
+        mark = {"cache_control": {"type": "ephemeral"}} if cache and index == last else {}
+        if role == "system" and index > 0:
+            turns.append({"role": "system", "content": content})
+            continue
         if role == "system":
             system.append({"type": "text", "text": content, **mark})
             continue

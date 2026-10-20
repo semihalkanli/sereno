@@ -264,6 +264,25 @@ class GuardConfig(Contract):
     judge_wait_seconds: int = Field(120, ge=0, le=3600)
 
 
+class Notice(Contract):
+    """A fixed message from the harness's memory guard, sent to the agent as a mid-conversation system message before
+    the session's first model call, in the attack_carry arm of the named variants."""
+
+    id: str = Field(pattern=r"^[a-zA-Z0-9_-]+$")
+    variants: list[str] = Field(min_length=1)
+    sessions: list[str] = Field(min_length=1)
+    text: str | None = None
+    payload_file: Path | None = None
+
+    @model_validator(mode="after")
+    def coherent(self):
+        if (self.text is None) == (self.payload_file is None):
+            raise ValueError("provide exactly one of text or payload_file")
+        if self.text == "":
+            raise ValueError("text cannot be empty")
+        return self
+
+
 class ExperimentConfig(Contract):
     schema_version: Literal["1.0", "1.1"] = "1.0"
     dataset_root: Path
@@ -289,6 +308,7 @@ class ExperimentConfig(Contract):
     repair: Repair | None = None
     # Off unless set; a campaign without it runs as before.
     guard: GuardConfig | None = None
+    notices: list[Notice] = []
     # The campaign's frozen mini-swe configuration, set by the runner; never part of the experiment file.
     _agent_config_file: Path | None = PrivateAttr(None)
 
@@ -347,6 +367,15 @@ class ExperimentConfig(Contract):
                 for path, text in self.memory.initial().items():
                     if event.holds(text):
                         raise ValueError(f"memory: {path} holds content of {name}/{event.id}")
+        if len({n.id for n in self.notices}) != len(self.notices):
+            raise ValueError("notice IDs must be unique")
+        for notice in self.notices:
+            if set(notice.variants) - set(self.variants):
+                raise ValueError(f"{notice.id}: unknown variants")
+            if set(notice.sessions) - set(ids):
+                raise ValueError(f"{notice.id}: unknown sessions")
+            if "attack_carry" not in self.arms:
+                raise ValueError(f"{notice.id}: notices are sent in the attack_carry arm only")
         if len({c.id for c in self.checks}) != len(self.checks):
             raise ValueError("check IDs must be unique")
         for check in self.checks:
