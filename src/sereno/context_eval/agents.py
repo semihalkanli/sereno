@@ -211,7 +211,14 @@ class MiniSweAdapter:
                 return getattr(model, name)
 
         class InstrumentedAgent(DefaultAgent):
+            opening = 2
+
             def query(self):
+                # The guard's notices follow the turn they concern; before the first call that is the task turn.
+                if notices := runtime.take_notices():
+                    self.add_messages(*notices)
+                    if self.n_calls == 0:
+                        self.opening += len(notices)
                 try:
                     return super().query()
                 except Refused as error:
@@ -249,7 +256,7 @@ class MiniSweAdapter:
         finally:
             runtime.agent_trajectory = agent.serialize()
             runtime.partial_agent_result = {"steps": agent.n_calls, "cost_usd": agent.cost}
-            runtime.initial_messages = agent.messages[:2]
+            runtime.initial_messages = agent.messages[: agent.opening]
         status = info.get("exit_status", "unknown")
         return {
             "exit_status": status,

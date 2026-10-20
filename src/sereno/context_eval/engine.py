@@ -183,9 +183,11 @@ class BoundedStrategy:
 
 
 class InterventionEngine:
-    def __init__(self, events, registry, *, enabled=True, seed=0):
+    def __init__(self, events, registry, *, enabled=True, seed=0, notices=()):
         self.events, self.registry = events, registry
         self.enabled = enabled
+        # The guard's notices for this arm's variant; they reach only sessions where interventions run.
+        self.notices = list(notices)
         self.rng = random.Random(seed)
         self.fires = Counter()
         self.session_fires = Counter()
@@ -381,6 +383,16 @@ class Runtime:
         self.sent: list[str] = []
         # The live memory guard, when the campaign configures one; it keeps the carried memory as its copy.
         self.guard = LiveGuard(guard, self, initial_memory) if guard else None
+        self.notices = [n for n in engine.notices if session.id in n.sessions] if engine.enabled else []
+
+    def take_notices(self) -> list[dict]:
+        """The guard's notices not yet sent, as mid-conversation system messages, each logged once."""
+        messages = []
+        for notice in self.notices:
+            self.emit("notice", notice_id=notice.id, sha256=fingerprint(notice.text), text=notice.text)
+            messages.append({"role": "system", "content": notice.text, "extra": {"notice_id": notice.id}})
+        self.notices = []
+        return messages
 
     @property
     def step(self) -> int:
@@ -456,8 +468,9 @@ class Runtime:
         if self.guard:
             # The judge's answers that came in while the agent worked are taken here, before the model call.
             self.guard.collect()
-        # Only incoming context can be an exposure; assistant-generated marker echoes are not exposures.
-        incoming = [m for m in messages if m.get("role") != "assistant"]
+        # Only incoming context can be an exposure; assistant-generated marker echoes are not exposures. A guard
+        # notice is the harness's own text, so whatever it names is not exposure or recall either (M5).
+        incoming = [m for m in messages if m.get("role") != "assistant" and "notice_id" not in (m.get("extra") or {})]
         text = message_text(incoming)
         # Fresh exposure needs a fire in this session; a carried memory copy is recall, not exposure,
         # except for memory interventions, whose own channel is the reminder and memory reads. Only

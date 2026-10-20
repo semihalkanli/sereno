@@ -897,7 +897,8 @@ def run_campaign(
         carry_start, seed = len(sessions), config.seed + repeat
         if "attack_carry" in config.arms:
             carry_start = first_incomplete(arms / "attack_carry")
-            carry = engine_for(events, arms / "attack_carry", carry_start, seed=seed)
+            notices = [n for n in config.notices if variant in n.variants]
+            carry = engine_for(events, arms / "attack_carry", carry_start, seed=seed, notices=notices)
             advance(arms / "attack_carry", target, run(target, carry), carry_start)
         # Reset and ablation share carry's exact exposure artifacts rather than resampling them, so re-running a
         # carry exposure session replaces their copy of it and every session after it.

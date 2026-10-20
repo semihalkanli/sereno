@@ -47,6 +47,12 @@ def load_config(path: Path) -> ExperimentConfig:
         facts = json.loads(resolve(root, config.guard.test_facts_file).read_text())
         config.guard.test_facts = TypeAdapter(dict[str, dict[str, bool]]).validate_python(facts, strict=True)
         config.guard.test_facts_file = None
+    for notice in config.notices:
+        if notice.payload_file:
+            notice.text = resolve(root, notice.payload_file).read_text()
+            notice.payload_file = None
+        if not notice.text:
+            raise ValueError(f"{notice.id}: empty notice")
     return config
 
 
@@ -97,6 +103,12 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
             raise ValueError("unresolved guard test facts; load YAML with load_config before validating or running")
         if config.guard.test_claims != "off" and not config.guard.test_facts:
             raise ValueError("guard rule 4 (test_claims) needs test_facts_file")
+    for notice in config.notices:
+        if notice.payload_file is not None or notice.text is None:
+            raise ValueError("unresolved notice; load YAML with load_config before validating or running")
+        # A mid-conversation system message is a native Messages API turn; litellm would move it to the top.
+        if config.agent != "anthropic":
+            raise ValueError(f"{notice.id}: notices require the anthropic agent")
     if config.agent in MINI_SWE_AGENTS and not config.model_config_file:
         raise ValueError(f"{config.agent} requires model_config_file")
     if not instructions(config.memory).strip():
