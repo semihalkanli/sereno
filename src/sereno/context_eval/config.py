@@ -103,6 +103,8 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
             raise ValueError("unresolved guard test facts; load YAML with load_config before validating or running")
         if config.guard.test_claims != "off" and not config.guard.test_facts:
             raise ValueError("guard rule 4 (test_claims) needs test_facts_file")
+        if config.guard.notify != "off" and config.agent != "anthropic":
+            raise ValueError("guard notices require the anthropic agent")
     for notice in config.notices:
         if notice.payload_file is not None or notice.text is None:
             raise ValueError("unresolved notice; load YAML with load_config before validating or running")
