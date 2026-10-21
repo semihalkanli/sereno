@@ -17,6 +17,7 @@ from sereno.context_eval.engine import (
     LINES,
     MEMORY_READ,
     assistant_messages,
+    decoded,
     executed_commands,
     intervention_catalog,
     message_text,
@@ -354,7 +355,14 @@ def measure_session(
     sources = {
         "memory": "\n".join(memory_end.values()) if memory_end is not None else None,
         "context": message_text(contexts[-1]) if contexts else "",
-        "observations": "\n".join(message_text(e["messages"]) for e in events if e["kind"] == "observation"),
+        # Each observation as recorded and as the agent reads it: tojson escapes a quote in the envelope as \u0027.
+        "observations": "\n".join(
+            text
+            for e in events
+            if e["kind"] == "observation"
+            for message in e["messages"]
+            for text in dict.fromkeys((message_text([message]), decoded(message)))
+        ),
         "commands": executed_commands(events),
         "assistant": message_text(replies),
         "reasoning": reasoning,

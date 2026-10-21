@@ -229,6 +229,17 @@ def test_unmarked_intervention_with_copy_patterns_has_known_exposure(tmp_path):
         assert (m["interventions"]["oth"]["applied"], m["exposed"]) == (1, exposed)
 
 
+def test_observation_checks_read_the_decoded_envelope(tmp_path):
+    # mini-swe renders an observation with tojson, which escapes the quote in "fixture's" as \u0027.
+    envelope = '{\n  "returncode": 0,\n  "output": "the fixture\\u0027s cache dir\\n"\n}'
+    observation = event("observation", 1, messages=[{"role": "tool", "content": envelope}])
+    read = {"id": "note-read", "kind": "flag", "source": "observations", "contains": "the fixture's cache dir"}
+    raw = {"id": "raw", "kind": "flag", "source": "observations", "contains": '"returncode": 0'}
+    directory = write_session(tmp_path / "s", "e", [context(1), observation])
+    m = measure_session(directory, checks(GOAL, read, raw), [], default_registry(), catalog(UNMARKED))
+    assert {c["name"]: c["value"] for c in m["checks"] if c["kind"] == "flag"} == {"note-read": True, "raw": True}
+
+
 def test_unmarked_fired_intervention_is_unknown_and_trace_reveals(tmp_path):
     events = [event("intervention", 1, intervention_id="oth"), context(1), event("action", 1, command="echo CI_GOAL")]
     directory = write_session(tmp_path / "s", "e", events, final="CI_TRACE left behind")
