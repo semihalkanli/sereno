@@ -181,10 +181,10 @@ def test_rules_set_off_report_nothing(tmp_path, fixture_world):
 class FakeJudge:
     """Answers the guard's judge requests from canned replies, keyed by what the request asks about."""
 
-    def __init__(self, for_user=None, stances=None, status=200, hold=None):
+    def __init__(self, for_user=None, stances=None, status=200, hold=None, model=guard_judge.BUILD):
         self.for_user = for_user or (lambda sentence, repeat: noul())
         self.stances = stances or (lambda names, repeat: {})
-        self.status, self.hold = status, hold
+        self.status, self.hold, self.model = status, hold, model
         self.requests: list[dict] = []
         self.calls = collections.Counter()
 
@@ -204,7 +204,8 @@ class FakeJudge:
             answers = self.stances(
                 [q["instructions"]["test"] for k, q in request["questions"].items() if k.endswith("_a")], repeat
             )
-        return {"status": 200, "body": {"answers": answers, "usage": {"cost": 0.0001}}}
+        body = {"answers": answers, "usage": {"cost": 0.0001}}
+        return {"status": 200, "body": body if self.model is None else body | {"model": self.model}}
 
     def close(self):
         pass
@@ -261,7 +262,7 @@ def test_rule_3_flags_a_wish_the_judge_finds_unstated(tmp_path, fixture_world, m
     words = judge.requests[0]["state"]["user_words"]
     assert words.startswith("Read the documentation") and words.endswith("Keep answers short.\n")
     summary = read(directory / "guard.json")["judge"]
-    assert (summary["items"], summary["requests"], summary["unchecked"]) == (1, 3, [])
+    assert (summary["items"], summary["requests"], summary["unchecked"], summary["build_mismatch"]) == (1, 3, [], 0)
     assert summary["cost_usd"] == pytest.approx(0.0003)
 
 
@@ -347,6 +348,29 @@ def test_a_judge_error_leaves_the_note_unchecked(tmp_path, fixture_world, monkey
     assert findings(directory) == [] and judged(directory) == []
     (unchecked,) = read(directory / "guard.json")["judge"]["unchecked"]
     assert (unchecked["rule"], unchecked["reason"]) == ("for_user", "judge status [400, 400, 400]")
+    (event,) = [e for e in events_at(directory) if e["kind"] == "guard_unchecked"]
+    assert (event["rule"], event["reason"]) == ("for_user", "judge status [400, 400, 400]")
+
+
+@pytest.mark.parametrize(
+    ("model", "named"),
+    [("typesafe/jev-1.14-20261120", "['typesafe/jev-1.14-20261120']"), (None, "['None']")],
+    ids=["another build", "no build named"],
+)
+def test_an_answer_from_another_judge_build_leaves_the_note_unchecked(
+    tmp_path, fixture_world, monkeypatch, model, named
+):
+    directory = judged_session(
+        tmp_path, fixture_world, monkeypatch, FakeJudge(model=model), feedback(WISH), for_user="record"
+    )
+    assert findings(directory) == [] and judged(directory) == []
+    reason = f"judge build {named}, not typesafe/jev-1.14-20261014"
+    (event,) = [e for e in events_at(directory) if e["kind"] == "guard_unchecked"]
+    assert (event["rule"], event["item"], event["reason"]) == ("for_user", WISH, reason)
+    summary = read(directory / "guard.json")["judge"]
+    (unchecked,) = summary["unchecked"]
+    assert (unchecked["reason"], unchecked["build_mismatch"], summary["build_mismatch"]) == (reason, True, 1)
+    assert summary["items"] == 1 and summary["requests"] == 3
 
 
 def test_answers_still_out_at_task_end_count_as_unchecked(tmp_path, fixture_world, monkeypatch):
@@ -364,6 +388,8 @@ def test_answers_still_out_at_task_end_count_as_unchecked(tmp_path, fixture_worl
     (unchecked,) = read(directory / "guard.json")["judge"]["unchecked"]
     assert unchecked["reason"] == "no answer by task end"
     assert findings(directory) == []
+    (event,) = [e for e in events_at(directory) if e["kind"] == "guard_unchecked"]
+    assert event["reason"] == "no answer by task end"
 
 
 def test_a_judging_campaign_needs_the_judge_key(tmp_path, fixture_world, monkeypatch):
@@ -405,5 +431,5 @@ def test_the_judge_client_pins_the_provider_and_retries_a_busy_server(monkeypatc
     jev = guard_judge.Jev(key="test", transport=httpx.MockTransport(reply))
     assert jev.ask(guard_judge.for_user_request("words", WISH))["status"] == 200
     assert len(seen) == 2
-    assert seen[0]["model"] == "typesafe/jev-1.14"
+    assert seen[0]["model"] == "typesafe/jev-1.14-20261014"
     assert seen[0]["provider"] == {"order": ["TypeSafe"], "allow_fallbacks": False}

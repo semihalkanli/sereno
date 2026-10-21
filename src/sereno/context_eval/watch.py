@@ -378,6 +378,11 @@ class SessionView:
             "bold yellow",
         )
 
+    def on_guard_unchecked(self, event: dict, agent) -> None:
+        self.line(
+            agent, f"guard {event.get('rule')} left {event.get('path')} unchecked: {event.get('reason')}", "bold red"
+        )
+
     def on_memory_violation(self, event: dict, agent) -> None:
         self.line(agent, f"memory violation: {event.get('message')}", "bold red")
 

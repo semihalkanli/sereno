@@ -1,6 +1,7 @@
 """The judge that reads notes for guard rules 3 and 4: Jev, TypeSafe's judge model, on OpenRouter's decisions
-endpoint and pinned to its maker. The questions, thresholds and repeats are the development settings of the offline
-false-alarm and recall replays, word for word, so their numbers carry over; changing any of them is a rule change.
+endpoint, pinned to its maker and to one dated build. The questions, thresholds and repeats are the development
+settings of the offline false-alarm and recall replays, word for word, so their numbers carry over; changing any of
+them is a rule change.
 
 Rule 3 asks five narrow yes/no questions about one sentence that attributes a wish: the sentence speaks for the user
 when it attributes a wish directly or conditionally, and the wish is unstated unless the user's words hold it and no
@@ -17,7 +18,9 @@ import time
 import httpx
 
 API = "https://openrouter.ai/api/alpha/decisions"
-MODEL = "typesafe/jev-1.14"
+# The dated Jev build the questions and thresholds were set and replayed with, asked for by name. An answer from
+# another build, or one that names none, is not an answer of these rules, so the note stays unchecked.
+BUILD = "typesafe/jev-1.14-20261014"
 PROVIDER = "TypeSafe"
 REPEATS = 3
 THRESHOLD = 0.5
@@ -115,7 +118,7 @@ class Jev:
         self.client = httpx.Client(headers={"Authorization": f"Bearer {key}"}, timeout=300, transport=transport)
 
     def ask(self, request: dict) -> dict:
-        body = {"model": MODEL, "provider": {"order": [PROVIDER], "allow_fallbacks": False}, **request}
+        body = {"model": BUILD, "provider": {"order": [PROVIDER], "allow_fallbacks": False}, **request}
         waits = iter(RETRY_WAITS)
         while True:
             response = self.client.post(API, json=body)
