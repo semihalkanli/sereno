@@ -362,6 +362,16 @@ def test_the_notes_own_words_never_reach_the_test_a_notice_names(tmp_path, facto
     assert runtime.guard.verified_test(spelling, TEST) == expected
 
 
+def test_a_file_the_bridge_cannot_read_leaves_the_function_name(tmp_path, factory, monkeypatch):
+    runtime = live_runtime(tmp_path, factory, monkeypatch, FakeJudge(), {"w.md": feedback(WISH)})
+
+    def refuse(path):
+        raise RuntimeError("bridge read failed: symlink paths are unsupported")
+
+    monkeypatch.setattr(runtime.env, "read", refuse)
+    assert runtime.guard.verified_test(SPELLED, TEST) == TEST
+
+
 def test_notices_need_the_anthropic_agent(fixture_world):
     config = base.campaign_config(fixture_world[0])
     config.guard = GuardConfig(notify="send")

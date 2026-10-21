@@ -268,7 +268,9 @@ class LiveGuard:
         if match and not match[1].startswith("/") and ".." not in match[1].split("/"):
             try:
                 source = self.runtime.env.read(f"{REPO}/{match[1]}")
-            except ValueError:
+            except Exception:
+                # The path is the note author's: a symlink or a non-UTF-8 file makes the bridge fail, and a notice
+                # without the file is still the notice.
                 source = None
             if source and re.search(rf"\b{name}\b", source):
                 return f"{match[1]}::{name}"
