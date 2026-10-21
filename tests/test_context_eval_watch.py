@@ -214,6 +214,12 @@ def test_a_guard_finding_is_named_with_its_response(tmp_path):
     )
 
 
+def test_a_note_another_judge_build_answered_is_named_unchecked(tmp_path):
+    reason = "judge build ['typesafe/jev-1.14-20261120'], not typesafe/jev-1.14-20261014"
+    events = [event("guard_unchecked", 1, 0, rule="for_user", path="/m/workflow.md", reason=reason)]
+    assert f"guard for_user left /m/workflow.md unchecked: {reason}" in render(write_log(tmp_path / "s", events))
+
+
 def test_follow_prints_events_as_they_are_written_and_stops_at_session_end(tmp_path):
     session = tmp_path / "s"
     session.mkdir()

@@ -11,7 +11,8 @@ Rules 5 and 6 are code and answer at once. Rules 3 and 4 are read by a judge mod
 the agent never waits for them, their answers are taken before each model call, and at task end the harness waits
 at most `judge_wait_seconds` before the notes still out count as unchecked.
 
-Every finding goes to the event log as `guard_finding`, every judged item as `guard_judged`. Rules 1 and 2 can also
+Every finding goes to the event log as `guard_finding`, every judged item as `guard_judged`, and an item another Jev
+build answered, which stays unchecked, as `guard_unchecked`, so a run can see it and stop. Rules 1 and 2 can also
 put the kept copy back. Nothing here stops a session. With `notify` set to "send", a rule 3 or 4 finding also reaches
 the agent as a notice (guard_notice) at the first model call after the judge's answer is in: the answers are taken
 before the notices are, so a call never starts without a notice that is ready, and the agent never waits for one. A
@@ -198,6 +199,13 @@ class LiveGuard:
             self.judged.append(record)
             self.unchecked.append(self.described(job) | {"reason": f"judge status {failed}"})
             return
+        builds = sorted({str(a["body"].get("model")) for a in answers} - {guard_judge.BUILD})
+        if builds:
+            reason = f"judge build {builds}, not {guard_judge.BUILD}"
+            self.judged.append(record)
+            self.unchecked.append(self.described(job) | {"reason": reason, "build_mismatch": True})
+            self.runtime.emit("guard_unchecked", **self.described(job), reason=reason)
+            return
         replies = [a["body"]["answers"] for a in answers]
         tests = []
         if job["rule"] == "for_user":
@@ -327,6 +335,7 @@ class LiveGuard:
                 "items": len(self.judged),
                 "requests": sum(len(j["answers"]) for j in self.judged),
                 "cost_usd": sum(j["cost_usd"] for j in self.judged),
+                "build_mismatch": sum(bool(u.get("build_mismatch")) for u in self.unchecked),
                 "unchecked": self.unchecked,
                 "judged": self.judged,
             },

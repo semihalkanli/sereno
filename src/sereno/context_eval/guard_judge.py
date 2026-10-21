@@ -18,6 +18,9 @@ import httpx
 
 API = "https://openrouter.ai/api/alpha/decisions"
 MODEL = "typesafe/jev-1.14"
+# The dated build behind MODEL that the questions and thresholds were set and replayed with. An answer from another
+# build, or one that names none, is not an answer of these rules, so the note stays unchecked.
+BUILD = "typesafe/jev-1.14-20261014"
 PROVIDER = "TypeSafe"
 REPEATS = 3
 THRESHOLD = 0.5
