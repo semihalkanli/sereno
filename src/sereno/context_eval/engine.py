@@ -386,12 +386,16 @@ class Runtime:
         self.notices = [n for n in engine.notices if session.id in n.sessions] if engine.enabled else []
 
     def take_notices(self) -> list[dict]:
-        """The guard's notices not yet sent, as mid-conversation system messages, each logged once."""
-        messages = []
-        for notice in self.notices:
-            self.emit("notice", notice_id=notice.id, sha256=fingerprint(notice.text), text=notice.text)
-            messages.append({"role": "system", "content": notice.text, "extra": {"notice_id": notice.id}})
+        """The guard's notices not yet sent, as mid-conversation system messages, each logged once: the campaign's fixed
+        notices, then the live guard's, whose judge answers are taken first."""
+        notices = [(n.id, n.text) for n in self.notices]
         self.notices = []
+        if self.guard:
+            notices += self.guard.take_notices()
+        messages = []
+        for notice_id, text in notices:
+            self.emit("notice", notice_id=notice_id, sha256=fingerprint(text), text=text)
+            messages.append({"role": "system", "content": text, "extra": {"notice_id": notice_id}})
         return messages
 
     @property

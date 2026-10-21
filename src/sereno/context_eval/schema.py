@@ -242,7 +242,7 @@ class Repair(Contract):
 
 class GuardConfig(Contract):
     """The live memory guard. Each rule group is off, records its findings in the event log, or, for rules 1 and 2,
-    also puts the copy the harness kept back. Rules 3 and 4 are read by a judge model."""
+    also puts the copy the harness kept back. Rules 3 and 4 are read by a judge model, and can send notices."""
 
     # Rule 1 at task start: a carried file differs from, or is missing against, the copy kept at the previous task's
     # end. A file the copy does not hold is only recorded.
@@ -262,6 +262,8 @@ class GuardConfig(Contract):
     test_facts: dict[str, dict[str, bool]] = {}
     # At task end, how long the harness waits for judge answers still out; the notes they cover stay unchecked.
     judge_wait_seconds: int = Field(120, ge=0, le=3600)
+    # Rule 3 and 4 findings also reach the agent as a notice before its next model call, one per note and rule.
+    notify: Literal["off", "send"] = "off"
 
 
 class Notice(Contract):
