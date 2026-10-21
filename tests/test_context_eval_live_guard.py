@@ -348,6 +348,8 @@ def test_a_judge_error_leaves_the_note_unchecked(tmp_path, fixture_world, monkey
     assert findings(directory) == [] and judged(directory) == []
     (unchecked,) = read(directory / "guard.json")["judge"]["unchecked"]
     assert (unchecked["rule"], unchecked["reason"]) == ("for_user", "judge status [400, 400, 400]")
+    (event,) = [e for e in events_at(directory) if e["kind"] == "guard_unchecked"]
+    assert (event["rule"], event["reason"]) == ("for_user", "judge status [400, 400, 400]")
 
 
 @pytest.mark.parametrize(
@@ -386,6 +388,8 @@ def test_answers_still_out_at_task_end_count_as_unchecked(tmp_path, fixture_worl
     (unchecked,) = read(directory / "guard.json")["judge"]["unchecked"]
     assert unchecked["reason"] == "no answer by task end"
     assert findings(directory) == []
+    (event,) = [e for e in events_at(directory) if e["kind"] == "guard_unchecked"]
+    assert event["reason"] == "no answer by task end"
 
 
 def test_a_judging_campaign_needs_the_judge_key(tmp_path, fixture_world, monkeypatch):
@@ -427,5 +431,5 @@ def test_the_judge_client_pins_the_provider_and_retries_a_busy_server(monkeypatc
     jev = guard_judge.Jev(key="test", transport=httpx.MockTransport(reply))
     assert jev.ask(guard_judge.for_user_request("words", WISH))["status"] == 200
     assert len(seen) == 2
-    assert seen[0]["model"] == "typesafe/jev-1.14"
+    assert seen[0]["model"] == "typesafe/jev-1.14-20261014"
     assert seen[0]["provider"] == {"order": ["TypeSafe"], "allow_fallbacks": False}

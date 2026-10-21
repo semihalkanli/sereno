@@ -11,12 +11,13 @@ Rules 5 and 6 are code and answer at once. Rules 3 and 4 are read by a judge mod
 the agent never waits for them, their answers are taken before each model call, and at task end the harness waits
 at most `judge_wait_seconds` before the notes still out count as unchecked.
 
-Every finding goes to the event log as `guard_finding`, every judged item as `guard_judged`, and an item another Jev
-build answered, which stays unchecked, as `guard_unchecked`, so a run can see it and stop. Rules 1 and 2 can also
-put the kept copy back. Nothing here stops a session. With `notify` set to "send", a rule 3 or 4 finding also reaches
-the agent as a notice (guard_notice) at the first model call after the judge's answer is in: the answers are taken
-before the notices are, so a call never starts without a notice that is ready, and the agent never waits for one. A
-notice goes once per rule and note; a later finding for the same pair is counted, not sent.
+Every finding goes to the event log as `guard_finding`, every judged item as `guard_judged`, and every item the judge
+leaves unchecked (it failed, another Jev build answered, or no answer came by task end) as `guard_unchecked`, so a run
+can see that the guard is not reading and stop. Rules 1 and 2 can also put the kept copy back. Nothing here stops a
+session. With `notify` set to "send", a rule 3 or 4 finding also reaches the agent as a notice (guard_notice) at the
+first model call after the judge's answer is in: the answers are taken before the notices are, so a call never starts
+without a notice that is ready, and the agent never waits for one. A notice goes once per rule and note; a later
+finding for the same pair is counted, not sent.
 
 A file the kept copy does not hold at all is only recorded, whatever the integrity setting: whether such a file loads
 is not settled. A planted note is such a file, and its index line changes a kept file, so restoring would remove a
@@ -183,7 +184,7 @@ class LiveGuard:
                 pending.append(job)
                 continue
             except Exception as error:
-                self.unchecked.append(self.described(job) | {"reason": f"{type(error).__name__}: {error}"})
+                self.leave_unchecked(job, f"{type(error).__name__}: {error}")
                 continue
             self.decide(job, answers)
         self.jobs = pending
@@ -191,20 +192,22 @@ class LiveGuard:
     def described(self, job: dict) -> dict:
         return {key: job[key] for key in ("rule", "point", "path", "item", "asked_step", "asked_action")}
 
+    def leave_unchecked(self, job: dict, reason: str, **extra) -> None:
+        self.unchecked.append(self.described(job) | {"reason": reason, **extra})
+        self.runtime.emit("guard_unchecked", **self.described(job), reason=reason)
+
     def decide(self, job: dict, answers: list[dict]) -> None:
         cost = sum((a["body"].get("usage") or {}).get("cost") or 0 for a in answers if isinstance(a["body"], dict))
         record = self.described(job) | {"answers": answers, "cost_usd": cost}
         failed = [a["status"] for a in answers if a["status"] != 200]
         if failed:
             self.judged.append(record)
-            self.unchecked.append(self.described(job) | {"reason": f"judge status {failed}"})
+            self.leave_unchecked(job, f"judge status {failed}")
             return
         builds = sorted({str(a["body"].get("model")) for a in answers} - {guard_judge.BUILD})
         if builds:
-            reason = f"judge build {builds}, not {guard_judge.BUILD}"
             self.judged.append(record)
-            self.unchecked.append(self.described(job) | {"reason": reason, "build_mismatch": True})
-            self.runtime.emit("guard_unchecked", **self.described(job), reason=reason)
+            self.leave_unchecked(job, f"judge build {builds}, not {guard_judge.BUILD}", build_mismatch=True)
             return
         replies = [a["body"]["answers"] for a in answers]
         tests = []
@@ -310,7 +313,7 @@ class LiveGuard:
         self.collect(wait)
         for job in self.jobs:
             job["future"].cancel()
-            self.unchecked.append(self.described(job) | {"reason": "no answer by task end"})
+            self.leave_unchecked(job, "no answer by task end")
         self.jobs = []
         self.pool.shutdown(wait=False, cancel_futures=True)
         self.pool = None
