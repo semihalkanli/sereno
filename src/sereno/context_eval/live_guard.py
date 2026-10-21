@@ -12,7 +12,10 @@ the agent never waits for them, their answers are taken before each model call, 
 at most `judge_wait_seconds` before the notes still out count as unchecked.
 
 Every finding goes to the event log as `guard_finding`, every judged item as `guard_judged`. Rules 1 and 2 can also
-put the kept copy back. Nothing here sends a notice or stops a session.
+put the kept copy back. Nothing here stops a session. With `notify` set to "send", a rule 3 or 4 finding also reaches
+the agent as a notice (guard_notice) at the first model call after the judge's answer is in: the answers are taken
+before the notices are, so a call never starts without a notice that is ready, and the agent never waits for one. A
+notice goes once per rule and note; a later finding for the same pair is counted, not sent.
 
 A file the kept copy does not hold at all is only recorded, whatever the integrity setting: whether such a file loads
 is not settled. A planted note is such a file, and its index line changes a kept file, so restoring would remove a
@@ -22,10 +25,11 @@ planted note by construction; a campaign that measures the content rules on plan
 
 import collections
 import concurrent.futures
+import re
 import time
 
-from sereno.context_eval import guard, guard_judge
-from sereno.context_eval.memory import REPO_INSTRUCTIONS, USER
+from sereno.context_eval import guard, guard_judge, guard_notice
+from sereno.context_eval.memory import REPO, REPO_INSTRUCTIONS, USER, memory_dir
 
 RESTORABLE = {"the file differs from its integrity record", "a recorded file is missing"}
 JUDGE_WORKERS = 4
@@ -50,6 +54,12 @@ class LiveGuard:
         self.judged: list[dict] = []
         self.unchecked: list[dict] = []
         self.reported: set[tuple[str, str, str]] = set()
+        # Notices: findings ready to send, the (code, path) pairs already queued, findings that repeated such a pair,
+        # and what went to the agent.
+        self.pending: list[dict] = []
+        self.noticed: set[tuple[str, str]] = set()
+        self.repeats: list[dict] = []
+        self.sent: list[dict] = []
 
     @property
     def judging(self) -> bool:
@@ -140,7 +150,7 @@ class LiveGuard:
             and any(name in self.facts for name in names)
         ):
             request = guard_judge.stance_request(text, list(names.values()))
-            self.submit("test_claims", point, path, ", ".join(names), request, names=list(names))
+            self.submit("test_claims", point, path, ", ".join(names), request, names=list(names), spellings=names)
 
     def submit(self, rule: str, point: str, path: str, item: str, request: dict, **context) -> None:
         judge = self.judge
@@ -189,6 +199,7 @@ class LiveGuard:
             self.unchecked.append(self.described(job) | {"reason": f"judge status {failed}"})
             return
         replies = [a["body"]["answers"] for a in answers]
+        tests = []
         if job["rule"] == "for_user":
             verdicts = [guard_judge.for_user_verdict(r) for r in replies]
             votes = [v["unstated"] for v in verdicts]
@@ -205,6 +216,7 @@ class LiveGuard:
             extra = {"expected_failures": per_repeat}
             fact = "a note calls a test an expected failure that passed at base"
             finding = guard.Finding(guard.CLAIM, job["path"], fact, ", ".join(sorted(named)))
+            tests = [self.verified_test(job["context"]["spellings"][name], name) for name in sorted(named)]
         verdict = guard_judge.majority(votes)
         self.judged.append(record | {"votes": votes, "verdict": verdict, **extra})
         self.runtime.emit("guard_judged", **self.described(job), votes=votes, verdict=verdict, cost_usd=cost, **extra)
@@ -212,6 +224,60 @@ class LiveGuard:
         if verdict and key not in self.reported:
             self.reported.add(key)
             self.report(job["point"], finding, asked_step=job["asked_step"], asked_action=job["asked_action"])
+            self.queue(job["point"], finding, tests)
+
+    def queue(self, point: str, finding: guard.Finding, tests: list[str]) -> None:
+        """A rule 3 or 4 finding that was just reported, as material for a notice."""
+        if self.config.notify != "send":
+            return
+        key = (finding.code, finding.path)
+        entry = {"point": point, "code": finding.code, "path": finding.path, "tests": tests}
+        if key in self.noticed:
+            self.repeats.append(entry | {"step": self.runtime.step, "action": self.runtime.actions})
+            return
+        self.noticed.add(key)
+        self.pending.append(entry)
+
+    def take_notices(self) -> list[tuple[str, str]]:
+        """The notices for the findings the judge's answers have made ready, as (id, text), one per note and point
+        where the finding was made; the runtime sends them before the next model call."""
+        if self.config.notify != "send":
+            return []
+        self.collect()
+        groups: dict[tuple[str, str], list[dict]] = {}
+        for entry in self.pending:
+            groups.setdefault((entry["path"], entry["point"]), []).append(entry)
+        self.pending = []
+        notices = []
+        for (path, point), entries in groups.items():
+            name = self.note_name(path)
+            codes = sorted(entry["code"] for entry in entries)
+            notice_id = re.sub(r"[^A-Za-z0-9_-]", "-", "-".join(["guard", *codes, name]))
+            notices.append((notice_id, guard_notice.text(point, name, entries)))
+            self.sent.append(
+                {"notice_id": notice_id, "codes": codes, "path": path, "point": point, "step": self.runtime.step}
+                | {"action": self.runtime.actions}
+            )
+        return notices
+
+    def verified_test(self, spelling: str, name: str) -> str:
+        """A test as a notice names it. The function name is in the base test record. The file comes from the note's
+        spelling only when that file is in the repository and holds the function; the rest of the spelling (a class, a
+        bracketed parameter list, a path that is no file) is the note's own words and never reaches a notice."""
+        match = re.match(r"([\w/.-]+\.py)::", spelling)
+        if match and not match[1].startswith("/") and ".." not in match[1].split("/"):
+            try:
+                source = self.runtime.env.read(f"{REPO}/{match[1]}")
+            except ValueError:
+                source = None
+            if source and re.search(rf"\b{name}\b", source):
+                return f"{match[1]}::{name}"
+        return name
+
+    def note_name(self, path: str) -> str:
+        """A note's path under the session's memory directory, or its file name."""
+        folder = memory_dir(self.runtime.project) + "/" if self.runtime.project else ""
+        return path.removeprefix(folder) if folder and path.startswith(folder) else path.rpartition("/")[2]
 
     def task_end(self) -> None:
         self.close(self.config.judge_wait_seconds)
@@ -262,6 +328,7 @@ class LiveGuard:
                 "unchecked": self.unchecked,
                 "judged": self.judged,
             },
+            "notices": {"sent": self.sent, "unsent": self.pending, "repeats": self.repeats},
             "record": {
                 path: {"sha256": guard.sha256(text), "writer": self.writers.get(path, "unknown")}
                 for path, text in sorted(self.runtime.memory.items())

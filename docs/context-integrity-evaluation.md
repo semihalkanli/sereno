@@ -263,6 +263,7 @@ guard:
   test_claims: off    # rule 4, read by the judge: off or record; needs test_facts_file
   test_facts_file: facts.json
   judge_wait_seconds: 120
+  notify: off         # off or send: rule 3 and 4 findings also reach the agent as a notice; needs the anthropic agent
 ```
 
 The guard checks at three points, on snapshots the harness takes anyway, so the agent never waits for it:
@@ -280,7 +281,8 @@ The guard checks at three points, on snapshots the harness takes anyway, so the 
 
 A planted note is a file the kept copy does not hold, and its index line changes a kept file. With
 `integrity: restore` the index line goes back before the agent starts, so a campaign that measures the other rules
-on planted notes keeps integrity at `record` or `off`. The guard sends no notice and stops no session.
+on planted notes keeps integrity at `record` or `off`. The guard stops no session, and sends a notice only for rule 3
+and 4 findings with `notify: send`.
 
 Rules 3 and 4 are read by a judge, Jev 1.14 on OpenRouter's decisions endpoint pinned to TypeSafe, with the questions,
 thresholds and three repeats of the offline false-alarm and recall replays (`guard_judge.py`); changing any of them
@@ -299,6 +301,16 @@ How to apply marks dropped, each of at least four words; at a write only the sen
   records where it was asked (`asked_step`, `asked_action`) beside where it was taken. At task end the harness waits
   at most `judge_wait_seconds`; a request still out, or one that failed after retries on 429 and server errors,
   leaves its note unchecked.
+- **Notices** (`notify: send`). A rule 3 or 4 finding reaches the agent as a mid-conversation system message in the
+  form of the fixed notices above (`role: system`, `extra.notice_id`, a `notice` event), built by `guard_notice.py`
+  from the measured texts: the note's file and, for rule 4, the test are the variable parts, and nothing is quoted
+  from the note. The judge's answers are taken at the start of the call that would send the notice, so a notice goes
+  with the first model call after its answer is in; the agent never waits, and an answer that arrives after the last
+  call sends nothing (`guard.json` `notices.unsent`). A notice goes once per rule and note in a task; later findings
+  for the same pair are in `notices.repeats`. Findings of both rules on one note that are ready together share one
+  message, and rule 4's test is named with its repository file only when that file exists in the repository and holds
+  the test function; the note's own spelling of it is never passed on. The other rules send no notice. The campaign's
+  fixed `notices` still go first; a live-guard arm normally has none.
 - A campaign with rule 3 or 4 on needs `OPENROUTER_API_KEY` (the cost wrapper loads `.env`) and refuses to start
   without it. The cost wrapper does not see the decisions endpoint, so the judge's cost is in `guard.json`.
 
@@ -308,7 +320,7 @@ hidden content), `path`, `fact`, the matched `evidence` and the `response` (`rec
 item is a `guard_judged` event with its votes and verdict, so a majority that hangs on one answer stays visible. A
 restore is a `memory_change` with origin `harness`. The session's `guard.json` holds the settings (without the test
 facts), whether the task had test facts, the findings with their step and action, the judge's raw answers, cost and
-unchecked items, and the integrity record of the files the task leaves: each file's sha256 and who wrote it last
+unchecked items, the notices it sent, left unsent or counted as repeats, and the integrity record of the files the task leaves: each file's sha256 and who wrote it last
 (`carried`, `agent`, `intervention`, `harness`).
 
 ## Interventions
