@@ -460,6 +460,32 @@ def shared_origin(campaign: Path, directory: Path) -> Path | None:
     return origin
 
 
+def grade_session(evaluator, directory: Path, *, force: bool = False) -> tuple[str, str | None]:
+    """Grade one session directory with its task's verifier and write its grade.json. The outcome is `kept` (a grade
+    exists and `force` is off), `skipped` (the session is not complete, so nothing is graded), `unreadable` (with the
+    reason) or `written`."""
+    if (directory / "grade.json").exists() and not force:
+        return "kept", None
+    result = read_object(directory / "result.json")
+    if result is None:
+        return "unreadable", "unreadable result.json"
+    if result.get("status") != "complete":
+        return "skipped", None
+    try:
+        if result.get("patch_status") == "ready":
+            submission = Submission(
+                result["task_id"], result["image"]["id"], result["base_commit"], directory / "model.patch"
+            )
+            evaluator.evaluate(submission, directory)
+        else:
+            error = result.get("patch_error") or f"patch status {result.get('patch_status')}"
+            grade = blank_grade(result["task_id"]) | {"status": "not_gradable", "error": error}
+            write_json(directory / "grade.json", grade | {"task_image_id": (result.get("image") or {}).get("id")})
+    except (KeyError, TypeError) as error:
+        return "unreadable", f"result.json lacks {error}"
+    return "written", None
+
+
 def grade_campaign(
     campaign: Path,
     *,
@@ -504,29 +530,13 @@ def grade_campaign(
         if test_edits_only:
             backfill(directory)
             return
-        if (directory / "grade.json").exists() and not force:
+        outcome, reason = grade_session(evaluator, directory, force=force)
+        if outcome == "kept":
             kept.append(directory)
-            return
-        result = read_object(directory / "result.json")
-        if result is None:
-            unreadable[directory] = "unreadable result.json"
-            return
-        if result.get("status") != "complete":
-            return
-        try:
-            if result.get("patch_status") == "ready":
-                submission = Submission(
-                    result["task_id"], result["image"]["id"], result["base_commit"], directory / "model.patch"
-                )
-                evaluator.evaluate(submission, directory)
-            else:
-                error = result.get("patch_error") or f"patch status {result.get('patch_status')}"
-                grade = blank_grade(result["task_id"]) | {"status": "not_gradable", "error": error}
-                write_json(directory / "grade.json", grade | {"task_image_id": (result.get("image") or {}).get("id")})
-        except (KeyError, TypeError) as error:
-            unreadable[directory] = f"result.json lacks {error}"
-            return
-        written.append(directory)
+        elif outcome == "unreadable":
+            unreadable[directory] = reason
+        elif outcome == "written":
+            written.append(directory)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         list(pool.map(grade_one, sorted({origin or d for d, origin in copies.items()})))
