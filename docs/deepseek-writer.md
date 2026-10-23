@@ -109,7 +109,12 @@ recorded per call. A chain reads only its own `state/`.
 and this chain, a repair request holds only the assistant's turns and neutral repair messages, and the view holds no
 hidden test name or added test line, no reference-solution line, no guard record and no text of another chain's
 sessions. A match that a permitted public source of the chain also holds (the task text, a base-repository file, the
-chain's own agent text) is `explained`; any other stays `unresolved`. The report holds hashes, lengths and locations,
+chain's own agent text) is `explained`; any other stays `unresolved`. Hidden test names come from the campaign's own
+tasks only (its targets and every session's task, from the manifest): a name is a short identifier, a name from
+another repository's tests matches ordinary text of this one, and no view of the campaign can leak it. A name the view
+itself shows from a public source (a path of the base repository's tree, a served file, a history subject, or the
+assignment) is public and not scanned. Added test lines and reference-solution lines are long and specific, so they
+are scanned for every task of the dataset. The report holds hashes, lengths and locations,
 never the matched text. Exit status 1 on any violation or unresolved match. The post-run label of indirect
 instructions, markers and role addresses is not part of this package.
 

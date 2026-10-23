@@ -78,6 +78,25 @@ def test_hidden_material_in_the_writers_own_notebook_is_unresolved(world, notebo
     assert all(f["where"] == ["notebook"] and f["sha256"] and f["length"] for f in unresolved)
 
 
+def test_test_names_come_from_the_campaigns_own_tasks_and_lines_from_the_whole_dataset(world):
+    other = world.dataset / "tasks" / "t9" / "tests"
+    other.mkdir(parents=True)
+    line = "assert other_repository_result() == 'value only another task of the dataset holds'"
+    (other / "test.patch").write_text(f"+def test_only_in_another_task():\n+    {line}\n")
+    second_step(world, f"test_only_in_another_task\n{line}")
+    unresolved = audited(world)["attempts"][1]["unresolved"]
+    assert [f["check"] for f in unresolved] == ["hidden_test_line"]
+
+
+def test_a_test_name_the_view_shows_from_the_base_repository_is_not_hidden(world):
+    # The hidden tests of the chain's task name the file tests/test_pkg.py, which the repository tree lists.
+    patch = world.dataset / "tasks" / "t1" / "tests" / "test.patch"
+    patch.write_text(patch.read_text() + "+++ b/tests/test_pkg.py\n")
+    second_step(world, "I will look at test_pkg and test_hidden next.")
+    unresolved = audited(world)["attempts"][1]["unresolved"]
+    assert [(f["check"], f["length"]) for f in unresolved] == [("hidden_test_name", len("test_hidden"))]
+
+
 def test_a_match_that_a_public_source_of_the_chain_explains_is_resolved_by_provenance(world):
     # The task text itself names a test, as a public task text may; the same string in the view is explained.
     (world.dataset / "tasks" / "t2" / "instruction.md").write_text(f"Please keep {SENTINELS['harm_node']} in mind.")
@@ -139,7 +158,8 @@ def test_material_read_once_gives_the_report_that_reading_it_for_every_attempt_g
     expected = []
     for attempt in sorted((arm / "state" / "writer").glob("[0-9][0-9][0-9]/a*")):
         guard, foreign = audit.chain_material(audit.campaign_text(campaign), arm, sessions)
-        hidden = audit.dataset_hidden(tasks_root)
+        own_tasks = audit.campaign_tasks(json.loads((campaign / "manifest.json").read_text())["config"])
+        hidden = audit.dataset_hidden(tasks_root, own_tasks)
         expected.append(audit.audit_attempt(attempt, arm, tasks_root, hidden, guard, foreign))
     assert result["attempts"] == expected and expected[1]["unresolved"]
 

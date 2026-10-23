@@ -147,13 +147,42 @@ def campaign_text(campaign: Path) -> dict[Path, set[str]]:
     }
 
 
-def dataset_hidden(tasks_root: Path) -> dict[str, set[str]]:
-    """The hidden material of every task in the dataset, read once for the whole audit."""
+def dataset_hidden(tasks_root: Path, own_tasks: set[str]) -> dict[str, set[str]]:
+    """The hidden material, read once for the whole audit: the added test lines and reference-solution lines of every
+    task in the dataset, which are long and specific, and the test names of the campaign's own tasks only, since a
+    short name from another repository's tests matches ordinary text and no view of this campaign can leak it."""
     hidden: dict[str, set[str]] = {"hidden_test_name": set(), "hidden_test_line": set(), "solution_line": set()}
     for task_dir in sorted(p for p in tasks_root.iterdir() if p.is_dir()) if tasks_root.is_dir() else []:
         for label, found in hidden_material(task_dir).items():
-            hidden[label] |= found
+            if label != "hidden_test_name" or task_dir.name in own_tasks:
+                hidden[label] |= found
     return hidden
+
+
+def campaign_tasks(config: dict) -> set[str]:
+    """The tasks the campaign's chains work on: its targets and every session's own task."""
+    tasks = {t.get("task_id") for t in config.get("targets") or []}
+    tasks |= {s.get("task_id") for s in config.get("sessions") or []}
+    tasks.discard(None)
+    if not tasks:
+        raise InputError("the campaign's manifest names no targets", "bad_audit")
+    return tasks
+
+
+def public_names(view: list[dict], envelope: dict) -> set[str]:
+    """Test names the view shows from a public source: the base repository's tree paths, the files and the history
+    subjects it serializes, and the assignment (the objective and a last-write sentence). Such a name is public, not
+    hidden."""
+    repository = envelope.get("repository") or {}
+    _, end = json.JSONDecoder().raw_decode(view[1]["content"])
+    texts = [
+        *repository.get("tree", {}),
+        *(entry.get("content", "") for entry in repository.get("files", [])),
+        *repository.get("history", []),
+        envelope.get("objective", ""),
+        view[1]["content"][end:],
+    ]
+    return {name for text in texts if isinstance(text, str) for name in TEST_NAME.findall(text)}
 
 
 def chain_material(texts: dict[Path, set[str]], own_arm: Path, session_dirs: list[Path]) -> tuple[set[str], set[str]]:
@@ -270,6 +299,7 @@ def audit_attempt(
             findings.append(Finding("source", "violation", f"task source outside the dataset: {Path(ref).name}"))
     parts = parts_of(envelope)
     flat = {name: [norm(text) for text in texts] for name, texts in parts.items()}
+    names = hidden["hidden_test_name"] - public_names(view, envelope)
     requests = sorted(attempt.glob("call-*.request.json"))
     for request in requests:
         try:
@@ -282,7 +312,7 @@ def audit_attempt(
                 Finding("record", "violation", "a request does not start with the recorded view", request.name)
             )
         findings.extend(check_repair_messages(messages, request.name))
-        findings.extend(scan("hidden_test_name", hidden["hidden_test_name"], parts, request.name, identifier=True))
+        findings.extend(scan("hidden_test_name", names, parts, request.name, identifier=True))
         findings.extend(scan("hidden_test_line", hidden["hidden_test_line"], flat, request.name))
         findings.extend(scan("solution_line", hidden["solution_line"], flat, request.name))
         findings.extend(scan("guard_record", guard, flat, request.name))
@@ -310,14 +340,18 @@ def report(attempt: Path, findings: list[Finding], requests: int) -> dict:
 def audit_campaign(campaign: Path, dataset: Path | None = None) -> dict:
     """Audit every recorded attempt of every adaptive chain of a campaign directory."""
     campaign = Path(campaign).resolve()
+    try:
+        config = json.loads((campaign / "manifest.json").read_text())["config"]
+    except (OSError, ValueError, KeyError, TypeError):
+        config = None
+    if not isinstance(config, dict):
+        raise InputError("the campaign has no readable manifest.json", "bad_audit")
     if dataset is None:
-        try:
-            manifest = json.loads((campaign / "manifest.json").read_text())
-            dataset = Path(manifest["config"]["dataset_root"])
-        except (OSError, ValueError, KeyError, TypeError):
-            raise InputError("pass --dataset: the manifest names no dataset_root", "bad_audit") from None
+        if not isinstance(config.get("dataset_root"), str):
+            raise InputError("pass --dataset: the manifest names no dataset_root", "bad_audit")
+        dataset = Path(config["dataset_root"])
     tasks_root = Path(dataset).resolve() / "tasks"
-    hidden, texts = dataset_hidden(tasks_root), campaign_text(campaign)
+    hidden, texts = dataset_hidden(tasks_root, campaign_tasks(config)), campaign_text(campaign)
     attempts = []
     for arm in sorted(campaign.glob("cases/*/arms/attack_adaptive")):
         root = arm / "state" / "writer"
