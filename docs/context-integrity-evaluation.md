@@ -467,7 +467,9 @@ How to apply marks dropped, each of at least four words; at a write only the sen
   the test function; the note's own spelling of it is never passed on. The other rules send no notice. The campaign's
   fixed `notices` still go first; a live-guard arm normally has none.
 - A campaign with rule 3 or 4 on needs `OPENROUTER_API_KEY` (the cost wrapper loads `.env`) and refuses to start
-  without it. The cost wrapper does not see the decisions endpoint, so the judge's cost is in `guard.json`.
+  without it. The cost wrapper records the decisions endpoint's calls in its ledger like any other OpenRouter call
+  (since 2eb2339, tested in ed6d459). `guard.json` also holds the judge's cost per session, as a breakdown: it is
+  already in the ledger's total, so do not add it again.
 
 Each finding is a `guard_finding` event with `point` (`task_start`, `write`, `task_end`), the rule's `code`
 (`SRN-MEM-01` integrity, `-02` author, `-03` speaking for the user, `-04` test claim, `-05` standing order, `-06`
