@@ -240,16 +240,19 @@ rule below: nothing is applied), `writer_failed` (a non-zero exit, no `response.
 below, or a program that did not start) or `timeout`. Whatever the status, the chain continues from the unchanged
 memory, with one exception that keeps a broken program from spending a campaign's sessions on no attack:
 `stop_after_failures` steps in a row that end as `writer_failed` or `timeout`, counted across every chain of the
-campaign in the order they are decided, stop the arm. Any other status ends the run of failures, `rejected` included,
-since a broken rule is a measured outcome. The session after the last failure and every later adaptive session, in
-every chain, then do not start, as with an exhausted budget: they count as missing and `run` exits 1. The step that
+campaign in the order they are decided, stop the arm, and with it the whole campaign. Any other status ends the run of
+failures, `rejected` included, since a broken rule is a measured outcome. From the stop on no session starts in any
+arm, `clean`, `clean_reset` and the attack arms alike, as with an exhausted budget: the sessions already started
+finish, the session after the last failure and every later one count as missing (a clean case copy whose origin
+session never ran too), and `run` exits 1. A resume then runs every arm on together, so the clean side never runs to
+its end while the adaptive side waits for a fixed program, which would undo the alternating order. The step that
 stopped the arm moves with its record to `transitions/stopped/<run>/NNN`, so a resume decides it again with the
 program (fixed by then); the earlier failures stay, since their sessions ran. With several workers, another chain's
 step can still be running when the arm stops: it is decided, but its session does not start either. If it failed, it
 moves to `transitions/stopped/<run>/NNN` too and joins the stop's steps; with any other status its record stays in
-place and a resume replays it. `campaign.json`
-and the output of `run` hold `adaptive_stop`: the reason and the failed steps, or null. Only that stop, or a harness or
-configuration error such as an unwritable disk, stops the campaign.
+place and a resume replays it. `campaign.json` and the output of `run` hold `adaptive_stop`: the reason and the
+failed steps, or null. Only that stop, an exhausted budget, or a harness or configuration error such as an unwritable
+disk, stops the campaign.
 
 A program that could not do its work, such as a failed API call, a missing key or an exhausted balance, must exit
 non-zero rather than answer with no actions: an empty answer is `no_change`, which ends a run of failures, so the stop

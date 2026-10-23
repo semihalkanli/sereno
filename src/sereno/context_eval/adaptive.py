@@ -513,10 +513,12 @@ class AdaptiveStop(RuntimeError):
 
 class FailureStreak:
     """Steps that ended as writer_failed or timeout in a row across the campaign's adaptive chains, in the order they
-    were decided; a step that ends any other way resets the count. Shared by the chains of every worker."""
+    were decided; a step that ends any other way resets the count. Shared by the chains of every worker. `on_stop`
+    is called once with the reason when the streak stops the arm."""
 
-    def __init__(self, limit: int | None):
+    def __init__(self, limit: int | None, on_stop=None):
         self.limit, self.count, self.steps, self.stopped = limit, 0, [], None
+        self.on_stop = on_stop
         self.lock = threading.Lock()
 
     def check(self) -> None:
@@ -545,6 +547,8 @@ class FailureStreak:
                 "reason": f"the adaptive program failed {self.count} steps in a row",
                 "steps": [*self.steps, aside],
             }
+            if self.on_stop is not None:
+                self.on_stop(f"the adaptive arm stopped: {self.stopped['reason']}")
             return True
 
 

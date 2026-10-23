@@ -859,6 +859,24 @@ def test_a_step_in_flight_when_another_chain_stops_the_arm_starts_no_session(
         assert read(root / second / "sessions" / "001-s1" / "memory_start.json") == {ALPHA: "alpha one\n"}
 
 
+def test_the_adaptive_stop_halts_every_arm_and_a_resume_runs_them_together(tmp_path, fixture_world, monkeypatch):
+    # Two workers: the clean origin runs beside the adaptive chain. The adaptive arm stops while the origin's second
+    # session is running; that session finishes and the third never starts.
+    config = adaptive_config(fixture_world[0], scripts={2: [{"command": "sleep 2"}]}, workers=2)
+    origin = tmp_path / "campaign" / "clean" / "first--r001" / "sessions"
+    plan = {"0": CRASH, "1": CRASH | {"wait_for": "clean/first--r001/sessions/002-s2"}}
+    outcome = campaign(tmp_path, fixture_world, config, plan, monkeypatch)
+    assert outcome["adaptive_stop"]["reason"] == "the adaptive program failed 2 steps in a row"
+    assert [read(origin / name / "result.json")["status"] for name in ("001-s1", "002-s2")] == ["complete"] * 2
+    assert not (origin / "003-s3").exists()
+    clean = [row["status"] for row in outcome["sessions"] if row["arm"] == "clean"]
+    assert clean == ["complete", "complete", "missing"]
+    outcome = campaign(tmp_path, fixture_world, config, {"*": {"actions": []}}, monkeypatch, resume=True)
+    assert read(origin / "003-s3" / "result.json")["status"] == "complete"
+    assert all(row["status"] == "complete" for row in outcome["sessions"])
+    assert outcome["adaptive_stop"] is None
+
+
 def test_a_resume_after_the_stop_decides_the_stopped_step_again(tmp_path, fixture_world, monkeypatch):
     config = adaptive_config(fixture_world[0])
     campaign(tmp_path, fixture_world, config, {"0": CRASH, "1": CRASH}, monkeypatch)

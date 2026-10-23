@@ -92,11 +92,27 @@ class Budget:
         # Float sums of reservations need not return to exactly zero; the count of holders does.
         self.holders = 0
         self.unknown_cost = False
+        # Why the campaign starts no further session, such as the adaptive arm's stop; None while it runs.
+        self.halted: str | None = None
         self.condition = threading.Condition()
+
+    def halt(self, reason: str) -> None:
+        """Start no further session in any arm; the sessions already started finish."""
+        with self.condition:
+            self.halted = self.halted or reason
+            self.condition.notify_all()
+
+    def admit(self) -> None:
+        """Refuse a session once the campaign is halted, whether or not it reserves a cost budget."""
+        with self.condition:
+            if self.halted:
+                raise NotStarted(self.halted)
 
     def acquire(self, amount: float) -> float:
         with self.condition:
             while True:
+                if self.halted:
+                    raise NotStarted(self.halted)
                 if self.unknown_cost:
                     raise NotStarted("campaign cost accounting unavailable after a failed model call")
                 # A small tolerance keeps float sums such as 0.3 - 0.1 from refusing an exact fit.
@@ -126,6 +142,7 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
     memory = resolve_files(memory, project)
     directory.mkdir(parents=True, exist_ok=False)
     try:
+        budget.admit()
         allowance = None if config.agent == "scripted" else budget.acquire(config.cost_limit_usd)
     except NotStarted:
         directory.rmdir()
@@ -673,7 +690,8 @@ def run_campaign(
         write_json(output / "manifest.json", manifest)
     # The cost limit applies to the spending of this run; a resume starts a new budget.
     budget = Budget(config.campaign_cost_limit_usd)
-    streak = FailureStreak(config.adaptive.stop_after_failures) if config.adaptive else None
+    # The adaptive arm's stop halts the whole campaign, so neither side of the comparison runs on alone.
+    streak = FailureStreak(config.adaptive.stop_after_failures, on_stop=budget.halt) if config.adaptive else None
     sessions = config.sessions
     started = datetime.now(UTC)
     superseded = output / "superseded" / started.strftime("%Y%m%dT%H%M%S.%fZ")
