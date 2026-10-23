@@ -237,6 +237,12 @@ def test_retry_wait_reads_seconds_and_dates():
     assert retry_wait("99999", 5, 60) == 60
     assert retry_wait("not a date", 5, 60) == 5
     assert retry_wait("Wed, 21 Oct 2015 07:28:00 GMT", 5, 60) == 0
+    # A zone-less date, a nan and an infinite value are all handled, never an exception.
+    assert retry_wait("Wed, 21 Oct 2015 07:28:00 -0000", 5, 60) == 0
+    assert retry_wait("nan", 5, 60) == 5
+    assert retry_wait("inf", 5, 60) == 5
+    assert retry_wait("-inf", 5, 60) == 5
+    assert retry_wait("", 5, 60) == 5
 
 
 def test_parse_completion_keeps_usage_and_native_finish_reason():
@@ -253,3 +259,33 @@ def test_the_missing_credential_fails_before_any_call(tmp_path, monkeypatch):
     with pytest.raises(Exception) as caught:
         Provider(config, Deadline(10), transport=script.transport)
     assert getattr(caught.value, "code", None) == "missing_credential" and script.requests == []
+
+
+def test_a_slow_provider_is_cut_at_the_deadline_not_at_the_next_read(config):
+    import signal
+    import time
+
+    def slow(request):
+        time.sleep(5)
+        return httpx.Response(200, json=reply("late"))
+
+    records = []
+    client = Provider(
+        config, Deadline(0.4), transport=httpx.MockTransport(slow), sink=lambda *args: records.append(args)
+    )
+    handler_before = signal.getsignal(signal.SIGALRM)
+    started = time.monotonic()
+    with pytest.raises(ProviderFailure) as caught:
+        client.complete(MESSAGES, 1)
+    assert caught.value.code == "deadline" and time.monotonic() - started < 3
+    assert len(records) == 1 and "deadline" in records[0][0].error and records[0][2] is None
+    assert signal.getitimer(signal.ITIMER_REAL)[0] == 0
+    assert signal.getsignal(signal.SIGALRM) == handler_before
+
+
+def test_the_alarm_is_cancelled_and_the_handler_restored_after_a_normal_call(config):
+    import signal
+
+    before = signal.getsignal(signal.SIGALRM)
+    provider(config, Transport(reply("ok"))).complete(MESSAGES, 1)
+    assert signal.getitimer(signal.ITIMER_REAL)[0] == 0 and signal.getsignal(signal.SIGALRM) == before

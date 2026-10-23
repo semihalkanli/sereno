@@ -7,10 +7,14 @@ explicit failure that is never retried or worked around. An ambiguous transport 
 attempt is recorded and a request is never described as exactly-once.
 """
 
+import contextlib
 import copy
 import email.utils
 import hashlib
 import json
+import math
+import signal
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -22,6 +26,31 @@ from sereno.writer.config import WriterConfig
 from sereno.writer.errors import ProviderFailure
 
 REASONING_FIELDS = ("reasoning_details", "reasoning", "reasoning_content")
+
+
+class DeadlineHit(BaseException):
+    """Raised by the alarm when the shared deadline ends inside a provider call. A BaseException, so no library code
+    between the alarm and the call swallows it."""
+
+
+@contextlib.contextmanager
+def alarm(seconds: float):
+    """End a blocking call at the deadline. httpx's timeouts apply to each read, so a provider that sends bytes slowly
+    could otherwise hold one call past the deadline. Needs the main thread; elsewhere only httpx's timeouts apply."""
+    if not hasattr(signal, "setitimer") or threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def fire(signum, frame):
+        raise DeadlineHit
+
+    previous = signal.signal(signal.SIGALRM, fire)
+    signal.setitimer(signal.ITIMER_REAL, max(seconds, 0.001))
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 class Deadline:
@@ -142,14 +171,22 @@ def describe(error: object) -> str:
 
 
 def retry_wait(header: str | None, default: float, cap: float) -> float:
-    """Seconds to wait before the next attempt: Retry-After (seconds or an HTTP date) capped, else the default."""
+    """Seconds to wait before the next attempt: Retry-After (seconds or an HTTP date) capped, else the default. A
+    header that does not give a finite number of seconds is the default."""
     if header is None:
         return default
+    seconds = None
     try:
         seconds = float(header)
     except ValueError:
-        parsed = email.utils.parsedate_to_datetime(header) if email.utils.parsedate(header) else None
-        seconds = (parsed - datetime.now(UTC)).total_seconds() if parsed else default
+        try:
+            parsed = email.utils.parsedate_to_datetime(header)
+        except (TypeError, ValueError):
+            parsed = None
+        if parsed is not None:
+            seconds = (parsed.replace(tzinfo=parsed.tzinfo or UTC) - datetime.now(UTC)).total_seconds()
+    if seconds is None or not math.isfinite(seconds):
+        return default
     return min(max(seconds, 0.0), cap)
 
 
@@ -194,12 +231,17 @@ class Provider:
                 pool=remaining,
             )
             try:
-                response = self.client.post(
-                    self.config.endpoint,
-                    content=raw,
-                    headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"},
-                    timeout=timeout,
-                )
+                with alarm(remaining):
+                    response = self.client.post(
+                        self.config.endpoint,
+                        content=raw,
+                        headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"},
+                        timeout=timeout,
+                    )
+            except DeadlineHit:
+                attempt.error = "the shared deadline ended during the call"
+                self.note(attempt, started, raw, None)
+                raise ProviderFailure(attempt.error, "deadline") from None
             except httpx.HTTPError as error:
                 attempt.error = f"{type(error).__name__}: {error}"[:300]
                 self.note(attempt, started, raw, None)

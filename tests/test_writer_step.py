@@ -344,12 +344,26 @@ def test_a_changed_input_is_a_new_attempt_and_a_new_call(world):
 def test_a_response_the_hook_already_ended_as_writer_failed_is_not_replayed(world):
     _, response = run(world, 0, Transport(reply(answer())))
     sha = hashlib.sha256(response.read_bytes()).hexdigest()
+    request_sha = hashlib.sha256((world.arm / "transitions" / "001" / "request.json").read_bytes()).hexdigest()
     folder = world.arm / "transitions" / "stopped" / "20261023T000000Z" / "001"
     folder.mkdir(parents=True)
-    (folder / "transition.json").write_text(json.dumps({"status": "writer_failed", "response_sha256": sha}))
+    record = {"status": "writer_failed", "response_sha256": sha, "request_sha256": request_sha}
+    (folder / "transition.json").write_text(json.dumps(record))
     script = Transport(reply(answer()))
     summary, _ = run(world, 0, script)
     assert summary["attempt"] == "a02" and len(script.requests) == 1
+
+
+def test_a_failure_recorded_for_another_request_does_not_block_reuse(world):
+    _, response = run(world, 0, Transport(reply(answer())))
+    sha = hashlib.sha256(response.read_bytes()).hexdigest()
+    folder = world.arm / "transitions" / "stopped" / "20261023T000000Z" / "001"
+    folder.mkdir(parents=True)
+    record = {"status": "writer_failed", "response_sha256": sha, "request_sha256": "0" * 64}
+    (folder / "transition.json").write_text(json.dumps(record))
+    script = Transport(reply(answer(notebook="must not be asked")))
+    summary, _ = run(world, 0, script)
+    assert summary["outcome"] == "reused" and script.requests == []
 
 
 def test_a_killed_attempt_is_recorded_and_never_counted_as_completed(world):
@@ -366,21 +380,22 @@ def test_a_killed_attempt_is_recorded_and_never_counted_as_completed(world):
 
 def test_the_last_write_sentence_goes_only_into_the_assignment_message_of_its_step(world):
     plain = Transport(reply(answer()))
-    run(world, 0, plain, last_write=False)
-    world.receipt(0, "no_change", None)
-    last = Transport(bad_json(), reply(answer(status="no_change", actions=[])))
-    with pytest.raises((InputError, ConfigError)):
-        run(world, 1, last, last_write=True)
-    for body in plain.bodies():
-        assert all(LAST_WRITE not in message["content"] for message in body["messages"])
+    first_response = run(world, 0, plain, last_write=False)[1]
+    world.receipt(0, "applied", first_response)
     world.add_session(0)
-    world.receipt(0, "applied", world.arm / "transitions" / "001" / "response.json")
-    last = Transport(bad_json(), reply(answer_keeping(MEMORY)))
-    run(world, 1, last, last_write=True, memory=MEMORY)
-    first, repair = last.bodies()
-    assert first["messages"][1]["content"].endswith(LAST_WRITE) and LAST_WRITE not in first["messages"][0]["content"]
-    assert repair["messages"][1]["content"].endswith(LAST_WRITE) and LAST_WRITE not in repair["messages"][0]["content"]
-    assert LAST_WRITE not in repair["messages"][3]["content"] and LAST_WRITE not in repair["messages"][2]["content"]
+    # A later step of the same chain, with a committed notebook, that is not the last write: no sentence anywhere.
+    unmarked = Transport(bad_json(), reply(answer_keeping(MEMORY)))
+    run(world, 1, unmarked, memory=MEMORY)
+    assert json.loads(unmarked.bodies()[0]["messages"][1]["content"])["notebook"], "the notebook was committed"
+    # The same step again with the request marked as the last write: the sentence, in the user message only.
+    marked = Transport(bad_json(), reply(answer_keeping(MEMORY, notebook="Another notebook.")))
+    run(world, 1, marked, last_write=True, memory=MEMORY)
+    for bodies, expected in ((plain.bodies(), False), (unmarked.bodies(), False), (marked.bodies(), True)):
+        for body in bodies:
+            assert LAST_WRITE not in body["messages"][0]["content"]
+            assert (LAST_WRITE in body["messages"][1]["content"]) is expected
+            assert all(LAST_WRITE not in message["content"] for message in body["messages"][2:])
+    assert marked.bodies()[0]["messages"][1]["content"].endswith("\n\n" + LAST_WRITE)
 
 
 def test_the_cost_of_every_call_is_summed_and_recorded(world):

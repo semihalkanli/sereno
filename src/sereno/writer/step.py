@@ -147,7 +147,7 @@ def run_step(
     notebook, previous_write = chain.reconcile()
     view = build_view(req, config, limits, notebook, previous_write)
     digest = input_hash(req, config, view, chain)
-    reuse = chain.reusable(digest)
+    reuse = chain.reusable(digest, sha256_bytes(Path(request_path).read_bytes()))
     if reuse is not None:
         folder, candidate = reuse
         sha = write_response(response_path, candidate["response"])

@@ -145,19 +145,24 @@ class Chain:
                 return candidate
         return None
 
-    def consumed_as_failure(self, response_sha256: str) -> bool:
-        """Whether the hook already ended a step on this exact response as writer_failed or timeout: such a response
-        is not reused, since replaying it would loop."""
+    def consumed_as_failure(self, response_sha256: str, request_sha256: str) -> bool:
+        """Whether the hook already ended a step on this exact response, answering this exact request, as
+        writer_failed or timeout: such a response is not reused, since replaying it would loop."""
         for kind in ("superseded", "stopped"):
             for record in (self.req.arm_dir / "transitions" / kind).glob(
                 f"*/{self.req.transition:03d}/transition.json"
             ):
                 data = read_object(record)
-                if data and data.get("response_sha256") == response_sha256 and data.get("status") in FAILED_STATUSES:
+                if (
+                    data
+                    and data.get("response_sha256") == response_sha256
+                    and data.get("request_sha256") == request_sha256
+                    and data.get("status") in FAILED_STATUSES
+                ):
                     return True
         return False
 
-    def reusable(self, input_sha256: str) -> tuple[AttemptDir, dict] | None:
+    def reusable(self, input_sha256: str, request_sha256: str) -> tuple[AttemptDir, dict] | None:
         """A complete candidate recorded for exactly this input, or None. On a resume it is delivered again without a
         new provider call, so a transition is never paid for twice."""
         for folder in reversed(self.attempts()):
@@ -166,7 +171,7 @@ class Chain:
                 continue
             if not isinstance(candidate.get("response"), dict) or not candidate.get("response_sha256"):
                 continue
-            if self.consumed_as_failure(candidate["response_sha256"]):
+            if self.consumed_as_failure(candidate["response_sha256"], request_sha256):
                 continue
             return AttemptDir(folder), candidate
         return None
