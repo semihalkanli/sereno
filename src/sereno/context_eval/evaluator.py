@@ -25,7 +25,7 @@ from pathlib import Path, PurePosixPath
 
 from sereno.context_eval.contracts import Submission
 from sereno.context_eval.dataset import load_task
-from sereno.context_eval.engine import write_json
+from sereno.context_eval.engine import write_atomic
 
 GRADED = {"graded", "apply_failed"}
 BASE_LABEL = "sereno.base_id"
@@ -270,9 +270,9 @@ class DeepSWEEvaluator:
         if patch is not None:
             # The official result is on disk before the second pass, which can run for the whole verifier timeout;
             # without `test_edits`, so `--test-edits-only` completes a grade the second pass never finished.
-            write_json(output_dir / "grade.json", {k: v for k, v in grade.items() if k != "test_edits"})
+            write_atomic(output_dir / "grade.json", {k: v for k, v in grade.items() if k != "test_edits"})
             grade["test_edits"] = self.test_edits(submission.task_id, patch, output_dir, grade)
-        write_json(output_dir / "grade.json", grade)
+        write_atomic(output_dir / "grade.json", grade)
         return grade
 
     def _grade(self, submission: Submission, patch: bytes, output_dir: Path, grade: dict) -> dict:
@@ -480,7 +480,7 @@ def grade_session(evaluator, directory: Path, *, force: bool = False) -> tuple[s
         else:
             error = result.get("patch_error") or f"patch status {result.get('patch_status')}"
             grade = blank_grade(result["task_id"]) | {"status": "not_gradable", "error": error}
-            write_json(directory / "grade.json", grade | {"task_image_id": (result.get("image") or {}).get("id")})
+            write_atomic(directory / "grade.json", grade | {"task_image_id": (result.get("image") or {}).get("id")})
     except (KeyError, TypeError) as error:
         return "unreadable", f"result.json lacks {error}"
     return "written", None
@@ -523,7 +523,7 @@ def grade_campaign(
             if shared is None or "test_edits" not in shared:
                 return
             edits = shared["test_edits"]
-        write_json(directory / "grade.json", grade | {"schema_version": GRADE_SCHEMA, "test_edits": edits})
+        write_atomic(directory / "grade.json", grade | {"schema_version": GRADE_SCHEMA, "test_edits": edits})
         backfilled.append(directory)
 
     def grade_one(directory: Path) -> None:
@@ -553,7 +553,7 @@ def grade_campaign(
             if shared is None:
                 unreadable[directory] = "unreadable grade.json in its origin session"
                 continue
-            write_json(directory / "grade.json", shared | {"shared_from": str(origin.relative_to(campaign))})
+            write_atomic(directory / "grade.json", shared | {"shared_from": str(origin.relative_to(campaign))})
             written.append(directory)
     grades = {}
     for directory in directories:

@@ -1,0 +1,28 @@
+# Deterministic plumbing oracle for the adaptive hook, not a measurement of model robustness. A neutral stub program
+# plants a placeholder note before each session of a two-session chain, with no model and no API key. The stub reads
+# its plan from the ADAPTIVE_STUB environment variable (tests/adaptive_stub.py); without one it answers with no actions.
+schema_version: "1.2"
+dataset_root: ~/sereno-deepswe/deep-swe
+agent: scripted
+targets:
+  - task_id: fastapi-implicit-head-options
+sessions:
+  - id: first
+    instruction: "Execute the deterministic fixture."
+    script:
+      - command: echo first
+  - id: second
+    instruction: "Execute the deterministic fixture again in a fresh workspace."
+    script:
+      - command: echo second
+arms: [clean, attack_adaptive]
+adaptive:
+  # A program that spends API money must not start with python -I: isolated mode ignores PYTHONPATH, which is how
+  # scripts/cost.py loads its meter, so the ledger would miss the program's calls.
+  command: [python3, ../../tests/adaptive_stub.py]
+  timeout_seconds: 60
+  grade_before_step: true
+  limits:
+    max_files_touched: 2
+    max_file_bytes: 2000
+    forbidden_patterns: ["do-not-write-this"]

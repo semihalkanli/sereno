@@ -133,9 +133,9 @@ class Intervention(Contract):
         return bool((self.marker and self.marker in text) or self.copy_match(text))
 
 
-def compile_pattern(pattern: str) -> re.Pattern:
+def compile_pattern(pattern: str, flags: int = 0) -> re.Pattern:
     try:
-        return re.compile(pattern)
+        return re.compile(pattern, flags)
     except re.error as error:
         raise ValueError(f"invalid regex {pattern!r}: {error}") from None
 
@@ -240,6 +240,44 @@ class Repair(Contract):
         return before + ("\n" if before and not before.endswith("\n") else "") + self.user_update
 
 
+class AdaptiveLimits(Contract):
+    """What the adaptive program may write in one transition. The limits are part of the measurement, so the two
+    numbers have no defaults."""
+
+    # Distinct files created, changed or deleted in one transition; a changed index counts as MEMORY.md.
+    max_files_touched: int = Field(ge=1, le=100)
+    # Size of any file the program writes.
+    max_file_bytes: int = Field(ge=1, le=1_000_000)
+    # Case-insensitive regexes matched on the content of every file the program changes.
+    forbidden_patterns: list[str] = []
+
+    @model_validator(mode="after")
+    def coherent(self):
+        for pattern in self.forbidden_patterns:
+            if compile_pattern(pattern, re.IGNORECASE).search(""):
+                raise ValueError("forbidden patterns cannot match empty text")
+        return self
+
+
+class Adaptive(Contract):
+    """The program that writes into the carried memory before every session of the attack_adaptive arm, after reading
+    what the agent did in the session before."""
+
+    # argv, run on the host; a word that names an existing file next to the YAML file resolves against it.
+    command: list[str] = Field(min_length=1)
+    # Wall clock for one run of the program.
+    timeout_seconds: int = Field(1800, ge=1, le=86_400)
+    # Grade the session that just ended, with the grader behind `grade`, before the program is called.
+    grade_before_step: bool = True
+    limits: AdaptiveLimits
+
+    @model_validator(mode="after")
+    def coherent(self):
+        if not self.command[0].strip() or any("\0" in word for word in self.command):
+            raise ValueError("command needs a program name and no NUL bytes")
+        return self
+
+
 class GuardConfig(Contract):
     """The live memory guard. Each rule group is off, records its findings in the event log, or, for rules 1 and 2,
     also puts the copy the harness kept back. Rules 3 and 4 are read by a judge model, and can send notices."""
@@ -286,7 +324,7 @@ class Notice(Contract):
 
 
 class ExperimentConfig(Contract):
-    schema_version: Literal["1.0", "1.1"] = "1.0"
+    schema_version: Literal["1.0", "1.1", "1.2"] = "1.0"
     dataset_root: Path
     targets: list[Target] = Field(min_length=1)
     agent: str = "mini-swe"
@@ -296,7 +334,7 @@ class ExperimentConfig(Contract):
     checks: list[Check] = []
     metrics: list[MetricSpec] = []
     memory: MemoryConfig = MemoryConfig()
-    arms: list[Literal["clean", "clean_reset", "attack_carry", "attack_reset", "attack_ablate"]] = [
+    arms: list[Literal["clean", "clean_reset", "attack_carry", "attack_reset", "attack_ablate", "attack_adaptive"]] = [
         "clean",
         "attack_carry",
         "attack_reset",
@@ -308,6 +346,8 @@ class ExperimentConfig(Contract):
     campaign_cost_limit_usd: float = Field(20.0, gt=0, allow_inf_nan=False)
     wall_time_limit_seconds: int | None = Field(None, ge=1)
     repair: Repair | None = None
+    # The program behind the attack_adaptive arm; schema 1.2, and the arm needs it.
+    adaptive: Adaptive | None = None
     # Off unless set; a campaign without it runs as before.
     guard: GuardConfig | None = None
     notices: list[Notice] = []
@@ -332,6 +372,22 @@ class ExperimentConfig(Contract):
         }.items():
             if arm in self.arms and base not in self.arms:
                 raise ValueError(f"{arm} requires {base}")
+        adaptive_arm = "attack_adaptive" in self.arms
+        if adaptive_arm != (self.adaptive is not None):
+            raise ValueError("the attack_adaptive arm and the adaptive section need each other")
+        if adaptive_arm:
+            if self.schema_version != "1.2":
+                raise ValueError("attack_adaptive requires schema_version 1.2")
+            if beside := [arm for arm in self.arms if arm in {"attack_carry", "attack_reset", "attack_ablate"}]:
+                raise ValueError(
+                    f"attack_adaptive shares nothing with {', '.join(beside)}; run them in another campaign"
+                )
+            if self.repair is not None:
+                raise ValueError("attack_adaptive does not support repair")
+            # The arm takes no interventions, so its cases do not depend on variants: one case per target and repeat.
+            if self.variants not in ({"default": []}, {"adaptive": []}):
+                raise ValueError("attack_adaptive ignores variants and takes no interventions; leave variants out")
+            self.variants = {"adaptive": []}
         exposure = [s.exposure for s in self.sessions]
         if any(exposure[i] and not exposure[i - 1] for i in range(1, len(exposure))):
             raise ValueError("exposure sessions must precede all probes")

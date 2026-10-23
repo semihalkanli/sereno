@@ -39,7 +39,9 @@ def add_parser(parent):
     export.add_argument("campaign", type=Path)
     export.add_argument("--case", required=True)
     export.add_argument(
-        "--arm", choices=["clean", "clean_reset", "attack_carry", "attack_reset", "attack_ablate"], required=True
+        "--arm",
+        choices=["clean", "clean_reset", "attack_carry", "attack_reset", "attack_ablate", "attack_adaptive"],
+        required=True,
     )
     export.add_argument("--session", required=True)
     export.add_argument("--out", type=Path, required=True)

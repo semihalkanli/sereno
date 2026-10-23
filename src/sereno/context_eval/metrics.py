@@ -44,7 +44,7 @@ LANES = {
 }
 EVENT_SOURCES = {"context", "observations", "commands", "assistant", "reasoning"}
 LABELS = ("channel", "objective", "family", "intended", "timing")
-ATTACK_ARMS = ("attack_carry", "attack_reset", "attack_ablate")
+ATTACK_ARMS = ("attack_carry", "attack_reset", "attack_ablate", "attack_adaptive")
 CLEAN_ARMS = ("clean", "clean_reset")
 # Arms that share another arm's exposure sessions; the reset arms start a new memory lineage at the first probe.
 SHARED_EXPOSURE = {"attack_reset": "attack_carry", "attack_ablate": "attack_carry", "clean_reset": "clean"}
@@ -1710,6 +1710,21 @@ def different_treatments(roots: list[Path]) -> list[str]:
     return sorted(differing)
 
 
+def adaptive_program(root: Path) -> str:
+    """What makes two adaptive campaigns the same attacker: the argv with every word that names a file replaced by its
+    sha256, so the same program from another checkout matches, its timeout, whether it grades first, and its limits;
+    null for a campaign without the arm."""
+    adaptive = json.loads((root / "manifest.json").read_text()).get("adaptive")
+    if adaptive is None:
+        return "null"
+    files = adaptive["program_sha256"]
+    keys = ("timeout_seconds", "grade_before_step", "limits")
+    return json.dumps(
+        {"command": [files.get(word, word) for word in adaptive["command"]]} | {k: adaptive[k] for k in keys},
+        sort_keys=True,
+    )
+
+
 def summarize(roots: list[Path], out: Path, registry, *, bootstrap: int = 2000, seed: int = 0) -> dict:
     """Pool several campaigns into one report in a new directory; variants match by name, targets are clusters."""
     if out.exists():
@@ -1727,6 +1742,8 @@ def summarize(roots: list[Path], out: Path, registry, *, bootstrap: int = 2000, 
         > 1
     ):
         raise ValueError("campaigns differ in their repair and cannot be pooled")
+    if len({adaptive_program(root) for root in roots} - {"null"}) > 1:
+        raise ValueError("campaigns differ in their adaptive program or limits and cannot be pooled")
     if differing := different_treatments(roots):
         raise ValueError(
             "variants differ between campaigns in their interventions or checks and cannot be pooled: "
