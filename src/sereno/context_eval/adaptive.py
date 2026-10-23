@@ -417,6 +417,7 @@ def adaptive_manifest(adaptive: Adaptive) -> dict:
         "program_sha256": files,
         "timeout_seconds": adaptive.timeout_seconds,
         "grade_before_step": adaptive.grade_before_step,
+        "stop_after_failures": adaptive.stop_after_failures,
         "limits": adaptive.limits.model_dump(),
     }
 
@@ -466,10 +467,44 @@ def opening_events(record: dict, applied: dict | None) -> list[tuple[str, dict]]
     return events
 
 
+class AdaptiveStop(RuntimeError):
+    """The adaptive arm stops: the program failed too many steps in a row, so no further step or session starts."""
+
+
+class FailureStreak:
+    """Steps that ended as writer_failed or timeout in a row across the campaign's adaptive chains, in the order they
+    were decided; a step that ends any other way resets the count. Shared by the chains of every worker."""
+
+    def __init__(self, limit: int | None):
+        self.limit, self.count, self.steps, self.stopped = limit, 0, [], None
+        self.lock = threading.Lock()
+
+    def check(self) -> None:
+        with self.lock:
+            if self.stopped:
+                raise AdaptiveStop(self.stopped["reason"])
+
+    def record(self, status: str, step: str, aside: str) -> bool:
+        """Count one decided step; True when it reaches the limit, and the step then counts at `aside`."""
+        with self.lock:
+            if status not in {"writer_failed", "timeout"}:
+                self.count, self.steps = 0, []
+                return False
+            self.count += 1
+            if self.stopped or self.limit is None or self.count < self.limit:
+                self.steps.append(step)
+                return False
+            self.stopped = {
+                "reason": f"the adaptive program failed {self.count} steps in a row",
+                "steps": [*self.steps, aside],
+            }
+            return True
+
+
 class AdaptiveHook:
     """The step before each session of one attack_adaptive chain. `locate(number)` is the directory of session
-    `number`, `projects` maps a task to its memory project, `grader` grades a session directory in place, and
-    `stamp` names the folder an incomplete attempt is moved to."""
+    `number`, `projects` maps a task to its memory project, `grader` grades a session directory in place, `stamp`
+    names the folder an incomplete attempt is moved to, and `streak` counts program failures across the campaign."""
 
     def __init__(
         self,
@@ -484,15 +519,18 @@ class AdaptiveHook:
         locate,
         grader,
         stamp: str,
+        streak: FailureStreak | None = None,
     ):
         self.config, self.adaptive = config, config.adaptive
         self.output, self.arm_dir, self.case, self.repeat, self.target = output, arm_dir, case, repeat, target
         self.projects, self.locate, self.grader, self.stamp = projects, locate, grader, stamp
+        self.streak = streak or FailureStreak(config.adaptive.stop_after_failures)
 
     def before(self, number: int, memory: dict[str, str]) -> tuple[dict[str, str], list[tuple[str, dict]]]:
         """The memory session `number` starts from, given the memory the last complete session ended with, and the
         events to log when it starts. A recorded transition is replayed; the program is called only for one that was
-        never recorded or was cut short."""
+        never recorded or was cut short. Raises AdaptiveStop once the program has failed too many steps in a row."""
+        self.streak.check()
         session = self.config.sessions[number]
         project = self.projects[session.task_id or self.target]
         memory = resolve_files(memory, project)
@@ -577,6 +615,12 @@ class AdaptiveHook:
             },
         }
         write_atomic(folder / "transition.json", record)
+        # The step that stops the arm moves aside with its record, so a resume decides it again with the program.
+        aside = self.arm_dir / "transitions" / "stopped" / self.stamp / folder.name
+        if self.streak.record(status, str(folder.relative_to(self.output)), str(aside.relative_to(self.output))):
+            aside.parent.mkdir(parents=True, exist_ok=True)
+            folder.rename(aside)
+            self.streak.check()
         return after, record, applied
 
     def grade(self, directory: Path) -> tuple[str, str | None]:

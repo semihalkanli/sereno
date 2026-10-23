@@ -269,6 +269,9 @@ class Adaptive(Contract):
     timeout_seconds: int = Field(1800, ge=1, le=86_400)
     # Grade the session that just ended, with the grader behind `grade`, before the program is called.
     grade_before_step: bool = True
+    # Steps in a row, across the campaign, that end as writer_failed or timeout before no further adaptive step or
+    # session starts; null never stops.
+    stop_after_failures: int | None = Field(2, ge=1)
     limits: AdaptiveLimits
 
     @model_validator(mode="after")

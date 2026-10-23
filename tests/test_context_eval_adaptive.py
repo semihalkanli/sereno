@@ -165,6 +165,7 @@ def test_adaptive_config_rules(fixture_world, changes, message):
         ({"limits": {**LIMITS, "forbidden_patterns": ["a*"]}}, "cannot match empty text"),
         ({"limits": {**LIMITS, "max_files_touched": 0}}, "max_files_touched"),
         ({"timeout_seconds": 0}, "timeout_seconds"),
+        ({"stop_after_failures": 0}, "stop_after_failures"),
         ({"surprise": 1}, "surprise"),
     ],
 )
@@ -582,6 +583,8 @@ def test_grading_can_be_switched_off(tmp_path, fixture_world, monkeypatch):
 def test_every_status_lets_the_chain_continue(tmp_path, fixture_world, monkeypatch):
     config = adaptive_config(fixture_world[0], sessions=5)
     config.adaptive.timeout_seconds = 1
+    # The last two steps fail in a row, which would stop the arm by default.
+    config.adaptive.stop_after_failures = None
     plan = {
         "0": {"actions": PLANT},
         "1": {"actions": []},
@@ -622,6 +625,7 @@ def test_every_status_lets_the_chain_continue(tmp_path, fixture_world, monkeypat
 
 def test_a_response_in_the_wrong_form_is_a_failed_program_not_a_rejected_plant(tmp_path, fixture_world, monkeypatch):
     config = adaptive_config(fixture_world[0], sessions=3)
+    config.adaptive.stop_after_failures = None
     plan = {"0": {"mode": "raw", "text": "not json"}, "1": {"mode": "none"}, "2": {"mode": "raw", "text": "[]"}}
     campaign(tmp_path, fixture_world, config, plan, monkeypatch)
     records = [read(transition(tmp_path, n) / "transition.json") for n in (1, 2, 3)]
@@ -730,6 +734,57 @@ def test_a_planted_index_is_never_owned(tmp_path, fixture_world, monkeypatch):
     campaign(tmp_path, fixture_world, adaptive_config(fixture_world[0], sessions=2), plan, monkeypatch)
     assert owned_paths(arm(tmp_path), 1) == {ALPHA}
     assert read(transition(tmp_path, 2) / "request.json")["memory"]["owned"] == [ALPHA]
+
+
+# --- the stop after program failures in a row ---
+
+CRASH = {"mode": "crash", "code": 3}
+
+
+def adaptive_rows(outcome, case="first--adaptive--r001"):
+    return [row["status"] for row in outcome["sessions"] if row["arm"] == "attack_adaptive" and row["case"] == case]
+
+
+def test_two_failed_steps_in_a_row_stop_the_arm_before_the_next_session(tmp_path, fixture_world, monkeypatch):
+    plan = {"0": CRASH, "1": CRASH, "2": {"actions": PLANT}}
+    outcome = campaign(tmp_path, fixture_world, adaptive_config(fixture_world[0]), plan, monkeypatch)
+    # The first failure's session ran; the second stopped the arm, so its session and the rest never started.
+    assert calls(tmp_path) == ["0 - 0", "1 graded 0"]
+    assert adaptive_rows(outcome) == ["complete", "missing", "missing"]
+    assert not (transition(tmp_path, 2)).exists()
+    (aside,) = (arm(tmp_path) / "transitions" / "stopped").glob("*/002")
+    assert read(aside / "transition.json")["status"] == "writer_failed"
+    assert outcome["adaptive_stop"] == {
+        "reason": "the adaptive program failed 2 steps in a row",
+        "steps": [str(p.relative_to(tmp_path / "campaign")) for p in (transition(tmp_path, 1), aside)],
+    }
+    assert read(tmp_path / "campaign" / "campaign.json")["adaptive_stop"] == outcome["adaptive_stop"]
+
+
+@pytest.mark.parametrize("middle", [{"actions": []}, {"actions": [write(USER, "the program wrote here\n")]}])
+def test_a_step_that_does_not_fail_ends_the_run_of_failures(tmp_path, fixture_world, monkeypatch, middle):
+    # A rejected plant is a measured outcome, not a failed program.
+    plan = {"0": CRASH, "1": middle, "2": CRASH}
+    outcome = campaign(tmp_path, fixture_world, adaptive_config(fixture_world[0]), plan, monkeypatch)
+    assert adaptive_rows(outcome) == ["complete"] * 3 and outcome["adaptive_stop"] is None
+
+
+def test_the_stop_holds_for_every_chain_of_the_campaign(tmp_path, fixture_world, monkeypatch):
+    outcome = campaign(tmp_path, fixture_world, adaptive_config(fixture_world[0], repeats=2), {"*": CRASH}, monkeypatch)
+    assert adaptive_rows(outcome) == ["complete", "missing", "missing"]
+    assert adaptive_rows(outcome, "first--adaptive--r002") == ["missing"] * 3
+    second = tmp_path / "campaign" / "cases" / "first--adaptive--r002" / "arms" / "attack_adaptive"
+    assert not (second / "state" / "calls.log").exists()
+
+
+def test_a_resume_after_the_stop_decides_the_stopped_step_again(tmp_path, fixture_world, monkeypatch):
+    config = adaptive_config(fixture_world[0])
+    campaign(tmp_path, fixture_world, config, {"0": CRASH, "1": CRASH}, monkeypatch)
+    outcome = campaign(tmp_path, fixture_world, config, {"1": {"actions": PLANT}}, monkeypatch, resume=True)
+    assert calls(tmp_path) == ["0 - 0", "1 graded 0", "1 graded 0", "2 graded 1"]
+    assert adaptive_rows(outcome) == ["complete"] * 3 and outcome["adaptive_stop"] is None
+    assert read(transition(tmp_path, 2) / "transition.json")["status"] == "applied"
+    assert read(transition(tmp_path, 1) / "transition.json")["status"] == "writer_failed"
 
 
 # --- resume ---

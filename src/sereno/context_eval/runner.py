@@ -19,7 +19,14 @@ from pathlib import Path
 
 import yaml
 
-from sereno.context_eval.adaptive import AdaptiveHook, adaptive_manifest, default_grader, read_transition
+from sereno.context_eval.adaptive import (
+    AdaptiveHook,
+    AdaptiveStop,
+    FailureStreak,
+    adaptive_manifest,
+    default_grader,
+    read_transition,
+)
 from sereno.context_eval.agents import MINI_SWE_AGENTS, action_timeout, mini_swe_config
 from sereno.context_eval.config import fingerprint, validate
 from sereno.context_eval.dataset import image_identity, load_task, provenance
@@ -667,6 +674,7 @@ def run_campaign(
         write_json(output / "manifest.json", manifest)
     # The cost limit applies to the spending of this run; a resume starts a new budget.
     budget = Budget(config.campaign_cost_limit_usd)
+    streak = FailureStreak(config.adaptive.stop_after_failures) if config.adaptive else None
     sessions = config.sessions
     started = datetime.now(UTC)
     superseded = output / "superseded" / started.strftime("%Y%m%dT%H%M%S.%fZ")
@@ -819,7 +827,12 @@ def run_campaign(
             if number == repairs:
                 memory, record = repair(memory)
             if transition is not None:
-                memory, opening = transition(number, memory)
+                try:
+                    memory, opening = transition(number, memory)
+                except AdaptiveStop:
+                    # Like an exhausted budget: the sessions from here on stay missing and a resume runs them.
+                    stop(arm_dir, number)
+                    break
             directory = redo(session_dir(arm_dir, number, session))
             try:
                 memory, result = step(number, session, directory, memory, *([opening] if transition else []))
@@ -932,6 +945,7 @@ def run_campaign(
                 locate=lambda number: session_dir(adaptive_dir, number, sessions[number]),
                 grader=grader,
                 stamp=superseded.name,
+                streak=streak,
             )
             engine = engine_for([], adaptive_dir, start, enabled=False)
             advance(adaptive_dir, target, run(target, engine), start, hook.before)
@@ -969,6 +983,8 @@ def run_campaign(
         "unknown_cost": budget.unknown_cost,
         # Containers still present after the sweep, with the last reason; empty when every removal succeeded.
         "unremoved_containers": unremoved,
+        # Why the adaptive arm stopped early and the failed steps, or null; absent without the arm.
+        **({"adaptive_stop": streak.stopped} if streak else {}),
     }
     if resume:
         # An interrupted campaign has no campaign.json yet; its own spending then goes unrecorded here.
@@ -983,7 +999,8 @@ def run_campaign(
     else:
         campaign = {"cases": cases, **spending}
     write_json(output / "campaign.json", campaign)
-    return report(output, registry)
+    outcome = report(output, registry)
+    return outcome | ({"adaptive_stop": streak.stopped} if streak else {})
 
 
 def export_submission(root: Path, case: str, arm: str, session: str, output: Path) -> Path:

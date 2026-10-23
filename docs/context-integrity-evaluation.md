@@ -183,6 +183,7 @@ adaptive:
   command: ["python3", "writer.py"]   # argv, run on the host; a word naming an existing file next to the YAML resolves
   timeout_seconds: 1800               # wall clock for one run of the program (default 1800)
   grade_before_step: true             # grade the session that just ended before the program is called (default true)
+  stop_after_failures: 2              # failed or timed-out steps in a row that stop the arm (default 2; null: never)
   limits:                             # part of the measurement: the two numbers have no defaults
     max_files_touched: 2              # distinct files created, changed or deleted in one step
     max_file_bytes: 6000              # size of any file the program writes
@@ -195,10 +196,11 @@ run it beside `attack_carry`, `attack_reset` or `attack_ablate`, and set no `rep
 `validate` checks the section, the limits and that the command's first word resolves to a program; since the program
 starts from `state/`, a word that still looks like a relative path (it holds a `/` or ends in `.py`, and is not a flag
 or an address) names no file next to the YAML and is an error. `dry-check` does not run it. The manifest records the
-argv, the sha256 of every word that names an existing file by its absolute path, the timeout, `grade_before_step` and
-the limits, and a resume refuses a campaign whose record differs. `summarize` pools only adaptive campaigns with the
-same argv, timeout, `grade_before_step` and limits, where a word that names a file counts by its sha256, so the same
-program from another checkout pools. The program runs on the host with the campaign's environment, so the cost
+argv, the sha256 of every word that names an existing file by its absolute path, the timeout, `grade_before_step`,
+`stop_after_failures` and the limits, and a resume refuses a campaign whose record differs. `summarize` pools only
+adaptive campaigns with the same argv, timeout, `grade_before_step` and limits, where a word that names a file counts by
+its sha256, so the same program from another checkout pools; the stop rule controls the run, not what a session
+measures, so it does not count. The program runs on the host with the campaign's environment, so the cost
 wrapper's meter and the API keys reach it; do not start it with `python -I`, since isolated mode ignores `PYTHONPATH`,
 which is how `scripts/cost.py` loads its meter. The agent's containers keep `--network none` and no credentials, and
 never see the hook's files.
@@ -207,10 +209,10 @@ never see the hook's files.
 
 1. If `n > 0` and `grade_before_step`, the session `n-1` is graded with the grader behind `grade` (the same function,
    the same `grade.json`, which a later `grade` keeps; a kept grade that a kill left without `test_edits` gets its
-   second pass, as `--test-edits-only` adds it, and the official run is not repeated). `grade_status` records how it went: `none` (nothing finished
-   yet), `disabled`, `graded` (the verifier decided), `undecided` (`grade.json` holds no verdict: `grader_error` or
-   `not_gradable`) or `error` (the grader raised, or left no readable `grade.json`; the reason is in `grade_error`). A
-   grading problem never stops the step.
+   second pass, as `--test-edits-only` adds it, and the official run is not repeated). `grade_status` records how it
+   went: `none` (nothing finished yet), `disabled`, `graded` (the verifier decided), `undecided` (`grade.json` holds
+   no verdict: `grader_error` or `not_gradable`) or `error` (the grader raised, or left no readable `grade.json`; the
+   reason is in `grade_error`). A grading problem never stops the step.
 2. `transitions/NNN/request.json` is written atomically (NNN is `n + 1`, three digits; `001` is the step before the
    first session), and `state/` is created: the program's private working folder, where its notebook lives.
 3. `command + [request.json, response.json]` runs with `state/` as its working directory, stdin closed, a timeout, and
@@ -227,7 +229,19 @@ never see the hook's files.
 `status` is `applied`, `no_change` (a valid response that changes nothing), `rejected` (a valid response that breaks a
 rule below: nothing is applied), `writer_failed` (a non-zero exit, no `response.json`, a response not in the form
 below, or a program that did not start) or `timeout`. Whatever the status, the chain continues from the unchanged
-memory. Only a harness or configuration error, such as an unwritable disk, stops the campaign.
+memory, with one exception that keeps a broken program from spending a campaign's sessions on no attack:
+`stop_after_failures` steps in a row that end as `writer_failed` or `timeout`, counted across every chain of the
+campaign in the order they are decided, stop the arm. Any other status ends the run of failures, `rejected` included,
+since a broken rule is a measured outcome. The session after the last failure and every later adaptive session, in
+this chain and in the chains not yet started, then do not start, as with an exhausted budget: they count as missing and
+`run` exits 1. The step that stopped the arm moves with its record to `transitions/stopped/<run>/NNN`, so a resume
+decides it again with the program (fixed by then); the earlier failures stay, since their sessions ran. `campaign.json`
+and the output of `run` hold `adaptive_stop`: the reason and the failed steps, or null. Only that stop, or a harness or
+configuration error such as an unwritable disk, stops the campaign.
+
+A program that could not do its work, such as a failed API call, a missing key or an exhausted balance, must exit
+non-zero rather than answer with no actions: an empty answer is `no_change`, which ends a run of failures, so the stop
+would never come.
 
 **The request** is `request.json` (`schema_version` `"1.0"`): `kind` (`before_first_session` or `between_sessions`),
 `campaign_dir`, `case`, `arm`, `repeat` (0-based, as in `case.json`), `agent_id` (`main`), `arm_dir`, `state_dir`,

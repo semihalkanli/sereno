@@ -189,6 +189,8 @@ def execute(args) -> int:
 
                     outcome = run_campaign(config, args.out, registry, resume=args.resume)
                     result = {"campaign": str(args.out.resolve())} | overview(args.out, outcome, groups=False)
+                    if outcome.get("adaptive_stop"):
+                        result["adaptive_stop"] = outcome["adaptive_stop"]
         print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
         if command == "run":
             return int(any(s["status"] != "complete" for s in outcome["sessions"]))
