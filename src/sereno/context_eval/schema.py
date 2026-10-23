@@ -293,6 +293,10 @@ class GuardConfig(Contract):
     author: Literal["off", "record", "restore"] = "record"
     # Rules 5 and 6 on what an agent's write adds and on every file that changed since the previous task's end.
     content: Literal["off", "record"] = "record"
+    # Which carried files the content and judge rules read at task start: those that differ from the kept copy, or
+    # every file at every task, so that what the guard reads does not depend on who changed memory between tasks or
+    # when, and each note is judged in the context of the task it is loaded into.
+    read_at_start: Literal["changed", "all"] = "changed"
     # Rule 3, read by the judge: a user or feedback note gives the user a wish the user's words do not hold.
     for_user: Literal["off", "record"] = "off"
     # Rule 4, read by the judge: a note calls a test an expected failure that passed at base in the task's record.
