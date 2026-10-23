@@ -1202,6 +1202,21 @@ def test_only_the_step_before_the_freeze_is_marked_as_the_last_write(tmp_path, f
         assert frozen["memory"] == unfrozen["memory"]
 
 
+@pytest.mark.parametrize(
+    ("sessions", "freeze_from", "marks"),
+    [(2, "s2", [True]), (4, "s4", [False, False, True]), (4, "s3", [False, True]), (4, "s2", [True])],
+)
+def test_the_last_write_is_the_step_before_the_freeze_in_any_chain(
+    tmp_path, fixture_world, monkeypatch, sessions, freeze_from, marks
+):
+    config = frozen_config(fixture_world[0], freeze_from=freeze_from, sessions=sessions)
+    campaign(tmp_path, fixture_world, config, {}, monkeypatch)
+    assert [read(transition(tmp_path, n) / "request.json")["last_write"] for n in range(1, len(marks) + 1)] == marks
+    # From the frozen session on there is no request, so nothing else can carry the mark.
+    assert not any((transition(tmp_path, n) / "request.json").exists() for n in range(len(marks) + 1, sessions + 1))
+    assert len(calls(tmp_path)) == len(marks)
+
+
 def test_a_frozen_step_neither_counts_as_a_failure_nor_ends_a_run_of_failures(tmp_path, fixture_world, monkeypatch):
     # Frozen from the second session, each chain has one step of the program, and every one crashes.
     config = frozen_config(fixture_world[0], freeze_from="s2", repeats=2)
