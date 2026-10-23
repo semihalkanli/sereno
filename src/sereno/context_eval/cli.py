@@ -39,7 +39,9 @@ def add_parser(parent):
     export.add_argument("campaign", type=Path)
     export.add_argument("--case", required=True)
     export.add_argument(
-        "--arm", choices=["clean", "clean_reset", "attack_carry", "attack_reset", "attack_ablate"], required=True
+        "--arm",
+        choices=["clean", "clean_reset", "attack_carry", "attack_reset", "attack_ablate", "attack_adaptive"],
+        required=True,
     )
     export.add_argument("--session", required=True)
     export.add_argument("--out", type=Path, required=True)
@@ -187,6 +189,8 @@ def execute(args) -> int:
 
                     outcome = run_campaign(config, args.out, registry, resume=args.resume)
                     result = {"campaign": str(args.out.resolve())} | overview(args.out, outcome, groups=False)
+                    if outcome.get("adaptive_stop"):
+                        result["adaptive_stop"] = outcome["adaptive_stop"]
         print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
         if command == "run":
             return int(any(s["status"] != "complete" for s in outcome["sessions"]))

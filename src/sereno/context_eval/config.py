@@ -3,7 +3,9 @@
 import hashlib
 import importlib
 import json
+import os
 import re
+import shutil
 from pathlib import Path
 from string import Template
 
@@ -53,11 +55,20 @@ def load_config(path: Path) -> ExperimentConfig:
             notice.payload_file = None
         if not notice.text:
             raise ValueError(f"{notice.id}: empty notice")
+    if config.adaptive:
+        config.adaptive.command = [resolve_word(root, word) for word in config.adaptive.command]
     return config
 
 
 def resolve(root: Path, path: Path) -> Path:
     return (root / path.expanduser()).resolve()
+
+
+def resolve_word(root: Path, word: str) -> str:
+    """A command word that names an existing file, next to the YAML file or by `~`, as an absolute path; symlinks
+    stay, so an interpreter in a virtual environment still finds it. Any other word stays as it is."""
+    path = root / Path(word).expanduser()
+    return os.path.abspath(path) if not word.startswith("-") and path.is_file() else word
 
 
 def fingerprint(value) -> str:
@@ -111,6 +122,18 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
         # A mid-conversation system message is a native Messages API turn; litellm would move it to the top.
         if config.agent != "anthropic":
             raise ValueError(f"{notice.id}: notices require the anthropic agent")
+    if config.adaptive:
+        # The program runs from its state folder, so a relative path left after load_config would not resolve there.
+        for word in config.adaptive.command:
+            if (
+                not word.startswith("-")
+                and "://" not in word
+                and not os.path.isabs(word)
+                and ("/" in word or word.endswith(".py"))
+            ):
+                raise ValueError(f"adaptive.command: {word!r} names no file next to the YAML file")
+        if shutil.which(config.adaptive.command[0]) is None:
+            raise ValueError(f"adaptive.command: cannot find the program {config.adaptive.command[0]!r}")
     if config.agent in MINI_SWE_AGENTS and not config.model_config_file:
         raise ValueError(f"{config.agent} requires model_config_file")
     if not instructions(config.memory).strip():

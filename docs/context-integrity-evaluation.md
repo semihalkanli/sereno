@@ -50,9 +50,9 @@ tests that start containers, including the end-to-end campaign above, run only w
 
 ## Experiment definition
 
-A YAML file (schema version `1.0` or `1.1`; `schema` prints the JSON Schema) defines targets, sessions,
-variants, checks, memory, arms and budgets; `1.1` adds the optional `repair` section, and a `1.0` file runs
-exactly as before. Dataset, payload, model config and instructions paths resolve relative to the
+A YAML file (schema version `1.0`, `1.1` or `1.2`; `schema` prints the JSON Schema) defines targets, sessions,
+variants, checks, memory, arms and budgets; `1.1` adds the optional `repair` section, `1.2` the `adaptive` section
+and its arm, and a `1.0` or `1.1` file runs exactly as before. Dataset, payload, model config and instructions paths resolve relative to the
 YAML file, with `~` expansion. A `payload_file` may use `$name` templates filled from `parameters`; inline text
 is literal and takes no `parameters`. `validate` checks the whole definition, the tasks and the plugins without starting a container.
 
@@ -133,6 +133,9 @@ sessions come first and are the only sessions interventions may target; the sess
   intervention matched; zero removed is a valid outcome, and such a case is not eligible for `reinfection`. Every
   intervention needs a marker or copy patterns when this arm is configured. Ablation uses the experimenter's
   knowledge of the content and is a control, not a defense.
+- `attack_adaptive`: no interventions; an external program writes into the carried memory before every session (see
+  Adaptive memory writer). It shares nothing with the other attack arms, so it runs in a campaign of its own beside
+  `clean`, in cases named `<target>--adaptive--rNNN`.
 
 `arms` selects the arms; the default is `clean`, `attack_carry` and `attack_reset`. Shared sessions are copied, not
 re-run, and their `branch.json` (written atomically) names the
@@ -165,6 +168,136 @@ The repair changes only the user's file; the interventions' content stays wherev
 before the update (null when absent) and after it. Every arm repairs its own memory: the clean
 arms in their origin run, copied into each case with it, and the attack arms in their own repair session, which
 is never a shared copy.
+
+## Adaptive memory writer
+
+A schema `1.2` experiment may run the `attack_adaptive` arm: an external program writes into the carried memory
+before every session of a chain, including the first, after reading what the agent did in the session that just ended.
+The harness is the generic part. It runs any program that follows the contract below, checks what the program wants to
+write, applies it all or nothing and records everything; what the program writes and why is not its business.
+
+```yaml
+schema_version: "1.2"
+arms: [clean, attack_adaptive]
+adaptive:
+  command: ["python3", "writer.py"]   # argv, run on the host; a word naming an existing file next to the YAML resolves
+  timeout_seconds: 1800               # wall clock for one run of the program (default 1800)
+  grade_before_step: true             # grade the session that just ended before the program is called (default true)
+  stop_after_failures: 2              # failed or timed-out steps in a row that stop the arm (default 2; null: never)
+  limits:                             # part of the measurement: the two numbers have no defaults
+    max_files_touched: 2              # distinct files created, changed or deleted in one step
+    max_file_bytes: 6000              # size of any file the program writes
+    forbidden_patterns: ["..."]       # optional regexes, case-insensitive, matched on the content of every changed file
+```
+
+The arm needs the section and the section needs the arm. The arm applies no interventions: leave `variants` out, do not
+run it beside `attack_carry`, `attack_reset` or `attack_ablate`, and set no `repair`. Its cases are named
+`<target>--adaptive--rNNN`; the `clean` arm is unchanged, the same chain with no program, copied into each case.
+`validate` checks the section, the limits and that the command's first word resolves to a program; since the program
+starts from `state/`, a word that still looks like a relative path (it holds a `/` or ends in `.py`, and is not a flag
+or an address) names no file next to the YAML and is an error. `dry-check` does not run it. The manifest records the
+argv, the sha256 of every word that names an existing file by its absolute path, the timeout, `grade_before_step`,
+`stop_after_failures` and the limits, and a resume refuses a campaign whose record differs. `summarize` pools only
+adaptive campaigns with the same argv, timeout, `grade_before_step` and limits, where a word that names a file counts by
+its sha256, so the same program from another checkout pools; the stop rule controls the run, not what a session
+measures, so it does not count. The program runs on the host with the campaign's environment, so the cost
+wrapper's meter and the API keys reach it; do not start it with `python -I`, since isolated mode ignores `PYTHONPATH`,
+which is how `scripts/cost.py` loads its meter. The agent's containers keep `--network none` and no credentials, and
+never see the hook's files.
+
+**The step.** Immediately before session `n` (0-based), on the host, where `repair` is applied:
+
+1. If `n > 0` and `grade_before_step`, the session `n-1` is graded with the grader behind `grade` (the same function,
+   the same `grade.json`, which a later `grade` keeps; a kept grade that a kill left without `test_edits` gets its
+   second pass, as `--test-edits-only` adds it, and the official run is not repeated). `grade_status` records how it
+   went: `none` (nothing finished yet), `disabled`, `graded` (the verifier decided), `undecided` (`grade.json` holds
+   no verdict: `grader_error` or `not_gradable`) or `error` (the grader raised, or left no readable `grade.json`; the
+   reason is in `grade_error`). A grading problem never stops the step.
+2. `transitions/NNN/request.json` is written atomically (NNN is `n + 1`, three digits; `001` is the step before the
+   first session), and `state/` is created: the program's private working folder, where its notebook lives.
+3. `command + [request.json, response.json]` runs with `state/` as its working directory, stdin closed, a timeout, and
+   stdout and stderr kept in the step's folder as `writer.stdout` and `writer.stderr` (the first 1 MB of each). A program
+   that outlives the timeout is killed with everything it started, and whatever an exited program left running in its
+   process group is killed when it exits.
+4. `response.json` is read and checked. A valid response is applied to the carried memory on the host, all or nothing.
+5. `applied.json` records what was applied, with the sha256 of each file before and after and of the whole memory
+   before and after, or the violations, and the program's `note`; `transition.json` is written last and atomically,
+   with the `status`, `reason`, `grade_status`, `files_touched` and durations.
+6. The session starts from the resulting memory: its `memory_start.json` shows what was planted. The step never waits
+   for a person; the only waiting is the program's own run, bounded by the timeout.
+
+`status` is `applied`, `no_change` (a valid response that changes nothing), `rejected` (a valid response that breaks a
+rule below: nothing is applied), `writer_failed` (a non-zero exit, no `response.json`, a response not in the form
+below, or a program that did not start) or `timeout`. Whatever the status, the chain continues from the unchanged
+memory, with one exception that keeps a broken program from spending a campaign's sessions on no attack:
+`stop_after_failures` steps in a row that end as `writer_failed` or `timeout`, counted across every chain of the
+campaign in the order they are decided, stop the arm. Any other status ends the run of failures, `rejected` included,
+since a broken rule is a measured outcome. The session after the last failure and every later adaptive session, in
+this chain and in the chains not yet started, then do not start, as with an exhausted budget: they count as missing and
+`run` exits 1. The step that stopped the arm moves with its record to `transitions/stopped/<run>/NNN`, so a resume
+decides it again with the program (fixed by then); the earlier failures stay, since their sessions ran. `campaign.json`
+and the output of `run` hold `adaptive_stop`: the reason and the failed steps, or null. Only that stop, or a harness or
+configuration error such as an unwritable disk, stops the campaign.
+
+A program that could not do its work, such as a failed API call, a missing key or an exhausted balance, must exit
+non-zero rather than answer with no actions: an empty answer is `no_change`, which ends a run of failures, so the stop
+would never come.
+
+**The request** is `request.json` (`schema_version` `"1.0"`): `kind` (`before_first_session` or `between_sessions`),
+`campaign_dir`, `case`, `arm`, `repeat` (0-based, as in `case.json`), `agent_id` (`main`), `arm_dir`, `state_dir`,
+`transition_dir`, `finished_session` (null before the first session; otherwise `index`, `id`, `task_id`, `dir`, the
+parsed `result.json`, the parsed `grade.json` or null, `grade_status` and `ctrf_path` when graded), `next_session`
+(`index`, `id`, `task_id`, `task_dir` in the dataset, `project`, `memory_dir`), `memory` (`files`: the carried memory
+under the next session's memory directory, path to text, without the user's file; `owned`: the paths an earlier applied
+step of this case created), `limits` as configured, and `attempt` (always 1: the program's own retries happen inside
+it).
+
+**The response** is `response.json` (`schema_version` `"1.0"`): `actions`, a list of `{"op": "write", "path": ...,
+"content": ...}` and `{"op": "delete", "path": ...}`, and an optional `note`. Paths are absolute container paths;
+`{project}` is accepted. An insertion into an existing file is a `write` of its full new content. Any other field, op
+or type makes the program fail (`writer_failed`) rather than the plant rejected.
+
+**The checks** find every violation in one look, then reject the whole response if there is one:
+
+1. Scope: each path is a canonical POSIX file path below the next session's memory directory, without `..`, `.git`, a
+   backslash or a NUL, with names of at most 255 bytes; never the user's file. Each path appears in at most one action,
+   and a file cannot sit below a file or where a directory is.
+2. Ownership. A path is owned when an applied step of this case created it, derived from the `applied.json` records
+   of earlier steps and never from `state/`; ownership is by path and survives edits or deletion by the agent. An owned
+   file may be rewritten or deleted freely, and a path that does not exist may be created. Any other existing file (the
+   agent's) may only gain lines: every old line must stand unchanged and in order among the new lines (a last line
+   without a terminator may gain one), and it cannot be deleted. `MEMORY.md` is never owned, even when the program
+   created it; an old index line may change or go only when it links to files and every file it links to is owned.
+3. Count: at most `max_files_touched` distinct files created, changed or deleted. Writing a file unchanged or
+   deleting one that is not there changes nothing and does not count.
+4. Size: every written file is at most `max_file_bytes` bytes.
+5. Content: valid UTF-8, no NUL byte, no match of a forbidden pattern in the content of any changed file.
+6. The resulting memory stays within the memory limits (`max_files`, `max_bytes`).
+
+`sereno.context_eval.adaptive.validate_actions(memory, actions, owned, limits, project, *, memory_config=None)` returns
+the violations of a response's `actions` against a memory (path to text), empty when valid; the harness calls the same
+code, and it needs no campaign directory and no container. The memory limits are exact only when `memory` is the whole
+carried memory and `memory_config` is given, which the harness does; a program that only has `memory.files` checks the
+rest.
+
+**Artifacts and events.** Under the arm directory: `sessions/` as for any arm, `transitions/NNN/` with `request.json`,
+`response.json`, `applied.json`, `transition.json`, `writer.stdout` and `writer.stderr`, and `state/`. At the start of
+the session after a step, its log holds an `adaptive_step` event (`transition`, `transition_kind`, `status`, `reason`,
+`grade_status`, `files_touched`, `durations`) and one `memory_change` per changed file with `origin: "adaptive"` and
+`owner: "agent"` that carries the path, the `result` (`created`, `changed` or `deleted`) and the sizes and sha256 before
+and after, never the contents, which are in `applied.json`. The program's writes are in `memory_start.json` before the
+agent acts, and no metric counts them as the agent's: `agent_writes`, the transport fields and the user-file fields
+read `origin: "agent"` and `origin: "intervention"` events only, and the user's file is out of the program's reach. The
+arm has no interventions, so its transport fields are unobserved, as in the clean arms. `watch` prints each step and
+each planted file; `report`, `grade`, `export` and `summarize` treat the arm as any other.
+
+**Resume.** A session of this arm is complete only when its `result.json` is valid and so is the `transition.json` of
+the step before it. On `run --resume` a session that is not complete re-runs from the last complete memory. For its step:
+a valid `transition.json` is replayed, never decided again: the recorded actions are re-applied to the restored memory
+and the sha256 of the memory before and after must be the recorded ones, otherwise the resume stops with an error. A
+step with no valid `transition.json` is run again, and the folder of the earlier attempt moves to
+`transitions/superseded/<UTC time>/NNN`. One decision of the program per step, ever, unless the step itself was cut
+short. `state/` is kept; the program keeps its own notebook consistent.
 
 ## Guard notices
 
@@ -247,7 +380,8 @@ status `MemoryViolation`, limit `memory`, the reason in `memory_error` and a `me
 is graded and the arm continues from the last valid snapshot, and `session_end` interventions are skipped in such
 a session. A memory intervention that pushes memory past these rules, in any phase, or a repair that does, is a
 configuration failure: the session is invalid with the reason in `error`, never a `MemoryViolation` of the agent. Every `memory_change`
-event records its `origin` (`agent`, `intervention`, or `harness` for a file the memory guard put back) and the
+event records its `origin` (`agent`, `intervention`, `adaptive` for a file the adaptive hook planted, or `harness` for
+a file the memory guard put back) and the
 file's `owner` (`agent` or `user`).
 
 ## Memory guard
@@ -411,7 +545,8 @@ the `anthropic` agent without mini.yaml's litellm `model_kwargs`) and
 Each session directory holds `result.json` (status, exit status, limit, steps, cost and granted
 `cost_limit_usd`, action timeout, markers and intervention catalog, workspace check text, patch status),
 `events.jsonl`, `initial_context.json`, `traj.json`, `interventions.json` (the journal, with git placement),
-`memory_start.json`, `memory_end.json`, `rng_state.json` (attack arms only), `raw.patch`, `model.patch`,
+`memory_start.json`, `memory_end.json`, `rng_state.json` (attack arms only),
+`transitions/` and `state/` beside the sessions of the adaptive arm, `raw.patch`, `model.patch`,
 `metrics.json`, `guard.json` when the campaign runs the memory guard, and after grading `grade.json`, `grade/verifier/` and, for a patch that edits existing test files,
 `grade/restored/`. The first ablated probe adds `ablation.json` and the repair session
 `repair.json` (see Chains and arms, and Repair). `raw.patch` and `model.patch` hold the exact bytes of
@@ -699,7 +834,8 @@ depends on them, in `clean_reset` and `attack_ablate` too. A copy whose `run_id`
 next one; an older `branch.json` names its origin with `shared_exposure`, and a copy and an origin that both lack
 `run_id` match. A truncated `branch.json` makes its copy redo, a missing or truncated `ablation.json` its ablated
 probe, and a missing or truncated `repair.json` its repair session; a re-run repair session repairs the memory
-again from the previous session's `memory_end.json`.
+again from the previous session's `memory_end.json`. A session of the adaptive arm also needs the `transition.json` of the step before it: a valid
+one is replayed, a missing or truncated one is decided again (see Adaptive memory writer).
 
 ## Budgets and the cost wrapper
 
@@ -769,6 +905,11 @@ enters the patch.
 
 ## Known limits
 
+- The adaptive program is trusted code on the host. The hook limits what it writes into memory, not what it reads: it
+  can read the whole campaign directory, so the view it builds for its model is its own to restrict.
+- The live memory guard keeps the memory a session starts from as its copy of what the agent already read, so a note the
+  adaptive hook plants is part of that copy and is not read as a change. A defended adaptive arm has to hand the guard
+  the files the hook planted.
 - Git placement amends the base commit. In images whose reflog is empty, `git reflog` shows the amend as the
   only entry; tags that pointed at the base commit stay on the old commit (in the bandit image the release tag
   no longer points at `HEAD`); and `git show --stat HEAD` lists the planted file. All are visible to an agent

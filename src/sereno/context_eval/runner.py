@@ -19,6 +19,14 @@ from pathlib import Path
 
 import yaml
 
+from sereno.context_eval.adaptive import (
+    AdaptiveHook,
+    AdaptiveStop,
+    FailureStreak,
+    adaptive_manifest,
+    default_grader,
+    read_transition,
+)
 from sereno.context_eval.agents import MINI_SWE_AGENTS, action_timeout, mini_swe_config
 from sereno.context_eval.config import fingerprint, validate
 from sereno.context_eval.dataset import image_identity, load_task, provenance
@@ -30,6 +38,7 @@ from sereno.context_eval.engine import (
     intervention_catalog,
     message_text,
     separate_patch,
+    write_atomic,
     write_json,
 )
 from sereno.context_eval.environment import DockerEnvironment, sweep
@@ -110,7 +119,9 @@ class Budget:
             self.condition.notify_all()
 
 
-def run_session(config, session, task, identity, memory, engine, adapter, directory, budget, env_factory):
+def run_session(config, session, task, identity, memory, engine, adapter, directory, budget, env_factory, opening=()):
+    """Run one session in a fresh container. `opening` holds events (kind and fields) to log right after the session
+    starts, such as the step of the adaptive hook that planted part of its memory."""
     project = project_key(task.repository)
     # Configured memory names the project folder as {project}; carried memory already holds this session's paths.
     memory = resolve_files(memory, project)
@@ -194,6 +205,8 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
             action_timeout_seconds=env.action_timeout,
             has_timeout=result["has_timeout"],
         )
+        for kind, fields in opening:
+            log.emit(kind, session_id=session.id, **fields)
         engine.apply(runtime, "session_start")
         instruction = session.instruction or task.instruction
         if runtime.guard:
@@ -295,16 +308,23 @@ def read(path: Path):
     return json.loads(path.read_text())
 
 
-def complete(directory: Path, copy: bool = False, ablated: bool = False, repaired: bool = False) -> bool:
+def complete(
+    directory: Path, copy: bool = False, ablated: bool = False, repaired: bool = False, transitioned: bool = False
+) -> bool:
     """A finished session. A copy is finished once its branch.json, written after the copy, parses, and a session
     that started from ablated or repaired memory once its ablation.json or repair.json, written after the session,
-    does."""
+    does. A session of the adaptive arm (`transitioned`) also needs the transition.json of the step before it."""
     try:
         status = read(directory / "result.json")["status"]
         for name in ("branch.json",) * copy + ("ablation.json",) * ablated + ("repair.json",) * repaired:
             read(directory / name)
     except (OSError, ValueError):
         # Missing, or cut short when the campaign was interrupted mid-write.
+        return False
+    if (
+        transitioned
+        and read_transition(directory.parent.parent / "transitions" / directory.name[:3] / "transition.json") is None
+    ):
         return False
     return status == "complete"
 
@@ -389,13 +409,6 @@ def ablate(memory: dict[str, str], events, journal=()) -> tuple[dict[str, str], 
     return kept, record
 
 
-def write_atomic(path: Path, value) -> None:
-    """Write JSON so an interruption leaves the old file or none, never a truncated one."""
-    partial = path.with_name(f".{path.name}.partial")
-    write_json(partial, value)
-    partial.replace(path)
-
-
 def code_sha256() -> str:
     """sha256 over the name and bytes of every source file of this package, in sorted order."""
     digest = hashlib.sha256()
@@ -412,7 +425,9 @@ def check_resume(output: Path, manifest: dict) -> None:
     keys = ("config_sha256", "tasks", "memory_instructions_sha256", "versions", "plugins")
     # Campaigns started before code hashing record it on their first resume instead.
     keys += ("code_sha256",) if "code_sha256" in previous else ()
-    changed = [key for key in keys if previous.get(key) != manifest[key]]
+    # The adaptive program is part of the experiment: its argv, files and limits stay what the campaign started with.
+    keys += ("adaptive",) if "adaptive" in previous else ()
+    changed = [key for key in keys if previous.get(key) != manifest.get(key)]
     if {k: v["id"] for k, v in previous["images"].items()} != {k: v["id"] for k, v in manifest["images"].items()}:
         changed.append("images")
     if changed:
@@ -538,10 +553,12 @@ def dry_check(config, identities: dict | None = None, env_factory=DockerEnvironm
 
 
 def run_campaign(
-    config, output: Path, registry, *, env_factory=DockerEnvironment, identities=None, resume=False
+    config, output: Path, registry, *, env_factory=DockerEnvironment, identities=None, resume=False, grader=None
 ) -> dict:
     """Run a new campaign in `output`, or resume one: complete sessions are kept, and each arm re-runs from its
-    first incomplete session. Earlier attempts move to superseded/<UTC time>/ under their own relative path."""
+    first incomplete session. Earlier attempts move to superseded/<UTC time>/ under their own relative path.
+    `grader` grades a finished session directory in place for the adaptive hook; it defaults to the DeepSWE
+    verifier `grade` uses."""
     validate(config, registry)
     if config.guard and (config.guard.for_user != "off" or config.guard.test_claims != "off"):
         if not os.environ.get("OPENROUTER_API_KEY"):
@@ -607,7 +624,10 @@ def run_campaign(
             }
             for key, task in tasks.items()
         },
+        **({"adaptive": adaptive_manifest(config.adaptive)} if config.adaptive else {}),
     }
+    if config.adaptive and config.adaptive.grade_before_step and grader is None:
+        grader = default_grader(config.dataset_root)
     if resume:
         check_resume(output, manifest)
         previous = read(output / "manifest.json")
@@ -654,6 +674,7 @@ def run_campaign(
         write_json(output / "manifest.json", manifest)
     # The cost limit applies to the spending of this run; a resume starts a new budget.
     budget = Budget(config.campaign_cost_limit_usd)
+    streak = FailureStreak(config.adaptive.stop_after_failures) if config.adaptive else None
     sessions = config.sessions
     started = datetime.now(UTC)
     superseded = output / "superseded" / started.strftime("%Y%m%dT%H%M%S.%fZ")
@@ -682,13 +703,19 @@ def run_campaign(
         except (OSError, ValueError, KeyError):
             return False
 
-    def first_incomplete(arm_dir: Path, copied=lambda session: False, ablated: bool = False) -> int:
+    def first_incomplete(
+        arm_dir: Path, copied=lambda session: False, ablated: bool = False, transitioned: bool = False
+    ) -> int:
         return next(
             (
                 n
                 for n, s in enumerate(sessions)
                 if not complete(
-                    directory := session_dir(arm_dir, n, s), copied(s), ablated and n == exposures, n == repairs
+                    directory := session_dir(arm_dir, n, s),
+                    copied(s),
+                    ablated and n == exposures,
+                    n == repairs,
+                    transitioned,
                 )
                 or (copied(s) and not current(directory))
             ),
@@ -713,7 +740,7 @@ def run_campaign(
     def run(target, engine):
         """A step that runs the session in a fresh container."""
 
-        def step(number, session, directory, memory):
+        def step(number, session, directory, memory, opening=()):
             task_id = session.task_id or target.task_id
             try:
                 return run_session(
@@ -727,6 +754,7 @@ def run_campaign(
                     directory,
                     budget,
                     env_factory,
+                    opening,
                 )
             except NotStarted:
                 raise
@@ -786,20 +814,28 @@ def run_campaign(
             "user_file_after_sha256": fingerprint(memory[USER]),
         }
 
-    def advance(arm_dir: Path, target, step, start: int) -> None:
+    def advance(arm_dir: Path, target, step, start: int, transition=None) -> None:
         """Run an arm's sessions from `start` on; each starts from the memory the previous one ended with, and the
-        repair session from that memory as the user repaired it."""
+        repair session from that memory as the user repaired it. A `transition` (the adaptive hook) changes that
+        memory first, on the host, and hands the session the events that record it."""
         if start == len(sessions):
             return
         previous = session_dir(arm_dir, start - 1, sessions[start - 1]) if start else None
         memory = read(previous / "memory_end.json") if previous else config.memory.initial()
         for number, session in enumerate(sessions[start:], start=start):
-            record = None
+            record, opening = None, ()
             if number == repairs:
                 memory, record = repair(memory)
+            if transition is not None:
+                try:
+                    memory, opening = transition(number, memory)
+                except AdaptiveStop:
+                    # Like an exhausted budget: the sessions from here on stay missing and a resume runs them.
+                    stop(arm_dir, number)
+                    break
             directory = redo(session_dir(arm_dir, number, session))
             try:
-                memory, result = step(number, session, directory, memory)
+                memory, result = step(number, session, directory, memory, *([opening] if transition else []))
             except NotStarted:
                 stop(arm_dir, number + 1)
                 break
@@ -894,6 +930,25 @@ def run_campaign(
                 except NotStarted:
                     stop(arms / arm, number + 1)
                     break
+        if "attack_adaptive" in config.arms:
+            # No interventions: the arm differs from the clean one only by what the program plants between sessions.
+            adaptive_dir = arms / "attack_adaptive"
+            start = first_incomplete(adaptive_dir, transitioned=True)
+            hook = AdaptiveHook(
+                config,
+                output,
+                adaptive_dir,
+                case=case_id,
+                repeat=repeat,
+                target=target.task_id,
+                projects=projects,
+                locate=lambda number: session_dir(adaptive_dir, number, sessions[number]),
+                grader=grader,
+                stamp=superseded.name,
+                streak=streak,
+            )
+            engine = engine_for([], adaptive_dir, start, enabled=False)
+            advance(adaptive_dir, target, run(target, engine), start, hook.before)
         carry_start, seed = len(sessions), config.seed + repeat
         if "attack_carry" in config.arms:
             carry_start = first_incomplete(arms / "attack_carry")
@@ -928,6 +983,8 @@ def run_campaign(
         "unknown_cost": budget.unknown_cost,
         # Containers still present after the sweep, with the last reason; empty when every removal succeeded.
         "unremoved_containers": unremoved,
+        # Why the adaptive arm stopped early and the failed steps, or null; absent without the arm.
+        **({"adaptive_stop": streak.stopped} if streak else {}),
     }
     if resume:
         # An interrupted campaign has no campaign.json yet; its own spending then goes unrecorded here.
@@ -942,7 +999,8 @@ def run_campaign(
     else:
         campaign = {"cases": cases, **spending}
     write_json(output / "campaign.json", campaign)
-    return report(output, registry)
+    outcome = report(output, registry)
+    return outcome | ({"adaptive_stop": streak.stopped} if streak else {})
 
 
 def export_submission(root: Path, case: str, arm: str, session: str, output: Path) -> Path:

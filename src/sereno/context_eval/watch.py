@@ -359,7 +359,23 @@ class SessionView:
     def on_intervention_commit(self, event: dict, agent) -> None:
         self.line(agent, f"planted files committed: {', '.join(event.get('paths') or {})}", "dim")
 
+    def on_adaptive_step(self, event: dict, agent) -> None:
+        writer = (event.get("durations") or {}).get("writer_seconds")
+        text = (
+            f"adaptive step {event.get('transition')} ({event.get('transition_kind')}): {event.get('status')}, "
+            f"{event.get('files_touched')} files touched, grade {event.get('grade_status')}"
+            + (f", program {writer:.1f}s" if writer is not None else "")
+            + (f" ({event['reason']})" if event.get("reason") else "")
+        )
+        self.line(agent, text, "bold yellow" if event.get("status") == "applied" else "yellow")
+
     def on_memory_change(self, event: dict, agent) -> None:
+        if event.get("origin") == "adaptive":
+            # Its contents are in the transition's applied.json; the event carries sizes and hashes only.
+            size = event.get("after_bytes")
+            where = f" ({size} bytes, sha256 {event['after_sha256'][:12]})" if size is not None else ""
+            self.line(agent, f"memory {event.get('result')} by adaptive: {event.get('path')}{where}", "bold yellow")
+            return
         before, after = event.get("before"), event.get("after")
         diff = list(difflib.unified_diff((before or "").splitlines(), (after or "").splitlines(), lineterm=""))[2:]
         body = Text()

@@ -26,6 +26,13 @@ def write_json(path: Path, value) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False, default=str) + "\n")
 
 
+def write_atomic(path: Path, value) -> None:
+    """Write JSON so an interruption leaves the old file or none, never a truncated one."""
+    partial = path.with_name(f".{path.name}.partial")
+    write_json(partial, value)
+    partial.replace(path)
+
+
 def message_text(messages: list[dict]) -> str:
     """Read actual visible content, not JSON-escaped envelopes or internal model metadata."""
     texts = []
