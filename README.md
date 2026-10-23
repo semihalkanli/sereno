@@ -28,7 +28,8 @@ the user's `~/.claude/CLAUDE.md`, grades patches with each task's own verifier, 
 exposure, memory transport, attack success, adoption, task success and recovery
 with interval estimates. `sereno context-eval watch` follows a run live, step by step. See
 [Context Integrity Evaluation](docs/context-integrity-evaluation.md) for setup,
-examples and offline verification.
+examples and offline verification, and [The DeepSeek writer](docs/deepseek-writer.md) for the external program of the
+adaptive memory arm.
 
 ## Development
 
