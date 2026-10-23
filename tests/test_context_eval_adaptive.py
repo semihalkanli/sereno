@@ -1,6 +1,7 @@
-"""The adaptive hook: schema 1.2 validation, the rules a response is checked against, the five transition statuses,
-planting before a session without counting as an agent write, resume, and the report, grade and watch commands on a
-finished adaptive campaign. The program is a neutral stub (tests/adaptive_stub.py) that returns canned actions."""
+"""The adaptive hook: schema 1.2 validation, the rules a response is checked against, the six transition statuses,
+planting before a session without counting as an agent write, the freeze, resume, and the report, grade and watch
+commands on a finished adaptive campaign. The program is a neutral stub (tests/adaptive_stub.py) that returns canned
+actions."""
 
 import hashlib
 import io
@@ -170,6 +171,8 @@ def test_adaptive_config_rules(fixture_world, changes, message):
         ({"limits": {**LIMITS, "max_files_touched": 0}}, "max_files_touched"),
         ({"timeout_seconds": 0}, "timeout_seconds"),
         ({"stop_after_failures": 0}, "stop_after_failures"),
+        ({"freeze_from": "s9"}, "'s9' names no session"),
+        ({"freeze_from": "s1"}, "cannot be the first session"),
         ({"surprise": 1}, "surprise"),
     ],
 )
@@ -1038,10 +1041,18 @@ def test_a_step_without_its_record_is_decided_again(tmp_path, fixture_world, mon
     assert len(list((arm(tmp_path) / "transitions" / "superseded").glob("*/002"))) == 1
 
 
-def test_a_resume_refuses_another_program_or_other_limits(tmp_path, fixture_world, monkeypatch):
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda adaptive: setattr(adaptive.limits, "max_file_bytes", 601),
+        lambda adaptive: setattr(adaptive, "freeze_from", "s3"),
+    ],
+    ids=["limits", "freeze"],
+)
+def test_a_resume_refuses_another_program_other_limits_or_another_freeze(tmp_path, fixture_world, monkeypatch, change):
     config, plan = interrupted_after_the_second_step(tmp_path, fixture_world, monkeypatch)
     other = config.model_copy(deep=True)
-    other.adaptive.limits.max_file_bytes = 601
+    change(other.adaptive)
     with pytest.raises(ValueError, match="cannot resume: config_sha256, adaptive changed since the campaign started"):
         campaign(tmp_path, fixture_world, other, plan, monkeypatch, resume=True)
 
@@ -1098,6 +1109,139 @@ def test_the_guard_reads_the_user_file_in_the_first_task_although_the_program_wr
         ]
         # Read in the first task of the lineage and not again while it does not change, in both arms alike.
         assert user == [["task_start"], [], []]
+
+
+# --- the freeze ---
+
+
+def frozen_config(dataset, freeze_from="s3", **changes):
+    """The chain of adaptive_config with the program frozen from `freeze_from` on."""
+    adaptive = {"command": [sys.executable, "-I", str(STUB)], "timeout_seconds": 30, "limits": LIMITS}
+    return adaptive_config(dataset, adaptive=adaptive | {"freeze_from": freeze_from}, **changes)
+
+
+FROZEN_PLAN = {
+    "0": {"actions": PLANT},
+    "1": {"actions": [write(BETA, "beta\n")]},
+    "2": {"actions": [write(ALPHA, "never planted\n")]},
+}
+
+
+def test_a_frozen_session_starts_from_the_memory_the_session_before_ended_with(tmp_path, fixture_world, monkeypatch):
+    scripts = {2: [{"command": base.write_command(NOTE, "agent text\\n")}]}
+    config = frozen_config(fixture_world[0], scripts=scripts)
+    graded = []
+
+    def grader(directory):
+        graded.append(directory.name)
+        fake_grade(directory)
+
+    summary = campaign(tmp_path, fixture_world, config, FROZEN_PLAN, monkeypatch, grader=grader)
+    # The program ran before the first two sessions only, and nothing graded the session before the frozen one.
+    assert calls(tmp_path) == ["0 - 0", "1 graded 1"]
+    assert graded == ["001-s1"]
+    assert {p.name for p in transition(tmp_path, 3).iterdir()} == {"applied.json", "transition.json"}
+    record = read(transition(tmp_path, 3) / "transition.json")
+    assert (record["status"], record["kind"], record["session_id"], record["grade_status"]) == (
+        "frozen",
+        "between_sessions",
+        "s3",
+        "none",
+    )
+    assert record["files_touched"] == 0 and record["reason"] == "frozen from session s3"
+    assert record["request_sha256"] is None and record["response_sha256"] is None
+    assert set(record["writer"].values()) == {None}
+    applied = read(transition(tmp_path, 3) / "applied.json")
+    assert (applied["status"], applied["actions"], applied["files"]) == ("frozen", [], [])
+    assert applied["memory_before_sha256"] == applied["memory_after_sha256"]
+    # The third session starts from the second's end, the agent's own note included, and nothing is planted in it.
+    ended = read(arm(tmp_path) / "sessions" / "002-s2" / "memory_end.json")
+    assert ended[NOTE] == "agent text\n" and ended[ALPHA] == "alpha one\n" and ended[BETA] == "beta\n"
+    assert memory_start(tmp_path, 3, "s3") == ended
+    events = events_at(arm(tmp_path) / "sessions" / "003-s3")
+    (step,) = [e for e in events if e["kind"] == "adaptive_step"]
+    assert (step["status"], step["transition"], step["files_touched"]) == ("frozen", 3, 0)
+    assert not [e for e in events if e["kind"] == "memory_change" and e.get("origin") == "adaptive"]
+    assert adaptive_rows(summary) == ["complete"] * 3
+    assert all(row["valid"] for row in summary["sessions"])
+    assert read(tmp_path / "campaign" / "manifest.json")["adaptive"]["freeze_from"] == "s3"
+    # The commands read a frozen campaign as any other.
+    root = tmp_path / "campaign"
+    outcome = report(root, default_registry())
+    adaptive = [row for row in outcome["sessions"] if row["arm"] == "attack_adaptive"]
+    assert [row["agent_writes"] for row in adaptive] == [0, 1, 0]
+    refused = lambda *args, **kwargs: subprocess.CompletedProcess(args, 1, "", "")  # noqa: E731
+    assert grade_campaign(root, dataset=fixture_world[0], docker=refused)["unreadable"] == 0
+    console = Console(file=io.StringIO(), width=200, force_terminal=False)
+    assert watch(root, console=console) == 0
+    assert "adaptive step 3 (between_sessions): frozen, 0 files touched, grade none" in console.file.getvalue()
+
+
+def shape(value):
+    """The keys of a JSON value, nested, with every other value replaced by its type."""
+    if isinstance(value, dict):
+        return {key: shape(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [shape(item) for item in value]
+    return type(value).__name__
+
+
+def test_the_program_is_not_told_that_a_step_is_its_last(tmp_path, fixture_world, monkeypatch):
+    campaign(tmp_path, fixture_world, frozen_config(fixture_world[0]), FROZEN_PLAN, monkeypatch, name="frozen")
+    campaign(tmp_path, fixture_world, adaptive_config(fixture_world[0]), FROZEN_PLAN, monkeypatch)
+    for number in (1, 2):
+        unfrozen = read(transition(tmp_path, number) / "request.json")
+        frozen = read(
+            tmp_path / "frozen" / transition(tmp_path, number).relative_to(tmp_path / "campaign") / "request.json"
+        )
+        assert shape(frozen) == shape(unfrozen)
+        for key in ("kind", "next_session", "limits", "attempt"):
+            assert frozen[key] == unfrozen[key]
+        assert frozen["memory"] == unfrozen["memory"]
+
+
+def test_a_frozen_step_neither_counts_as_a_failure_nor_ends_a_run_of_failures(tmp_path, fixture_world, monkeypatch):
+    # Frozen from the second session, each chain has one step of the program, and every one crashes.
+    config = frozen_config(fixture_world[0], freeze_from="s2", repeats=2)
+    outcome = campaign(tmp_path, fixture_world, config, {"*": CRASH}, monkeypatch)
+    # The first crash lets its session and the frozen ones after it run; the second, two frozen steps later in the
+    # campaign's order, is still the second failure in a row and stops the arm.
+    assert adaptive_rows(outcome) == ["complete"] * 3
+    assert adaptive_rows(outcome, "first--adaptive--r002") == ["missing"] * 3
+    assert outcome["adaptive_stop"]["reason"] == "the adaptive program failed 2 steps in a row"
+
+
+def test_a_resume_replays_a_frozen_step_and_calls_nothing(tmp_path, fixture_world, monkeypatch):
+    config = frozen_config(fixture_world[0])
+    # The clean origin takes the first three containers; the frozen session's is the sixth.
+    with pytest.raises(Interrupted):
+        campaign(tmp_path, fixture_world, config, FROZEN_PLAN, monkeypatch, factory=killed_at(fixture_world, 6))
+    recorded = (transition(tmp_path, 3) / "transition.json").read_text()
+    assert read(transition(tmp_path, 3) / "transition.json")["status"] == "frozen"
+    summary = campaign(tmp_path, fixture_world, config, FROZEN_PLAN, monkeypatch, resume=True)
+    assert calls(tmp_path) == ["0 - 0", "1 graded 1"]
+    assert (transition(tmp_path, 3) / "transition.json").read_text() == recorded
+    assert not (arm(tmp_path) / "transitions" / "superseded").exists()
+    assert memory_start(tmp_path, 3, "s3") == {ALPHA: "alpha one\n", BETA: "beta\n"}
+    assert adaptive_rows(summary) == ["complete"] * 3
+
+
+def test_frozen_and_unfrozen_campaigns_are_not_pooled(tmp_path, fixture_world, monkeypatch):
+    frozen = frozen_config(fixture_world[0], freeze_from="s2", sessions=2)
+    campaign(tmp_path, fixture_world, frozen, {}, monkeypatch, name="a")
+    campaign(tmp_path, fixture_world, adaptive_config(fixture_world[0], sessions=2), {}, monkeypatch, name="b")
+    with pytest.raises(ValueError, match="differ in their adaptive program, limits or code"):
+        summarize([tmp_path / "a", tmp_path / "b"], tmp_path / "pooled", default_registry())
+
+
+def test_a_campaign_recorded_before_the_freeze_setting_pools_as_never_frozen(tmp_path, fixture_world, monkeypatch):
+    for name in ("a", "b"):
+        campaign(tmp_path, fixture_world, adaptive_config(fixture_world[0], sessions=1), {}, monkeypatch, name=name)
+    manifest = read(tmp_path / "a" / "manifest.json")
+    del manifest["adaptive"]["freeze_from"]
+    write_json(tmp_path / "a" / "manifest.json", manifest)
+    pooled = summarize([tmp_path / "a", tmp_path / "b"], tmp_path / "pooled", default_registry())
+    assert {row["campaign"] for row in pooled["sessions"] if row["arm"] == "attack_adaptive"} == {"a", "b"}
 
 
 # --- the report, grade and watch commands ---

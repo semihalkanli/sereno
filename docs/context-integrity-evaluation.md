@@ -180,8 +180,8 @@ is never a shared copy.
 ## Adaptive memory writer
 
 A schema `1.2` experiment may run the `attack_adaptive` arm: an external program writes into the carried memory
-before every session of a chain, including the first, after reading what the agent did in the session that just ended.
-The harness is the generic part. It runs any program that follows the contract below, checks what the program wants to
+before every session of a chain, including the first, after reading what the agent did in the session that just ended,
+or only up to the session that `freeze_from` names. The harness is the generic part. It runs any program that follows the contract below, checks what the program wants to
 write, applies it all or nothing and records everything; what the program writes and why is not its business.
 
 ```yaml
@@ -192,6 +192,7 @@ adaptive:
   timeout_seconds: 1800               # wall clock for one run of the program (default 1800)
   grade_before_step: true             # grade the session that just ended before the program is called (default true)
   stop_after_failures: 2              # failed or timed-out steps in a row that stop the arm (default 2; null: never)
+  freeze_from: s3                     # the session from which on the program is not called (default null: never)
   limits:                             # part of the measurement: the two numbers have no defaults
     max_files_touched: 2              # distinct files created, changed or deleted in one step
     max_file_bytes: 6000              # size of any file the program writes
@@ -204,13 +205,16 @@ run it beside `attack_carry`, `attack_reset` or `attack_ablate`, and set no `rep
 `<target>--adaptive--rNNN`; the `clean` arm is unchanged, the same chain with no program, copied into each case.
 `validate` checks the section, the limits and that the command's first word resolves to a program; since the program
 starts from `state/`, a word that still looks like a relative path (it holds a `/` or ends in `.py`, and is not a flag
-or an address) names no file next to the YAML and is an error. `dry-check` does not run it. The manifest records the
-argv, the sha256 of every word that names an existing file by its absolute path, the timeout, `grade_before_step`,
-`stop_after_failures` and the limits, and a resume refuses a campaign whose record differs. `summarize` pools only
-adaptive campaigns with the same argv, timeout, `grade_before_step` and limits, where a word that names a file counts by
-its sha256, so the same program from another checkout pools, and with the same harness code (the manifest's
-`code_sha256`, which decides how the program's writes are checked and applied: an experiment's blocks run at one fixed
-commit, log 342); the stop rule controls the run, not what a session measures, so it does not count. The program runs on the host with the campaign's environment, so the cost
+or an address) names no file next to the YAML and is an error. `freeze_from` must name a session of the chain other
+than the first, since a program frozen from the first session never runs. `dry-check` does not run it. The manifest
+records the argv, the sha256 of every word that names an existing file by its absolute path, the timeout,
+`grade_before_step`, `stop_after_failures`, `freeze_from` and the limits, and a resume refuses a campaign whose record
+differs. `summarize` pools only adaptive campaigns with the same argv, timeout, `grade_before_step`, `freeze_from` and
+limits, where a word that names a file counts by its sha256, so the same program from another checkout pools, and with
+the same harness code (the manifest's `code_sha256`, which decides how the program's writes are checked and applied: an
+experiment's blocks run at one fixed commit, log 342); a campaign recorded before `freeze_from` existed counts as never
+frozen; the stop rule controls the run, not what a session measures, so it does not count. The program runs on the
+host with the campaign's environment, so the cost
 wrapper's meter and the API keys reach it; do not start it with `python -I`, since isolated mode ignores `PYTHONPATH`,
 which is how `scripts/cost.py` loads its meter. The agent's containers keep `--network none` and no credentials, and
 never see the hook's files.
@@ -236,14 +240,24 @@ never see the hook's files.
 6. The session starts from the resulting memory: its `memory_start.json` shows what was planted. The step never waits
    for a person; the only waiting is the program's own run, bounded by the timeout.
 
+**A frozen step.** From the session `freeze_from` names on, the step skips 1 to 4: nothing is graded, no request is
+written and the program is not called, so the session starts from the memory the session before ended with, the agent's
+own edits included. Its folder holds only `applied.json` (no actions, no files, the same memory sha256 before and after)
+and `transition.json`, with the status `frozen`, `kind` `between_sessions`, `grade_status` `none`, no writer outcome
+and no request or response sha256. It measures whether what the program wrote before the freeze still acts once nothing
+renews it. The program is not told that a step is its last: the requests before the freeze are the ones an unfrozen
+campaign sends.
+
 `status` is `applied`, `no_change` (a valid response that changes nothing), `rejected` (a valid response that breaks a
 rule below: nothing is applied), `writer_failed` (a non-zero exit, no `response.json`, a response not in the form
-below, or a program that did not start) or `timeout`. Whatever the status, the chain continues from the unchanged
-memory, with one exception that keeps a broken program from spending a campaign's sessions on no attack:
+below, or a program that did not start), `timeout` or `frozen`. Whatever the status, the chain continues from the
+unchanged memory, with one exception that keeps a broken program from spending a campaign's sessions on no attack:
 `stop_after_failures` steps in a row that end as `writer_failed` or `timeout`, counted across every chain of the
-campaign in the order they are decided, stop the arm, and with it the whole campaign. Any other status ends the run of
-failures, `rejected` included, since a broken rule is a measured outcome. From the stop on no session starts in any
-arm, `clean`, `clean_reset` and the attack arms alike, as with an exhausted budget: the sessions already started
+campaign in the order they are decided, stop the arm, and with it the whole campaign. Any other status the program
+gave ends the run of failures, `rejected` included, since a broken rule is a measured outcome; a `frozen` step is not
+the program's and neither counts nor ends a run. From the stop on no session starts in any
+arm, `clean`, `clean_reset` and the attack arms alike, a frozen session included, as with an exhausted budget: the
+sessions already started
 finish, the session after the last failure and every later one count as missing (a clean case copy whose origin
 session never ran too), and `run` exits 1. A resume then runs every arm on together, so the clean side never runs to
 its end alone, which would undo the alternating order. The step that stopped the arm moves with its record to
@@ -310,7 +324,8 @@ carried memory and `memory_config` is given, which the harness does; a program t
 rest.
 
 **Artifacts and events.** Under the arm directory: `sessions/` as for any arm, `transitions/NNN/` with `request.json`,
-`response.json`, `applied.json`, `transition.json`, `writer.stdout` and `writer.stderr`, and `state/`. At the start of
+`response.json`, `applied.json`, `transition.json`, `writer.stdout` and `writer.stderr` (a frozen step's folder holds
+the two records only), and `state/`. At the start of
 the session after a step, its log holds an `adaptive_step` event (`transition`, `transition_kind`, `status`, `reason`,
 `grade_status`, `files_touched`, `durations`) and one `memory_change` per changed file with `origin: "adaptive"` and
 `owner: "agent"` that carries the path, the `result` (`created`, `changed` or `deleted`) and the sizes and sha256 before
@@ -323,8 +338,8 @@ each planted file; `report`, `grade`, `export` and `summarize` treat the arm as 
 **Resume.** A session of this arm is complete only when its `result.json` is valid and so is the `transition.json` of
 the step before it. On `run --resume` a session that is not complete re-runs from the last complete memory. For its step:
 a valid `transition.json` is replayed, never decided again: the recorded actions are re-applied to the restored memory
-and the sha256 of the memory before and after must be the recorded ones, otherwise the resume stops with an error. A
-step with no valid `transition.json` is run again, and the folder of the earlier attempt moves to
+and the sha256 of the memory before and after must be the recorded ones, otherwise the resume stops with an error; a
+frozen step's record is replayed the same way, with no actions. A step with no valid `transition.json` is run again, and the folder of the earlier attempt moves to
 `transitions/superseded/<UTC time>/NNN`. One decision of the program per step, ever, unless the step itself was cut
 short. `state/` is kept; the program keeps its own notebook consistent.
 

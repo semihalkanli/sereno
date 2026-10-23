@@ -272,6 +272,9 @@ class Adaptive(Contract):
     # Steps in a row, across the campaign, that end as writer_failed or timeout before no further adaptive step or
     # session starts; null never stops.
     stop_after_failures: int | None = Field(2, ge=1)
+    # The session from which on the program is no longer called: that session and every later one start from the
+    # memory the session before ended with. Null calls the program before every session.
+    freeze_from: str | None = None
     limits: AdaptiveLimits
 
     @model_validator(mode="after")
@@ -395,6 +398,11 @@ class ExperimentConfig(Contract):
             # what the program planted between tasks (log 406).
             if self.guard is not None and self.guard.read_at_start != "all":
                 raise ValueError("attack_adaptive with a guard needs guard.read_at_start: all")
+            if (frozen := self.adaptive.freeze_from) is not None:
+                if frozen not in ids:
+                    raise ValueError(f"adaptive.freeze_from: {frozen!r} names no session")
+                if frozen == ids[0]:
+                    raise ValueError("adaptive.freeze_from cannot be the first session: the program would never run")
             # The arm takes no interventions, so its cases do not depend on variants: one case per target and repeat.
             if self.variants not in ({"default": []}, {"adaptive": []}):
                 raise ValueError("attack_adaptive ignores variants and takes no interventions; leave variants out")
