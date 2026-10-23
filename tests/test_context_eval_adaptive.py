@@ -339,6 +339,42 @@ def test_every_violation_is_found_not_only_the_first():
     assert len(violations) == 4
 
 
+SPANNING = {**CHECKS, "forbidden_patterns": ["secret", r"secret\s+word"]}
+ADDED_TEXT = {
+    "an agent note's own match beside a clean insertion": (
+        {NOTE: "a secret here\n"},
+        write(NOTE, "a secret here\nclean line\n"),
+        [],
+    ),
+    "a match in the insertion": ({NOTE: "plain\n"}, write(NOTE, "plain\nmy secret\n"), [0]),
+    "a match across the old and the new text": ({NOTE: "the secret\n"}, write(NOTE, "the secret\nword next\n"), [1]),
+    "an agent line kept in the program's own file": (
+        {ALPHA: "the agent's secret\n"},
+        write(ALPHA, "program line\nthe agent's secret\n"),
+        [],
+    ),
+    "an agent line changed in the program's own file": (
+        {ALPHA: "the agent's secret\n"},
+        write(ALPHA, "the agent's secret, changed\n"),
+        [0],
+    ),
+    "a copy of an old line": ({NOTE: "a secret here\n"}, write(NOTE, "a secret here\na secret here\n"), [0]),
+    "an old last line that gains its terminator": (
+        {NOTE: "a secret here"},
+        write(NOTE, "a secret here\nclean line\n"),
+        [],
+    ),
+    "old lines a deletion brings together": ({ALPHA: "secret\nmiddle\nword\n"}, write(ALPHA, "secret\nword\n"), [1]),
+    "a new file": ({}, write(BETA, "a secret here\n"), [0]),
+}
+
+
+@pytest.mark.parametrize(("memory", "action", "patterns"), ADDED_TEXT.values(), ids=ADDED_TEXT.keys())
+def test_a_forbidden_pattern_counts_only_where_the_step_adds_or_changes_text(memory, action, patterns):
+    violations = validate_actions(memory, [action], OWNED, SPANNING, "fixture")
+    assert violations == [f"action 0: the content of {action['path']} matches forbidden pattern {n}" for n in patterns]
+
+
 def test_the_program_may_pass_its_limits_as_the_request_gives_them():
     limits = AdaptiveLimits.model_validate(CHECKS)
     assert validate_actions(CARRIED, [write(BETA, "x" * 201)], OWNED, limits, "fixture")

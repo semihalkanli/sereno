@@ -187,7 +187,7 @@ adaptive:
   limits:                             # part of the measurement: the two numbers have no defaults
     max_files_touched: 2              # distinct files created, changed or deleted in one step
     max_file_bytes: 6000              # size of any file the program writes
-    forbidden_patterns: ["..."]       # optional regexes, case-insensitive, matched on the content of every changed file
+    forbidden_patterns: ["..."]       # optional regexes, case-insensitive, matched on the text a step adds or changes
 ```
 
 The arm needs the section and the section needs the arm. The arm applies no interventions: leave `variants` out, do not
@@ -271,7 +271,15 @@ or type makes the program fail (`writer_failed`) rather than the plant rejected.
 3. Count: at most `max_files_touched` distinct files created, changed or deleted. Writing a file unchanged or
    deleting one that is not there changes nothing and does not count.
 4. Size: every written file is at most `max_file_bytes` bytes.
-5. Content: valid UTF-8, no NUL byte, no match of a forbidden pattern in the content of any changed file.
+5. Content: valid UTF-8, no NUL byte, and no match of a forbidden pattern in the text the step adds or changes. Each
+   pattern runs over the whole new content of a changed file, whose lines are aligned with the old ones (difflib,
+   compared without their terminators). A match is inherited and allowed only when it lies within one run of old
+   lines that stands unchanged and contiguous in the new content, and the old content holds the same match there: an
+   agent's note that already matches can still gain lines, and an agent line kept unchanged in an owned file is
+   inherited too. A match that touches an added or changed line, spans old and new text, joins old lines a deletion
+   brought together, or sits in a copy of an old line counts, and so does every match in a new file. A terminator the
+   old last line lacked is new text. A pattern that can match line breaks (`\s`) may start a match on an added blank
+   line before an old matching line, and that match counts.
 6. The resulting memory stays within the memory limits (`max_files`, `max_bytes`).
 
 `sereno.context_eval.adaptive.validate_actions(memory, actions, owned, limits, project, *, memory_config=None)` returns

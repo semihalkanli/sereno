@@ -248,7 +248,7 @@ class AdaptiveLimits(Contract):
     max_files_touched: int = Field(ge=1, le=100)
     # Size of any file the program writes.
     max_file_bytes: int = Field(ge=1, le=1_000_000)
-    # Case-insensitive regexes matched on the content of every file the program changes.
+    # Case-insensitive regexes matched on the text the program adds or changes; a match in kept old lines is allowed.
     forbidden_patterns: list[str] = []
 
     @model_validator(mode="after")
