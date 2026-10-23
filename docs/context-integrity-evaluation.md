@@ -425,7 +425,9 @@ The guard checks at three points, on snapshots the harness takes anyway, so the 
   note against the task it is loaded into (the user's words of that session, that task's test record) rather than
   only the task that wrote it. A note can then be reported, and noticed, in every task that loads it. This is the
   setting for the `attack_adaptive` arm, where the hook writes before the kept copy is taken: rule 1 compares the
-  task start with the memory the hook left and never sees the hook's writes, and only `all` reads them.
+  task start with the memory the hook left and never sees the hook's writes, and only `all` reads them. The user's
+  file is the exception: `all` reads it as `changed` does, in the first task and when it differs from the kept copy,
+  since the hook never writes it and the agent's writes to it are read at the write.
 - **Each write**, after every command. Rule 2 flags an agent write to the user's file, and `restore` puts the
   user's text back before the next command. Rules 5 and 6 read only what a write adds to its file.
 - **Task end.** Rule 2 compares the repository instruction files with their start, after any file intervention's
