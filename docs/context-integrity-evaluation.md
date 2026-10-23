@@ -838,6 +838,16 @@ Campaigns without a repair report none of this.
 bootstrap clusters, and the input campaigns are not modified. It refuses to pool same-named variants whose
 intervention definitions (every field of each intervention in the manifest's frozen config: text, method, path,
 phase, sessions, windows and the rest) or checks differ between campaigns, and campaigns whose repair differs.
+Beyond that the whole frozen config must be equal, except for a fixed list of fields that pooled campaigns may differ
+in (`POOL_FREE` in `metrics.py`), so a field the config gains later blocks pooling until it is listed there:
+`dataset_root` (a machine path; the tasks are in `targets` and the manifest's task record), `targets` and `repeats`
+(pooling adds clusters and chains), `workers` and `seed` (the same treatment sampled again), `campaign_cost_limit_usd`
+(the budget of a run, not of a session), `arms` (`attack_adaptive` runs in a campaign of its own), `variants` and
+`checks` (compared by variant name, above) and `adaptive` (compared with file hashes in place of paths, in the
+adaptive section). `model_config_file` and `memory.instructions_file` count by the content the manifest records (the
+model config's text, the instructions' sha256), not by their paths. Everything else, among it `agent`, `sessions`,
+`memory`, `guard`, `notices`, `cost_limit_usd`, `wall_time_limit_seconds`, `metrics` and `schema_version`, must be
+equal; the error names the fields that differ.
 
 ## Resume
 
