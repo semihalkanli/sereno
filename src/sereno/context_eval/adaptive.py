@@ -525,13 +525,20 @@ class FailureStreak:
                 raise AdaptiveStop(self.stopped["reason"])
 
     def record(self, status: str, step: str, aside: str) -> bool:
-        """Count one decided step; True when it reaches the limit, and the step then counts at `aside`."""
+        """Count one decided step; True when the step moves to `aside` and counts there: it reached the limit, or it
+        failed after the arm stopped (a step already in flight when another chain stopped the arm). A step that ends
+        any other way after the stop keeps its record in place."""
+        failed = status in {"writer_failed", "timeout"}
         with self.lock:
-            if status not in {"writer_failed", "timeout"}:
+            if self.stopped:
+                if failed:
+                    self.stopped["steps"].append(aside)
+                return failed
+            if not failed:
                 self.count, self.steps = 0, []
                 return False
             self.count += 1
-            if self.stopped or self.limit is None or self.count < self.limit:
+            if self.limit is None or self.count < self.limit:
                 self.steps.append(step)
                 return False
             self.stopped = {
@@ -655,12 +662,13 @@ class AdaptiveHook:
             },
         }
         write_atomic(folder / "transition.json", record)
-        # The step that stops the arm moves aside with its record, so a resume decides it again with the program.
+        # The step that stops the arm, and a step that fails after the stop, moves aside with its record, so a resume
+        # decides it again with the program. Once the arm has stopped no session starts, whatever the step's status.
         aside = self.arm_dir / "transitions" / "stopped" / self.stamp / folder.name
         if self.streak.record(status, str(folder.relative_to(self.output)), str(aside.relative_to(self.output))):
             aside.parent.mkdir(parents=True, exist_ok=True)
             folder.rename(aside)
-            self.streak.check()
+        self.streak.check()
         return after, record, applied
 
     def grade(self, directory: Path) -> tuple[str, str | None]:

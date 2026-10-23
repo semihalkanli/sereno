@@ -233,9 +233,12 @@ memory, with one exception that keeps a broken program from spending a campaign'
 `stop_after_failures` steps in a row that end as `writer_failed` or `timeout`, counted across every chain of the
 campaign in the order they are decided, stop the arm. Any other status ends the run of failures, `rejected` included,
 since a broken rule is a measured outcome. The session after the last failure and every later adaptive session, in
-this chain and in the chains not yet started, then do not start, as with an exhausted budget: they count as missing and
-`run` exits 1. The step that stopped the arm moves with its record to `transitions/stopped/<run>/NNN`, so a resume
-decides it again with the program (fixed by then); the earlier failures stay, since their sessions ran. `campaign.json`
+every chain, then do not start, as with an exhausted budget: they count as missing and `run` exits 1. The step that
+stopped the arm moves with its record to `transitions/stopped/<run>/NNN`, so a resume decides it again with the
+program (fixed by then); the earlier failures stay, since their sessions ran. With several workers, another chain's
+step can still be running when the arm stops: it is decided, but its session does not start either. If it failed, it
+moves to `transitions/stopped/<run>/NNN` too and joins the stop's steps; with any other status its record stays in
+place and a resume replays it. `campaign.json`
 and the output of `run` hold `adaptive_stop`: the reason and the failed steps, or null. Only that stop, or a harness or
 configuration error such as an unwritable disk, stops the campaign.
 

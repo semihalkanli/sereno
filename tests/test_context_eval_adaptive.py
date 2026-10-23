@@ -813,6 +813,44 @@ def test_the_stop_holds_for_every_chain_of_the_campaign(tmp_path, fixture_world,
     assert not (second / "state" / "calls.log").exists()
 
 
+@pytest.mark.parametrize("late", ["applied", "writer_failed"])
+def test_a_step_in_flight_when_another_chain_stops_the_arm_starts_no_session(
+    tmp_path, fixture_world, monkeypatch, late
+):
+    # Two workers: the second chain's first step is running when the first chain's second failure stops the arm, and
+    # it is decided only after the stop. Each waits for the other, so the order holds on any machine.
+    first, second = (f"cases/first--adaptive--r00{n}/arms/attack_adaptive" for n in (1, 2))
+    plan = {
+        "first--adaptive--r001/0": CRASH,
+        "first--adaptive--r001/1": CRASH | {"wait_for": f"{second}/state/calls.log"},
+        "first--adaptive--r002/0": ({"actions": PLANT} if late == "applied" else CRASH)
+        | {"wait_for": f"{first}/transitions/stopped/*/002"},
+    }
+    config = adaptive_config(fixture_world[0], repeats=2, workers=2)
+    outcome = campaign(tmp_path, fixture_world, config, plan, monkeypatch)
+    root = tmp_path / "campaign"
+    assert adaptive_rows(outcome) == ["complete", "missing", "missing"]
+    assert adaptive_rows(outcome, "first--adaptive--r002") == ["missing"] * 3
+    (stopping,) = (root / first / "transitions" / "stopped").glob("*/002")
+    steps = [f"{first}/transitions/001", str(stopping.relative_to(root))]
+    late_steps = list((root / second / "transitions" / "stopped").glob("*/001"))
+    if late == "applied":
+        # A step that does not fail keeps its record in place, so a resume replays it instead of deciding it again.
+        assert not late_steps
+        assert read(root / second / "transitions" / "001" / "transition.json")["status"] == "applied"
+    else:
+        assert not (root / second / "transitions" / "001").exists()
+        assert read(late_steps[0] / "transition.json")["status"] == "writer_failed"
+        steps.append(str(late_steps[0].relative_to(root)))
+    assert outcome["adaptive_stop"] == {"reason": "the adaptive program failed 2 steps in a row", "steps": steps}
+    assert not list((root / second / "sessions").glob("*/events.jsonl"))
+    if late == "applied":
+        campaign(tmp_path, fixture_world, config, {"*": {"actions": []}}, monkeypatch, resume=True)
+        lines = (root / second / "state" / "calls.log").read_text().splitlines()
+        assert [line.split()[0] for line in lines] == ["0", "1", "2"]
+        assert read(root / second / "sessions" / "001-s1" / "memory_start.json") == {ALPHA: "alpha one\n"}
+
+
 def test_a_resume_after_the_stop_decides_the_stopped_step_again(tmp_path, fixture_world, monkeypatch):
     config = adaptive_config(fixture_world[0])
     campaign(tmp_path, fixture_world, config, {"0": CRASH, "1": CRASH}, monkeypatch)
