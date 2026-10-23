@@ -251,6 +251,17 @@ def test_summarize_refuses_campaigns_whose_config_differs_outside_the_free_field
     assert not (tmp_path / "pooled").exists()
 
 
+def test_summarize_refuses_campaigns_with_other_variants_and_other_checks(tmp_path):
+    first = build_campaign(tmp_path / "chain-a", targets=("t1",), variants=("fact",))
+    second = build_campaign(tmp_path / "chain-b", targets=("t2",), variants=("other",))
+    config = json.loads((second / "manifest.json").read_text())["config"]
+    # No variant name is shared, so the treatments are never compared, and the clean rows would pool under two checks.
+    assert not set(config["variants"]) & set(json.loads((first / "manifest.json").read_text())["config"]["variants"])
+    edit_manifest(second, {"checks": checks({**GOAL, "contains": "CI_OTHER_GOAL"})})
+    with pytest.raises(ValueError, match=r"differ in their config and cannot be pooled: checks$"):
+        summarize([first, second], tmp_path / "pooled", default_registry())
+
+
 def test_summarize_pools_campaigns_that_differ_in_free_fields_and_file_paths_only(tmp_path):
     first = build_campaign(tmp_path / "chain-a", targets=("t1",))
     second = build_campaign(tmp_path / "chain-b", targets=("t2",))

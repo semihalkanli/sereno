@@ -1726,9 +1726,9 @@ POOL_FREE = {
     "campaign_cost_limit_usd",
     # Which arms a campaign runs: attack_adaptive runs in a campaign of its own and pools with the others.
     "arms",
-    # Compared by variant name in different_treatments: interventions, and the checks with each variant.
+    # Compared by variant name in different_treatments. The checks are not free: they decide what a clean session's
+    # outcome is, and campaigns with other variant names would otherwise pool their clean rows under other checks.
     "variants",
-    "checks",
     # Compared in adaptive_program, with the sha256 of every word that names a file in place of its path.
     "adaptive",
 }
