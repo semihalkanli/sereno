@@ -3,7 +3,7 @@
 - task start, after the session_start interventions and before the context is built: rule 1 compares the carried
   files with the copy the harness kept at the end of the previous task; the content rules read every file that the
   copy does not hold as it now is (a file carried unchanged was read when it was written), or every file when the
-  session starts from the configured memory;
+  session starts from the configured memory or `read_at_start` is "all";
 - each write, after every command: rule 2 on a path the agent wrote, the content rules on what the new content adds;
 - task end: rule 2 on the repository's instruction files, and the integrity record of every carried file.
 
@@ -125,7 +125,7 @@ class LiveGuard:
                     self.report("task_start", finding)
         # Memory equal to the configured memory has no earlier task under the guard behind it, so every file is read:
         # a chain's first task, a reset probe, or a task after one that changed nothing (read again).
-        first = self.kept == self.runtime.initial()
+        first = self.config.read_at_start == "all" or self.kept == self.runtime.initial()
         for path, text in current.items():
             if first or self.kept.get(path) != text:
                 if self.config.content != "off":
