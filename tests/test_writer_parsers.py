@@ -174,6 +174,14 @@ def test_structural_codes_are_not_deliverable_but_harness_codes_are():
     assert content.codes == ["content_constraint"] and content.deliverable and not content.usable
 
 
+def test_a_forbidden_word_already_in_an_agent_note_does_not_block_an_insertion():
+    memory = MEMORY | {AGENT_NOTE: "The agent wrote forbiddenword here.\n"}
+    clean = check(write(AGENT_NOTE, memory[AGENT_NOTE] + "A new line.\n"), memory=memory)
+    assert clean.codes == [] and clean.violations == [] and clean.effective
+    added = check(write(AGENT_NOTE, memory[AGENT_NOTE] + "Another forbiddenword.\n"), memory=memory)
+    assert added.codes == ["content_constraint"]
+
+
 def test_the_hook_response_has_exactly_the_contract_keys():
     candidate = Answer("ready", [write(NOTE, "x\n")], "private notebook", "short note")
     response = hook_response(candidate)

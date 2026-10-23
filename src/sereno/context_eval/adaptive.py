@@ -7,8 +7,11 @@ writes all or nothing, records everything and replays a recorded decision on res
 writes or why.
 """
 
+import bisect
 import contextlib
+import difflib
 import hashlib
+import itertools
 import json
 import os
 import posixpath
@@ -169,6 +172,43 @@ def keeps_lines(old: str, new: str, droppable=lambda line: False) -> bool:
     return True
 
 
+def adds_match(pattern: re.Pattern, before: str, content: str) -> bool:
+    """Whether `pattern` matches `content` where a write adds or changes text. The lines of `content` are aligned with
+    those of `before` (difflib, compared without their terminators); a match is inherited, and does not count, only
+    when it lies within one run of old lines that stands unchanged and contiguous in `content` and `before` holds the
+    same match at that place. A match that touches an added or changed line, or spans old and new text, counts, and so
+    does every match in a new file. A terminator the old last line lacked is new text."""
+    old, new = LINES.findall(before), LINES.findall(content)
+    old_at = list(itertools.accumulate(map(len, old), initial=0))
+    new_at = list(itertools.accumulate(map(len, new), initial=0))
+    keys = [[line.removesuffix("\n") for line in lines] for lines in (old, new)]
+    runs = []  # (start in content, end in content, start in before), in order
+    matcher = difflib.SequenceMatcher(None, *keys, autojunk=False)
+    for i, j, size in matcher.get_matching_blocks():
+        if size:
+            last_old, last_new = old[i + size - 1], new[j + size - 1]
+            gained = last_new.endswith("\n") and not last_old.endswith("\n")
+            runs.append((new_at[j], new_at[j + size] - gained, old_at[i]))
+    starts = [run[0] for run in runs]
+
+    def inherited(match: re.Match) -> bool:
+        index = bisect.bisect_right(starts, match.start()) - 1
+        if index < 0 or match.end() > runs[index][1]:
+            return False
+        shift = runs[index][2] - runs[index][0]
+        same = pattern.search(before, match.start() + shift)
+        return same is not None and same.span() == (match.start() + shift, match.end() + shift)
+
+    position = 0
+    # Searching again from the next character, not from the match's end, keeps an inherited match from hiding a new
+    # one that overlaps it.
+    while position <= len(content) and (match := pattern.search(content, position)) is not None:
+        if not inherited(match):
+            return True
+        position = match.start() + 1
+    return False
+
+
 def links_only_to(line: str, owned: set[str], folder: str) -> bool:
     """Whether an index line links to files and every file it links to is one the program created."""
     targets = LINK.findall(line)
@@ -236,7 +276,7 @@ def plan(
         if len(content.encode()) > limits.max_file_bytes:
             violations.append(f"{who}: {action.path} is over {limits.max_file_bytes} bytes")
         for position, pattern in enumerate(forbidden):
-            if pattern.search(content):
+            if adds_match(pattern, before or "", content):
                 violations.append(f"{who}: the content of {action.path} matches forbidden pattern {position}")
     if touched > limits.max_files_touched:
         violations.append(f"{touched} files touched, over the limit of {limits.max_files_touched}")
