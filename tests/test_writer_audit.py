@@ -15,6 +15,7 @@ from writer_world import (
     reply,
 )
 
+from sereno.writer import audit
 from sereno.writer.audit import audit_campaign
 from sereno.writer.cli import main
 from sereno.writer.errors import InputError
@@ -120,6 +121,27 @@ def test_the_same_command_in_this_chain_is_not_foreign(world):
     second_step(world, "plain", events=own, foreign=foreign)
     attempt = audited(world)["attempts"][1]
     assert attempt["unresolved"] == [] and attempt["violations"] == []
+
+
+def test_material_read_once_gives_the_report_that_reading_it_for_every_attempt_gives(world, monkeypatch):
+    other = "echo a command that only another chain of the campaign ever ran"
+    own = [event("action", 1, command=FOREIGN_COMMAND), event("notice", 1, text=GUARD_TEXT)]
+    second_step(world, f"{HIDDEN_LINE}\n{GUARD_TEXT}\n{other}", events=own, foreign=[event("action", 1, command=other)])
+    reads = []
+    real = audit.hidden_material
+    monkeypatch.setattr(audit, "hidden_material", lambda task_dir: reads.append(task_dir) or real(task_dir))
+    result = audited(world)
+    # The dataset is read once for the whole audit, not once for every attempt.
+    assert len(reads) == len(list((world.dataset / "tasks").iterdir()))
+    campaign = world.campaign.resolve()
+    tasks_root, arm = world.dataset.resolve() / "tasks", campaign / "cases" / world.case / "arms" / "attack_adaptive"
+    sessions = sorted(p for p in (arm / "sessions").glob("*") if p.is_dir())
+    expected = []
+    for attempt in sorted((arm / "state" / "writer").glob("[0-9][0-9][0-9]/a*")):
+        guard, foreign = audit.chain_material(audit.campaign_text(campaign), arm, sessions)
+        hidden = audit.dataset_hidden(tasks_root)
+        expected.append(audit.audit_attempt(attempt, arm, tasks_root, hidden, guard, foreign))
+    assert result["attempts"] == expected and expected[1]["unresolved"]
 
 
 def test_the_report_never_holds_the_matched_text(world):

@@ -139,14 +139,29 @@ def agent_strings(directory: Path) -> set[str]:
     return {line for line in found if len(line) >= MIN_LINE}
 
 
-def foreign_material(campaign: Path, own_arm: Path) -> set[str]:
-    """Agent text of every session in the campaign outside this chain: other arms, cases, repeats and origins."""
-    found: set[str] = set()
-    for events in sorted(campaign.glob("**/sessions/*/events.jsonl")):
-        if own_arm in events.parents:
-            continue
-        found |= agent_strings(events.parent)
-    return found
+def campaign_text(campaign: Path) -> dict[Path, set[str]]:
+    """The agent text of every session in the campaign, by session directory: other arms, cases, repeats and origins
+    included. Read once for the whole audit."""
+    return {
+        events.parent: agent_strings(events.parent) for events in sorted(campaign.glob("**/sessions/*/events.jsonl"))
+    }
+
+
+def dataset_hidden(tasks_root: Path) -> dict[str, set[str]]:
+    """The hidden material of every task in the dataset, read once for the whole audit."""
+    hidden: dict[str, set[str]] = {"hidden_test_name": set(), "hidden_test_line": set(), "solution_line": set()}
+    for task_dir in sorted(p for p in tasks_root.iterdir() if p.is_dir()) if tasks_root.is_dir() else []:
+        for label, found in hidden_material(task_dir).items():
+            hidden[label] |= found
+    return hidden
+
+
+def chain_material(texts: dict[Path, set[str]], own_arm: Path, session_dirs: list[Path]) -> tuple[set[str], set[str]]:
+    """One chain's guard records and the agent text of every session outside it that the chain itself never had,
+    computed once for all of the chain's attempts."""
+    own = {line for directory in session_dirs for line in texts.get(directory, set())}
+    foreign = {line for directory, lines in texts.items() if own_arm not in directory.parents for line in lines}
+    return guard_material(session_dirs), foreign - own
 
 
 def parts_of(envelope: dict) -> dict[str, list[str]]:
@@ -217,7 +232,15 @@ def check_repair_messages(messages: list[dict], request: str) -> list[Finding]:
     return findings
 
 
-def audit_attempt(attempt: Path, own_arm: Path, campaign: Path, tasks_root: Path, session_dirs: list[Path]) -> dict:
+def audit_attempt(
+    attempt: Path,
+    own_arm: Path,
+    tasks_root: Path,
+    hidden: dict[str, set[str]],
+    guard: set[str],
+    foreign: set[str],
+) -> dict:
+    """One attempt against the campaign's hidden material and its chain's guard records and foreign text."""
     findings: list[Finding] = []
     try:
         manifest = json.loads((attempt / "manifest.json").read_text())
@@ -247,13 +270,6 @@ def audit_attempt(attempt: Path, own_arm: Path, campaign: Path, tasks_root: Path
             findings.append(Finding("source", "violation", f"task source outside the dataset: {Path(ref).name}"))
     parts = parts_of(envelope)
     flat = {name: [norm(text) for text in texts] for name, texts in parts.items()}
-    hidden: dict[str, set[str]] = {"hidden_test_name": set(), "hidden_test_line": set(), "solution_line": set()}
-    for task_dir in sorted(p for p in tasks_root.iterdir() if p.is_dir()) if tasks_root.is_dir() else []:
-        for label, found in hidden_material(task_dir).items():
-            hidden[label] |= found
-    own_text = {line for directory in session_dirs for line in agent_strings(directory)}
-    guard = guard_material(session_dirs)
-    foreign = {line for line in foreign_material(campaign, own_arm) if line not in own_text}
     requests = sorted(attempt.glob("call-*.request.json"))
     for request in requests:
         try:
@@ -301,13 +317,15 @@ def audit_campaign(campaign: Path, dataset: Path | None = None) -> dict:
         except (OSError, ValueError, KeyError, TypeError):
             raise InputError("pass --dataset: the manifest names no dataset_root", "bad_audit") from None
     tasks_root = Path(dataset).resolve() / "tasks"
+    hidden, texts = dataset_hidden(tasks_root), campaign_text(campaign)
     attempts = []
     for arm in sorted(campaign.glob("cases/*/arms/attack_adaptive")):
         root = arm / "state" / "writer"
         sessions = sorted(p for p in (arm / "sessions").glob("*") if p.is_dir())
+        guard, foreign = chain_material(texts, arm, sessions)
         for attempt in sorted(root.glob("[0-9][0-9][0-9]/a*")) if root.is_dir() else []:
             if (attempt / "view.json").exists():
-                attempts.append(audit_attempt(attempt, arm, campaign, tasks_root, sessions))
+                attempts.append(audit_attempt(attempt, arm, tasks_root, hidden, guard, foreign))
     return {
         "campaign": str(campaign),
         "attempts": attempts,
