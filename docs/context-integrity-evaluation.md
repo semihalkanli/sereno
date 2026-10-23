@@ -147,7 +147,8 @@ repeat's cases follow at once, in variant order; the `workers` take them first i
 arms beside its origin and makes its clean copies last, once the origin has finished; since the origin was queued
 before it, it has always started. So a run cut short (an exhausted budget or credit) and the hours between chains
 fall on both sides alike, instead of every missing session landing on the attack side. When a job raises, the jobs
-not yet started are dropped and the error ends the run; a resume runs them.
+not yet started are dropped and the error ends the run; a resume runs them. An interrupt of the run itself, such as
+Ctrl-C, drops them too: the jobs already running finish, no queued origin or case starts, and a resume runs the rest.
 
 ## Repair
 

@@ -994,7 +994,13 @@ def run_campaign(
                         origins[(planned.task_id, repeat)] = pool.submit(run_origin, (planned, repeat))
                     for variant in config.variants.items():
                         jobs[(planned.task_id, variant[0], repeat)] = pool.submit(run_case, (planned, variant, repeat))
-            done, _ = wait([*origins.values(), *jobs.values()], return_when=FIRST_EXCEPTION)
+            try:
+                done, _ = wait([*origins.values(), *jobs.values()], return_when=FIRST_EXCEPTION)
+            except BaseException:
+                # An interrupt of the run itself, such as Ctrl-C: the jobs not yet started are dropped and the running
+                # ones finish before the sweep; a resume runs the rest.
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise
             if errors := [error for future in done if (error := future.exception()) is not None]:
                 # Jobs not yet started are dropped; a resume runs them.
                 pool.shutdown(wait=True, cancel_futures=True)

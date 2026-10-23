@@ -5,6 +5,7 @@ import itertools
 import json
 import shutil
 import threading
+import time
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -12,7 +13,7 @@ import pytest
 import test_context_eval as base
 import yaml
 
-from sereno.context_eval import agents
+from sereno.context_eval import agents, runner
 from sereno.context_eval.config import default_registry, load_config, validate
 from sereno.context_eval.dataset import load_task
 from sereno.context_eval.memory import INSTRUCTIONS, USER, index_path, memory_dir, reminder
@@ -407,15 +408,47 @@ def test_cases_that_wait_for_their_origin_never_deadlock_with_two_workers(tmp_pa
     config.variants["other"] = [config.variants["canary"][0].model_copy(update={"id": "other-source"})]
     config.repeats, config.workers = 2, 2
     finished = []
-    runner = threading.Thread(target=lambda: finished.append(base.run_fixture(tmp_path, fixture_world, config)))
-    runner.start()
-    runner.join(timeout=120)
+    thread = threading.Thread(target=lambda: finished.append(base.run_fixture(tmp_path, fixture_world, config)))
+    thread.start()
+    thread.join(timeout=120)
     assert finished, "the campaign did not finish: a case waited for an origin that never started"
     root = finished[0][0]
     for repeat in ("r001", "r002"):
         for variant in ("canary", "other"):
             copies = root / "cases" / f"first--{variant}--{repeat}" / "arms" / "clean" / "sessions"
             assert sorted(p.name for p in copies.iterdir()) == ["001-exposure", "002-probe"]
+
+
+def test_an_interrupt_of_the_run_starts_no_queued_job_and_lets_the_running_one_finish(
+    tmp_path, fixture_world, monkeypatch
+):
+    # Ctrl-C reaches the main thread while it waits for the jobs, once the first origin runs. That origin's first
+    # container waits until the queued jobs are cancelled, so the order holds on any machine.
+    _, factory, _, _ = fixture_world
+    config = base.campaign_config(fixture_world[0])
+    config.repeats, config.workers = 3, 1
+    queued = []
+
+    def interrupted(futures, **_):
+        queued.extend(futures[1:])
+        while not futures[0].running():
+            time.sleep(0.001)
+        raise KeyboardInterrupt
+
+    def held(*args, **kwargs):
+        deadline = time.monotonic() + 10
+        while not (queued and all(future.cancelled() for future in queued)) and time.monotonic() < deadline:
+            time.sleep(0.001)
+        return factory(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "wait", interrupted)
+    root = tmp_path / "campaign"
+    with pytest.raises(KeyboardInterrupt):
+        base.run_fixture(tmp_path, (fixture_world[0], held, None, None), config)
+    assert [p.name for p in (root / "clean").iterdir()] == ["first--r001"]
+    sessions = sorted((root / "clean" / "first--r001" / "sessions").iterdir())
+    assert [result_of(d)["status"] for d in sessions] == ["complete", "complete"]
+    assert not list(root.glob("cases/*"))
 
 
 def test_reset_names_the_carry_exposure_it_shares(tmp_path, fixture_world):
