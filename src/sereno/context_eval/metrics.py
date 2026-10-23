@@ -1712,15 +1712,19 @@ def different_treatments(roots: list[Path]) -> list[str]:
 
 def adaptive_program(root: Path) -> str:
     """What makes two adaptive campaigns the same attacker: the argv with every word that names a file replaced by its
-    sha256, so the same program from another checkout matches, its timeout, whether it grades first, and its limits;
-    null for a campaign without the arm."""
-    adaptive = json.loads((root / "manifest.json").read_text()).get("adaptive")
+    sha256, so the same program from another checkout matches, its timeout, whether it grades first, its limits, and
+    the harness code that checked and applied its writes (code_sha256: an experiment's blocks run at one fixed commit,
+    log 342); null for a campaign without the arm."""
+    manifest = json.loads((root / "manifest.json").read_text())
+    adaptive = manifest.get("adaptive")
     if adaptive is None:
         return "null"
     files = adaptive["program_sha256"]
     keys = ("timeout_seconds", "grade_before_step", "limits")
     return json.dumps(
-        {"command": [files.get(word, word) for word in adaptive["command"]]} | {k: adaptive[k] for k in keys},
+        {"command": [files.get(word, word) for word in adaptive["command"]]}
+        | {k: adaptive[k] for k in keys}
+        | {"code_sha256": manifest.get("code_sha256")},
         sort_keys=True,
     )
 
@@ -1743,7 +1747,7 @@ def summarize(roots: list[Path], out: Path, registry, *, bootstrap: int = 2000, 
     ):
         raise ValueError("campaigns differ in their repair and cannot be pooled")
     if len({adaptive_program(root) for root in roots} - {"null"}) > 1:
-        raise ValueError("campaigns differ in their adaptive program or limits and cannot be pooled")
+        raise ValueError("campaigns differ in their adaptive program, limits or code and cannot be pooled")
     if differing := different_treatments(roots):
         raise ValueError(
             "variants differ between campaigns in their interventions or checks and cannot be pooled: "

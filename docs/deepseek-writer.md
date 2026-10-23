@@ -27,7 +27,8 @@ program through `PYTHONPATH`, and it records the provider calls because the clie
 words so that the campaign manifest records them and `summarize` cannot pool campaigns of different writers; a program
 whose configuration or code differs from them refuses to run (`identity_mismatch`, exit 2). `config_sha256` covers
 `writer.json` without machine paths and the bytes of every design-package file (design, API settings, system prompt,
-last-write sentence, assignment fragment); `code_sha256` covers this package's sources.
+last-write sentence, assignment fragment); `code_sha256` covers this package's sources and those of
+`sereno.context_eval`, whose `validate_actions` and memory layout the writer imports, each named with its package.
 
 `uv run python -m sereno.writer audit CAMPAIGN [--dataset DIR] [--out FILE]` checks a finished campaign (below).
 

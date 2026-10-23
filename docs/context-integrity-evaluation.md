@@ -200,8 +200,9 @@ or an address) names no file next to the YAML and is an error. `dry-check` does 
 argv, the sha256 of every word that names an existing file by its absolute path, the timeout, `grade_before_step`,
 `stop_after_failures` and the limits, and a resume refuses a campaign whose record differs. `summarize` pools only
 adaptive campaigns with the same argv, timeout, `grade_before_step` and limits, where a word that names a file counts by
-its sha256, so the same program from another checkout pools; the stop rule controls the run, not what a session
-measures, so it does not count. The program runs on the host with the campaign's environment, so the cost
+its sha256, so the same program from another checkout pools, and with the same harness code (the manifest's
+`code_sha256`, which decides how the program's writes are checked and applied: an experiment's blocks run at one fixed
+commit, log 342); the stop rule controls the run, not what a session measures, so it does not count. The program runs on the host with the campaign's environment, so the cost
 wrapper's meter and the API keys reach it; do not start it with `python -I`, since isolated mode ignores `PYTHONPATH`,
 which is how `scripts/cost.py` loads its meter. The agent's containers keep `--network none` and no credentials, and
 never see the hook's files.

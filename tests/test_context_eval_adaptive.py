@@ -1082,7 +1082,7 @@ def test_campaigns_with_another_adaptive_program_or_limits_are_not_pooled(tmp_pa
         config.adaptive.limits.max_file_bytes = size
         campaign(tmp_path, fixture_world, config, {}, monkeypatch, name=name)
     registry = default_registry()
-    with pytest.raises(ValueError, match="differ in their adaptive program or limits"):
+    with pytest.raises(ValueError, match="differ in their adaptive program, limits or code"):
         summarize([tmp_path / "a", tmp_path / "b"], tmp_path / "pooled-ab", registry)
     pooled = summarize([tmp_path / "a", tmp_path / "c"], tmp_path / "pooled-ac", registry)
     assert {row["campaign"] for row in pooled["sessions"] if row["arm"] == "attack_adaptive"} == {"a", "c"}
@@ -1093,7 +1093,16 @@ def test_campaigns_whose_program_takes_other_arguments_are_not_pooled(tmp_path, 
         config = adaptive_config(fixture_world[0], sessions=1)
         config.adaptive.command = [*config.adaptive.command, "--mode", mode]
         campaign(tmp_path, fixture_world, config, {}, monkeypatch, name=name)
-    with pytest.raises(ValueError, match="differ in their adaptive program or limits"):
+    with pytest.raises(ValueError, match="differ in their adaptive program, limits or code"):
+        summarize([tmp_path / "a", tmp_path / "b"], tmp_path / "pooled", default_registry())
+
+
+def test_adaptive_campaigns_run_at_other_harness_code_are_not_pooled(tmp_path, fixture_world, monkeypatch):
+    for name in ("a", "b"):
+        campaign(tmp_path, fixture_world, adaptive_config(fixture_world[0], sessions=1), {}, monkeypatch, name=name)
+    manifest = read(tmp_path / "b" / "manifest.json")
+    write_json(tmp_path / "b" / "manifest.json", manifest | {"code_sha256": "0" * 64})
+    with pytest.raises(ValueError, match="differ in their adaptive program, limits or code"):
         summarize([tmp_path / "a", tmp_path / "b"], tmp_path / "pooled", default_registry())
 
 
