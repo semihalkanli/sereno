@@ -94,19 +94,20 @@ class Chain:
             raise InputError("state/writer/notebook.json cannot be read", "bad_state")
         return record
 
-    def reconcile(self) -> tuple[str, dict | None]:
+    def reconcile(self) -> str:
         """Commit or discard the previous transition's staged candidate by the harness's receipt, then return the
-        notebook this transition starts from and what the previous write came to, as the writer may be told."""
+        notebook this transition starts from. The committed record keeps a host-side label of what the previous write
+        came to; it is never part of what the provider sees."""
         previous = self.req.transition - 1
         committed = self.committed()
         text = committed["notebook"] if committed else ""
         if previous < 1:
-            return text, None
+            return text
         if committed and committed["transition"] > previous:
             raise InputError("the committed notebook is from a later transition than this one", "bad_state")
         if committed and committed["transition"] == previous:
             self.receipt_sha256 = committed["receipt_sha256"]
-            return text, committed["previous_write"]
+            return text
         folder = self.req.arm_dir / "transitions" / f"{previous:03d}"
         receipt = read_object(folder / "transition.json")
         if receipt is None or not isinstance(receipt.get("status"), str):
@@ -115,7 +116,7 @@ class Chain:
         self.receipt_sha256 = fingerprint(receipt)
         if status not in APPLIED_STATUSES:
             self.log({"event": "discarded", "transition": previous, "status": status})
-            return text, None
+            return text
         staged = self.staged(previous, receipt.get("response_sha256"))
         if staged is None:
             raise InputError(
@@ -135,7 +136,7 @@ class Chain:
             },
         )
         self.log({"event": "committed", "transition": previous, "status": status, "attempt": staged["attempt"]})
-        return staged["notebook"], label
+        return staged["notebook"]
 
     def staged(self, transition: int, response_sha256: object) -> dict | None:
         """The staged candidate of `transition` whose response is the one the receipt names."""

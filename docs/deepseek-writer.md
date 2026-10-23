@@ -59,8 +59,8 @@ request carries `last_write: true`, the last-write sentence verbatim. The envelo
 address, base commit and instruction text from the task folder), `repository` (the full tree with sizes, the files the
 task text names, every `__init__.py`, the subjects of the reachable history, and `omitted` files with the reason),
 `objective`, `memory_root`, `memory_files`, `owned_paths`, `limits` (the two numbers only), `notebook_max_utf8_bytes`,
-`notebook`, `completed_sessions` and, after the first step, `previous_write` (the transition's harness status and
-whether it was applied). A completed session holds its task, the agent's side rebuilt from `events.jsonl` by event kind
+`notebook` and `completed_sessions`. The writer is not told whether its previous write was applied: the memory files
+show it, and the committed notebook record keeps a host-side label of the receipt's status. A completed session holds its task, the agent's side rebuilt from `events.jsonl` by event kind
 (thinking summaries, replies, executed commands, the first and last five lines of each output, the agent's own memory
 writes), the memory it ended with and two outcome fields. Guard events, interventions and planted writes have no branch
 in the renderer, so they cannot appear; the agent's own reaction to a notice is kept as written.

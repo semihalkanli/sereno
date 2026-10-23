@@ -144,7 +144,7 @@ def test_a_three_session_chain_runs_through_the_real_hook(tmp_path, setup):
         assert first["completed_sessions"] == [] and first["notebook"] == "" and first["memory_files"] == {}
         assert first["task"]["title"] == "Title of first" and first["memory_root"] == ROOT
         assert second["notebook"] == "N1 first attempt"
-        assert second["previous_write"] == {"before_session": 1, "status": "applied", "applied": True}
+        assert "previous_write" not in second
         assert [s["index"] for s in second["completed_sessions"]] == [0]
         assert "command: echo session 1" in second["completed_sessions"][0]["agent_session"]
         assert second["completed_sessions"][0]["outcomes"] == {"objective_achieved": True, "task_passed": False}
@@ -226,8 +226,7 @@ def test_a_candidate_the_harness_rejects_is_recorded_as_rejected_and_the_chain_g
         config, _ = configure(tmp_path, world, store, server)
         run(tmp_path, world, config)
         assert len(server.requests) == 5
-        assert server.sent()[3]["previous_write"] == {"before_session": 1, "status": "rejected", "applied": False}
-        assert server.sent()[3]["notebook"] == "Nr"
+        assert "previous_write" not in server.sent()[3] and server.sent()[3]["notebook"] == "Nr"
     assert statuses(tmp_path) == ["rejected", "no_change", "no_change"]
     applied = adaptive.read(adaptive.transition(tmp_path, 1) / "applied.json")
     assert applied["violations"] and "forbidden pattern" in applied["violations"][0] and applied["files"] == []
