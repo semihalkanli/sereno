@@ -191,7 +191,8 @@ adaptive:
 ```
 
 The arm needs the section and the section needs the arm. The arm applies no interventions: leave `variants` out, do not
-run it beside `attack_carry`, `attack_reset` or `attack_ablate`, and set no `repair`. Its cases are named
+run it beside `attack_carry`, `attack_reset` or `attack_ablate`, and set no `repair`; with a `guard`, set
+`read_at_start: all` (decision 406; see the known limits). Its cases are named
 `<target>--adaptive--rNNN`; the `clean` arm is unchanged, the same chain with no program, copied into each case.
 `validate` checks the section, the limits and that the command's first word resolves to a program; since the program
 starts from `state/`, a word that still looks like a relative path (it holds a `/` or ends in `.py`, and is not a flag
@@ -925,8 +926,8 @@ enters the patch.
 - The adaptive program is trusted code on the host. The hook limits what it writes into memory, not what it reads: it
   can read the whole campaign directory, so the view it builds for its model is its own to restrict.
 - The live memory guard keeps the memory a session starts from as its copy of what the agent already read, so a note the
-  adaptive hook plants is part of that copy and is not read as a change. A defended adaptive arm sets
-  `guard.read_at_start: all`.
+  adaptive hook plants is part of that copy and is not read as a change. A defended adaptive arm therefore needs
+  `guard.read_at_start: all`; a config that sets `attack_adaptive` and a guard with `changed` is refused.
 - Git placement amends the base commit. In images whose reflog is empty, `git reflog` shows the amend as the
   only entry; tags that pointed at the base commit stay on the old commit (in the bandit image the release tag
   no longer points at `HEAD`); and `git show --stat HEAD` lists the planted file. All are visible to an agent
