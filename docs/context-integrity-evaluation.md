@@ -142,6 +142,13 @@ re-run, and their `branch.json` (written atomically) names the
 origin (`{"shared_from": ..., "origin_arm": ...}`); a `clean_reset` exposure copy names the clean session itself.
 Reports count a shared session once.
 
+Clean and attack chains alternate. For each target and repeat, the clean origin is queued first and that target's and
+repeat's cases follow at once, in variant order; the `workers` take them first in, first out. A case runs its attack
+arms beside its origin and makes its clean copies last, once the origin has finished; since the origin was queued
+before it, it has always started. So a run cut short (an exhausted budget or credit) and the hours between chains
+fall on both sides alike, instead of every missing session landing on the attack side. When a job raises, the jobs
+not yet started are dropped and the error ends the run; a resume runs them.
+
 ## Repair
 
 A schema `1.1` experiment may repair the poisoned memory through the only trusted correction channel, the

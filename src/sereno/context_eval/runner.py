@@ -2,7 +2,6 @@
 grade-ready artifacts."""
 
 import hashlib
-import itertools
 import json
 import os
 import platform
@@ -12,7 +11,7 @@ import threading
 import time
 import uuid
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
@@ -900,7 +899,7 @@ def run_campaign(
         if "clean_reset" in config.arms:
             reset_dir = origin(target, repeat, "clean_reset")
             starts["clean_reset"] = branch(reset_dir, target, arm_dir, "clean", start, [], False, enabled=False)
-        return (target.task_id, repeat), starts
+        return starts
 
     def run_case(item):
         target, (variant, events), repeat = item
@@ -913,23 +912,6 @@ def run_campaign(
                 case_dir / "case.json",
                 {"target": target.task_id, "variant": variant, "repeat": repeat, "seed": config.seed + repeat},
             )
-        for arm in ("clean", "clean_reset"):
-            if arm not in config.arms:
-                continue
-            # A copy follows its origin: re-running an origin session replaces its copy and every later one.
-            start = min(
-                first_incomplete(arms / arm, lambda session: True), origin_starts[(target.task_id, repeat)][arm]
-            )
-            for number, session in enumerate(sessions[start:], start=start):
-                # A clean_reset exposure copy names the clean session it shares, so it counts and grades once.
-                source = arm if not session.exposure else "clean"
-                try:
-                    share(origin(target, repeat, source), source)(
-                        number, session, redo(session_dir(arms / arm, number, session)), None
-                    )
-                except NotStarted:
-                    stop(arms / arm, number + 1)
-                    break
         if "attack_adaptive" in config.arms:
             # No interventions: the arm differs from the clean one only by what the program plants between sessions.
             adaptive_dir = arms / "attack_adaptive"
@@ -963,16 +945,49 @@ def run_campaign(
                 branch(
                     arms / arm, target, arms / "attack_carry", "attack_carry", carry_start, events, ablated, seed=seed
                 )
+        # The clean copies come last: the case's attack arms run beside its origin, and the copies wait for it.
+        for arm in ("clean", "clean_reset"):
+            if arm not in config.arms:
+                continue
+            origin_start = origins[(target.task_id, repeat)].result()[arm]
+            # A copy follows its origin: re-running an origin session replaces its copy and every later one.
+            start = min(first_incomplete(arms / arm, lambda session: True), origin_start)
+            for number, session in enumerate(sessions[start:], start=start):
+                # A clean_reset exposure copy names the clean session it shares, so it counts and grades once.
+                source = arm if not session.exposure else "clean"
+                try:
+                    share(origin(target, repeat, source), source)(
+                        number, session, redo(session_dir(arms / arm, number, session)), None
+                    )
+                except NotStarted:
+                    stop(arms / arm, number + 1)
+                    break
         return case_id
 
+    origins, jobs = {}, {}
     try:
         with ThreadPoolExecutor(max_workers=config.workers) as pool:
-            origin_starts = {}
-            if "clean" in config.arms:
-                origin_starts = dict(pool.map(run_origin, itertools.product(config.targets, range(config.repeats))))
-            cases = list(
-                pool.map(run_case, itertools.product(config.targets, config.variants.items(), range(config.repeats)))
-            )
+            # Clean and attack chains alternate: each origin is followed at once by its target's and repeat's cases,
+            # in variant order, so a run cut short and the hours between chains fall on both sides alike. The queue is
+            # first in, first out, so an origin has started before any case that waits for it.
+            for planned in config.targets:
+                for repeat in range(config.repeats):
+                    if "clean" in config.arms:
+                        origins[(planned.task_id, repeat)] = pool.submit(run_origin, (planned, repeat))
+                    for variant in config.variants.items():
+                        jobs[(planned.task_id, variant[0], repeat)] = pool.submit(run_case, (planned, variant, repeat))
+            done, _ = wait([*origins.values(), *jobs.values()], return_when=FIRST_EXCEPTION)
+            if errors := [error for future in done if (error := future.exception()) is not None]:
+                # Jobs not yet started are dropped; a resume runs them.
+                pool.shutdown(wait=True, cancel_futures=True)
+                raise errors[0]
+            # The case list keeps the order of targets, variants and repeats.
+            cases = [
+                jobs[(planned.task_id, name, repeat)].result()
+                for planned in config.targets
+                for name in config.variants
+                for repeat in range(config.repeats)
+            ]
     finally:
         # Also when a session raised out of the pool: no container this run failed to remove is left behind unretried.
         unremoved = sweep()

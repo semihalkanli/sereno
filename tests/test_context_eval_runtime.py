@@ -4,6 +4,7 @@ import hashlib
 import itertools
 import json
 import shutil
+import threading
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -374,10 +375,47 @@ def test_clean_arm_runs_once_per_target_and_repeat(tmp_path, fixture_world):
     assert all(result_of(directory)["markers"] == {} for directory in origins)
     attacks = [d for d in root.glob("cases/*/arms/attack_*/sessions/*") if not (d / "branch.json").exists()]
     assert len(attacks) == 2 * 2 * 3
-    assert max(t for d in origins for t in times(d)) < min(t for d in attacks for t in times(d))
     clean_rows = [row for row in summary["sessions"] if row["arm"] == "clean"]
     assert len(clean_rows) == len(copies) and all(row["status"] == "complete" for row in clean_rows)
     assert all(row["outcome"] is False for row in clean_rows if row["session"] == "probe")
+    # The first case's attack chains run beside the first origin; its copies wait for that origin to finish.
+    assert min(t for d in attacks for t in times(d)) < max(t for d in origins[:2] for t in times(d))
+
+
+def chain_order(root):
+    """The arms of the run's own sessions (origins and attack chains, no copies) in the order they started, with
+    consecutive sessions of one side merged."""
+    started = [(times(d)[0], "clean") for d in root.glob("clean/*/sessions/*")]
+    started += [
+        (times(d)[0], "attack")
+        for d in root.glob("cases/*/arms/attack_*/sessions/*")
+        if not (d / "branch.json").exists()
+    ]
+    order = [side for _, side in sorted(started)]
+    return [side for i, side in enumerate(order) if i == 0 or order[i - 1] != side]
+
+
+def test_clean_and_attack_chains_alternate_with_one_worker(tmp_path, fixture_world):
+    config = base.campaign_config(fixture_world[0])
+    config.repeats, config.workers = 3, 1
+    root, _ = base.run_fixture(tmp_path, fixture_world, config)
+    assert chain_order(root) == ["clean", "attack"] * 3
+
+
+def test_cases_that_wait_for_their_origin_never_deadlock_with_two_workers(tmp_path, fixture_world):
+    config = base.campaign_config(fixture_world[0])
+    config.variants["other"] = [config.variants["canary"][0].model_copy(update={"id": "other-source"})]
+    config.repeats, config.workers = 2, 2
+    finished = []
+    runner = threading.Thread(target=lambda: finished.append(base.run_fixture(tmp_path, fixture_world, config)))
+    runner.start()
+    runner.join(timeout=120)
+    assert finished, "the campaign did not finish: a case waited for an origin that never started"
+    root = finished[0][0]
+    for repeat in ("r001", "r002"):
+        for variant in ("canary", "other"):
+            copies = root / "cases" / f"first--{variant}--{repeat}" / "arms" / "clean" / "sessions"
+            assert sorted(p.name for p in copies.iterdir()) == ["001-exposure", "002-probe"]
 
 
 def test_reset_names_the_carry_exposure_it_shares(tmp_path, fixture_world):
