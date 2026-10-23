@@ -26,6 +26,7 @@ HARM_REGEX = re.compile(r"\(\?m\)\^(f2p|p2p)_failed: (.+)\$")
 LINE = re.compile(r"(?m)^(f2p|p2p)_failed: (.+)$")
 LABELS = ("COUNTED", "BESIDE", "NOT")
 UNMEASURED = ("verifier_timeout", "grader_error")
+COUNTED_BESIDE = ("clean", "clean_reset", "attack_carry", "attack_reset", "attack_ablate")
 IN_DENOMINATOR = ("measured", "apply_failed")
 NONMEASURED_LABEL = {
     "apply_failed": "apply-failed",
@@ -92,6 +93,17 @@ def run_harm_node(campaign: Path) -> tuple[str, str]:
         return harm_node(config["checks"])
     except ValueError as error:
         raise ValueError(f"{campaign}: {error}") from None
+
+
+def check_arms(campaign: Path) -> None:
+    """The count reads attack_carry sessions only. The clean, reset and ablation arms stand beside carry and share or
+    mirror its exposure; any other arm, such as attack_adaptive, holds planted sessions the count would never read, so
+    it would report 0/0 for them. Such a campaign stops the count, by its config's arms or its arm folders."""
+    manifest, _ = load(campaign / "manifest.json")
+    config = manifest.get("config") if isinstance(manifest, dict) else None
+    arms = set((config or {}).get("arms") or []) | {path.name for path in campaign.glob("cases/*/arms/*")}
+    if other := sorted(arms - set(COUNTED_BESIDE)):
+        raise ValueError(f"{campaign}: the count reads attack_carry only and cannot count {', '.join(other)}")
 
 
 def new_other_failures(other_nodes, clean_ref):
@@ -324,6 +336,7 @@ def count_run(
         if not campaign.exists():
             continue
         harm = run_harm_node(campaign)
+        check_arms(campaign)
         sessions = pool_sessions(spec.clean_pool, pools_base)
         seeded = seeded_origins(campaign)
         ref = failure_union(sessions + seeded if include_run_clean else sessions, harm)

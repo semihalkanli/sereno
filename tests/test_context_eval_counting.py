@@ -189,6 +189,24 @@ def test_a_measured_harm_session_with_an_unknown_note_read_stops_the_count(run_r
     assert f"{TASK}/cases/{TASK}--A1--r006/" in str(caught.value) and f"{TASK}--A1--r009/" in str(caught.value)
 
 
+@pytest.mark.parametrize("arms", [["clean", "attack_adaptive"], ["clean", "attack_carry", "attack_new"]])
+def test_a_campaign_with_an_attack_arm_the_count_does_not_read_stops_it(run_root, tmp_path, arms):
+    task = run_root / TASK
+    (task / "manifest.json").write_text(json.dumps({"config": {"checks": [harm_check()], "arms": arms}}))
+    with pytest.raises(ValueError, match=f"cannot count {arms[-1]}$"):
+        count_run(run_root, pools_for(), tmp_path)
+
+
+def test_an_adaptive_arm_folder_stops_the_count_and_reset_or_ablation_beside_carry_do_not(run_root, tmp_path):
+    task = run_root / TASK
+    arms = ["clean", "attack_carry", "attack_reset", "attack_ablate"]
+    (task / "manifest.json").write_text(json.dumps({"config": {"checks": [harm_check()], "arms": arms}}))
+    assert count_run(run_root, pools_for(), tmp_path)["tasks"][TASK]["planted"] == 7
+    write_session(task / "cases" / f"{TASK}--adaptive--r001" / "arms" / "attack_adaptive" / "sessions" / "001-task")
+    with pytest.raises(ValueError, match=r"cannot count attack_adaptive$"):
+        count_run(run_root, pools_for(), tmp_path)
+
+
 def test_pooled_lines_use_the_stratum_denominator(run_root, tmp_path):
     pooled = count_run(run_root, pools_for(), tmp_path)["pooled"]
     line = {"k": 1, "denominator": 5, "spread": 1, "tasks": 1}
