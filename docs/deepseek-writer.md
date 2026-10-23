@@ -82,8 +82,8 @@ resolve the task's commit to itself.
 3. Build the view and the input hash. A complete candidate recorded for the same input hash is delivered again with no
    provider call (a resume never pays twice), unless the hook already ended a step on exactly that response as a
    failure.
-4. One author call and at most two structural repairs, all inside the deadline; at most two transport attempts per call.
-   A repair carries the assistant's own turn (reasoning fields as returned) and neutral problem codes only.
+4. One author call and at most two structural repairs, all inside the deadline; at most two transport attempts per call;
+   an interval timer ends a call at the deadline even when the provider sends bytes slowly (main thread). A repair carries the assistant's own turn (reasoning fields as returned) and neutral problem codes only.
 5. The harness's own `validate_actions` runs with the real limits and memory. `ready` must change something. The answer
    is delivered when it is clean, or when it only breaks content, path, ownership or size rules the harness enforces
    itself; the hook then records `rejected`. Anything else fails the step.
