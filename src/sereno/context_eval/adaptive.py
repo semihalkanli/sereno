@@ -821,6 +821,8 @@ class AdaptiveHook:
             },
             "limits": self.adaptive.limits.model_dump(),
             "attempt": 1,
+            # Only a frozen campaign marks the program's last step; the requests of any other stay as they were.
+            **({"last_write": number + 1 == self.frozen} if self.adaptive.freeze_from else {}),
         }
 
     def decide(self, outcome: dict, folder: Path, project: str, memory: dict, owned: set[str]) -> Decision:

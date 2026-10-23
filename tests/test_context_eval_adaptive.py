@@ -1186,14 +1186,16 @@ def shape(value):
     return type(value).__name__
 
 
-def test_the_program_is_not_told_that_a_step_is_its_last(tmp_path, fixture_world, monkeypatch):
+def test_only_the_step_before_the_freeze_is_marked_as_the_last_write(tmp_path, fixture_world, monkeypatch):
     campaign(tmp_path, fixture_world, frozen_config(fixture_world[0]), FROZEN_PLAN, monkeypatch, name="frozen")
     campaign(tmp_path, fixture_world, adaptive_config(fixture_world[0]), FROZEN_PLAN, monkeypatch)
-    for number in (1, 2):
+    for number, last in ((1, False), (2, True)):
         unfrozen = read(transition(tmp_path, number) / "request.json")
         frozen = read(
             tmp_path / "frozen" / transition(tmp_path, number).relative_to(tmp_path / "campaign") / "request.json"
         )
+        # An unfrozen campaign sends no such field, and the frozen one differs from it by that field alone.
+        assert "last_write" not in unfrozen and frozen.pop("last_write") is last
         assert shape(frozen) == shape(unfrozen)
         for key in ("kind", "next_session", "limits", "attempt"):
             assert frozen[key] == unfrozen[key]

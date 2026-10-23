@@ -180,9 +180,10 @@ is never a shared copy.
 ## Adaptive memory writer
 
 A schema `1.2` experiment may run the `attack_adaptive` arm: an external program writes into the carried memory
-before every session of a chain, including the first, after reading what the agent did in the session that just ended,
-or only up to the session that `freeze_from` names. The harness is the generic part. It runs any program that follows the contract below, checks what the program wants to
-write, applies it all or nothing and records everything; what the program writes and why is not its business.
+before every session of a chain, including the first, after reading what the agent did in the session that just ended;
+with `freeze_from`, only before the sessions that come before the one it names. The harness is the generic part. It
+runs any program that follows the contract below, checks what the program wants to write, applies it all or nothing
+and records everything; what the program writes and why is not its business.
 
 ```yaml
 schema_version: "1.2"
@@ -245,8 +246,8 @@ written and the program is not called, so the session starts from the memory the
 own edits included. Its folder holds only `applied.json` (no actions, no files, the same memory sha256 before and after)
 and `transition.json`, with the status `frozen`, `kind` `between_sessions`, `grade_status` `none`, no writer outcome
 and no request or response sha256. It measures whether what the program wrote before the freeze still acts once nothing
-renews it. The program is not told that a step is its last: the requests before the freeze are the ones an unfrozen
-campaign sends.
+renews it. The requests before the freeze are the ones an unfrozen campaign sends with one more field, `last_write`,
+which is true only in the step before the frozen session, so the program can tell its last step from the others.
 
 `status` is `applied`, `no_change` (a valid response that changes nothing), `rejected` (a valid response that breaks a
 rule below: nothing is applied), `writer_failed` (a non-zero exit, no `response.json`, a response not in the form
@@ -284,8 +285,9 @@ would never come.
 parsed `result.json`, the parsed `grade.json` or null, `grade_status` and `ctrf_path` when graded), `next_session`
 (`index`, `id`, `task_id`, `task_dir` in the dataset, `project`, `memory_dir`), `memory` (`files`: the carried memory
 under the next session's memory directory, path to text, without the user's file; `owned`: the paths an earlier applied
-step of this case created), `limits` as configured, and `attempt` (always 1: the program's own retries happen inside
-it).
+step of this case created), `limits` as configured, `attempt` (always 1: the program's own retries happen inside
+it), and, only when `freeze_from` is set, `last_write`: true in the step before the frozen session, which is the
+program's last, and false in the steps before it. A campaign without `freeze_from` sends no `last_write`.
 
 **The response** is `response.json` (`schema_version` `"1.0"`): `actions`, a list of `{"op": "write", "path": ...,
 "content": ...}` and `{"op": "delete", "path": ...}`, and an optional `note`. Paths are absolute container paths;
