@@ -103,6 +103,8 @@ class WriterConfig:
     deadline_seconds: int
     assignment_review: str | None
     files: dict[str, str] = field(default_factory=dict)
+    # File name -> sha256 of every design-package file read (not writer.json, whose content is in `settings`).
+    package: dict[str, str] = field(default_factory=dict)
 
     @property
     def prompt_sha256(self) -> str:
@@ -110,10 +112,14 @@ class WriterConfig:
 
     @property
     def config_sha256(self) -> str:
-        """One hash over everything that shapes a request: the settings, the API body, the prompts, the objective."""
+        """One hash over everything that shapes a request: the settings, the bytes of every design-package file, the
+        derived values. Machine paths are left out, so the same writer on another checkout has the same hash."""
+        settings = self.settings.model_dump(mode="json")
+        settings["repository_stores"] = sorted(settings["repository_stores"])
         return fingerprint(
             {
-                "settings": self.settings.model_dump(mode="json"),
+                "settings": settings,
+                "package": dict(sorted(self.package.items())),
                 "endpoint": self.endpoint,
                 "api": self.api,
                 "system_prompt": self.system_prompt,
@@ -134,6 +140,11 @@ class WriterConfig:
                 "deadline_seconds": self.deadline_seconds,
             }
         )
+
+    def identity(self) -> dict:
+        """The two hashes that name this writer: its configuration and its code. They are command words, so the
+        campaign manifest records them and `summarize` cannot pool campaigns of different writers."""
+        return {"config_sha256": self.config_sha256, "code_sha256": code_sha256()}
 
     def credential(self) -> str:
         key = os.environ.get(self.credential_env, "").strip()
@@ -300,7 +311,19 @@ def load_config(path: Path) -> WriterConfig:
         deadline_seconds=settings.deadline_seconds,
         assignment_review=review.get("status"),
         files=files,
+        package={Path(name).name: digest for name, digest in files.items() if Path(name) != path},
     )
+
+
+def check_identity(config: WriterConfig, config_sha256: str, code_sha256_: str) -> None:
+    """The command carries the hashes the campaign was set up with; a program whose configuration or code has changed
+    since then refuses to run instead of becoming a different attacker under the same manifest."""
+    for name, expected, actual in (
+        ("config_sha256", config_sha256, config.config_sha256),
+        ("code_sha256", code_sha256_, code_sha256()),
+    ):
+        if expected != actual:
+            raise ConfigError(f"{name} is {actual}, the command expects {expected}", "identity_mismatch")
 
 
 def check_limits(config: WriterConfig, limits: object) -> AdaptiveLimits:

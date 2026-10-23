@@ -90,7 +90,7 @@ def parse_request(raw: dict, config: WriterConfig) -> Request:
     if folder.name != f"{number + 1:03d}":
         raise InputError("transition_dir does not match next_session.index", "bad_request")
     finished = raw.get("finished_session")
-    kind = raw.get("kind")
+    kind = typed(raw, "kind", str)
     if (number == 0) != (finished is None) or kind != ("between_sessions" if number else "before_first_session"):
         raise InputError("kind, next_session.index and finished_session disagree", "bad_request")
     if finished is not None and (not isinstance(finished, dict) or finished.get("index") != number - 1):

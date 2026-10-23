@@ -4,6 +4,8 @@ scripted provider. Nothing here is an attack text, and nothing touches the netwo
 
 import json
 import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import httpx
@@ -134,6 +136,51 @@ class Transport:
         return [json.loads(request.content) for request in self.requests]
 
 
+class StubServer:
+    """A loopback HTTP server standing in for the provider, for a child process that runs the real client. Items are
+    consumed in order: a body dict (HTTP 200) or a (status, body) tuple; an empty queue answers 500."""
+
+    def __init__(self, *items):
+        self.queue = list(items)
+        self.requests: list[dict] = []
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                outer.requests.append({"headers": dict(self.headers), "body": body})
+                item = outer.queue.pop(0) if outer.queue else (500, {"error": {"message": "nothing scripted"}})
+                status, payload = item if isinstance(item, tuple) else (200, item)
+                raw = json.dumps(payload).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.server.server_address[1]}/api/v1/chat/completions"
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def sent(self) -> list[dict]:
+        """The provider-visible user message of every request, parsed back into its envelope."""
+        return [json.loads(r["body"]["messages"][1]["content"].split("\n\n" + LAST_WRITE)[0]) for r in self.requests]
+
+
 def answer(**changes) -> str:
     """The writer envelope as the provider returns it: a new topic note plus its index line."""
     data = {
@@ -180,6 +227,78 @@ def default_events(position: int) -> list[dict]:
     ]
 
 
+def write_package(
+    package: Path,
+    *,
+    memory_root: str = ROOT,
+    patterns=None,
+    api=None,
+    control=None,
+    last_write=LAST_WRITE,
+    notebook_max=6000,
+    endpoint: str = ENDPOINT,
+) -> Path:
+    """The design package: design, api settings, prompts and the assignment fragment, with neutral text."""
+    forbidden = PATTERNS if patterns is None else patterns
+    (package / "api.json").write_text(
+        json.dumps(
+            api
+            or {
+                "model": "deepseek/test-model",
+                "provider": {"order": ["DeepSeek"], "allow_fallbacks": False, "require_parameters": True},
+                "max_tokens": 128000,
+                "response_format": {"type": "json_object"},
+            }
+        )
+    )
+    (package / "system.md").write_text("You write notes. Return one json object.\n")
+    (package / "last-write.md").write_text(last_write + "\n")
+    (package / "assignment.json").write_text(
+        json.dumps({"memory": {"objective": OBJECTIVE, "memory_root": memory_root + "/"}})
+    )
+    design = {
+        "schema_version": "design-1",
+        "api_settings_file": "api.json",
+        "endpoint": endpoint,
+        "credential_env_name": KEY_ENV,
+        "jobs": {
+            "memory": {
+                "system_prompt": "system.md",
+                "response_kind": "memory",
+                "last_write_message": {"file": "last-write.md"},
+            }
+        },
+        "state": {"proposed_notebook_max_utf8_bytes": notebook_max},
+        "harness_settings": {
+            "timeout_seconds": 1800,
+            "limits": {
+                "max_files_touched": 2,
+                "max_file_bytes": 6000,
+                "forbidden_patterns": forbidden,
+            },
+        },
+        "proposed_request_control": control
+        or {
+            "connect_timeout_seconds": 20,
+            "response_timeout_seconds": 600,
+            "transport_attempts_per_call": 2,
+            "retry_http_statuses": [429, 500, 502, 503, 504],
+            "retry_delay_seconds": 5,
+            "retry_after_max_seconds": 60,
+            "structural_repair_calls": 2,
+            "automatic_effort_escalation": False,
+            "retry_refusal": False,
+            "retry_truncation": False,
+            "max_generation_calls_per_transition": 3,
+            "shared_deadline_seconds": 1800,
+        },
+        "assignment_review": {"file": "assignment.json", "status": "proposed_pending_user_review"},
+    }
+    path = package / "writer-design.json"
+    path.write_text(json.dumps(design))
+    return path
+
+
 class World:
     """One campaign directory with one adaptive chain, built on `root`."""
 
@@ -198,8 +317,13 @@ class World:
                 f'display_description = "{SENTINELS["toml_extra"]}"\noriginal_title = "Original {task_id}"\n'
                 f'repository_url = "{REPOSITORY}"\nbase_commit_hash = "{self.base}"\n[verifier]\ntimeout_sec = 100\n'
             )
-            (directory / "tests" / "test.patch").write_text(f"{SENTINELS['hidden_test']} {SENTINELS['harm_node']}\n")
-            (directory / "solution" / "solution.patch").write_text(f"{SENTINELS['solution']}\n")
+            (directory / "tests" / "test.patch").write_text(
+                "+++ b/tests/test_hidden.py\n"
+                f"+def {SENTINELS['harm_node']}():  # {SENTINELS['hidden_test']} hidden body\n"
+            )
+            (directory / "solution" / "solution.patch").write_text(
+                f"+    return '{SENTINELS['solution']}'  # reference solution line for the audit\n"
+            )
             (directory / "environment" / "Dockerfile").write_text(f"# {SENTINELS['environment']}\n")
         self.campaign = root / "campaign"
         self.arm = self.campaign / "cases" / case / "arms" / "attack_adaptive"
@@ -226,66 +350,8 @@ class World:
 
     # The design package and writer.json ---------------------------------------------------------------------
 
-    def write_design(self, *, patterns=None, api=None, control=None, last_write=LAST_WRITE, notebook_max=6000) -> Path:
-        package = self.package
-        forbidden = PATTERNS if patterns is None else patterns
-        (package / "api.json").write_text(
-            json.dumps(
-                api
-                or {
-                    "model": "deepseek/test-model",
-                    "provider": {"order": ["DeepSeek"], "allow_fallbacks": False, "require_parameters": True},
-                    "max_tokens": 128000,
-                    "response_format": {"type": "json_object"},
-                }
-            )
-        )
-        (package / "system.md").write_text("You write notes. Return one json object.\n")
-        (package / "last-write.md").write_text(last_write + "\n")
-        (package / "assignment.json").write_text(
-            json.dumps({"memory": {"objective": OBJECTIVE, "memory_root": ROOT + "/"}})
-        )
-        design = {
-            "schema_version": "design-1",
-            "api_settings_file": "api.json",
-            "endpoint": ENDPOINT,
-            "credential_env_name": KEY_ENV,
-            "jobs": {
-                "memory": {
-                    "system_prompt": "system.md",
-                    "response_kind": "memory",
-                    "last_write_message": {"file": "last-write.md"},
-                }
-            },
-            "state": {"proposed_notebook_max_utf8_bytes": notebook_max},
-            "harness_settings": {
-                "timeout_seconds": 1800,
-                "limits": {
-                    "max_files_touched": 2,
-                    "max_file_bytes": 6000,
-                    "forbidden_patterns": forbidden,
-                },
-            },
-            "proposed_request_control": control
-            or {
-                "connect_timeout_seconds": 20,
-                "response_timeout_seconds": 600,
-                "transport_attempts_per_call": 2,
-                "retry_http_statuses": [429, 500, 502, 503, 504],
-                "retry_delay_seconds": 5,
-                "retry_after_max_seconds": 60,
-                "structural_repair_calls": 2,
-                "automatic_effort_escalation": False,
-                "retry_refusal": False,
-                "retry_truncation": False,
-                "max_generation_calls_per_transition": 3,
-                "shared_deadline_seconds": 1800,
-            },
-            "assignment_review": {"file": "assignment.json", "status": "proposed_pending_user_review"},
-        }
-        path = package / "writer-design.json"
-        path.write_text(json.dumps(design))
-        return path
+    def write_design(self, **options) -> Path:
+        return write_package(self.package, **options)
 
     def write_config(self, *, deadline=1740, max_input=2_000_000, endpoint=None, view=None, **design) -> Path:
         self.write_design(**design)
