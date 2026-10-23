@@ -29,10 +29,11 @@ whose configuration or code differs from them refuses to run (`identity_mismatch
 `writer.json` without machine paths and the bytes of every design-package file (design, API settings, system prompt,
 last-write sentence, assignment fragment); `code_sha256` covers this package's sources and those of
 `sereno.context_eval`, whose `validate_actions` and memory layout the writer imports, each named with its package.
-Any change to either package, a merge included, makes words printed earlier stale: every step of a run started with
-them fails with `identity_mismatch`, the hook stops the arm after `stop_after_failures` such steps while the clean
-chains go on spending, and the campaign cannot be resumed with new words, since the manifest records the argv. Print
-the words again right before a paid run, from the commit the run uses.
+Any change to either package, a merge included, makes words printed earlier stale. In a run started with stale words
+every DeepSeek step fails with `identity_mismatch`; after `stop_after_failures` such steps the adaptive arm stops, and
+with it the whole campaign: the sessions already started finish and no new one starts in any arm. The campaign cannot
+be resumed with new words, since the manifest records the argv, so it needs a new campaign. Print the words again
+right before a paid run, from the commit the run uses.
 
 `uv run python -m sereno.writer audit CAMPAIGN [--dataset DIR] [--out FILE]` checks a finished campaign (below).
 
