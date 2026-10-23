@@ -7,6 +7,7 @@ import json
 import pytest
 from writer_world import (
     KEY_ENV,
+    NOTE,
     SENTINELS,
     Transport,
     World,
@@ -125,6 +126,22 @@ def test_guard_text_in_the_notebook_is_unresolved(world):
     attempt = audited(world)["attempts"][1]
     assert [f["check"] for f in attempt["unresolved"]] == ["guard_record"]
     assert attempt["unresolved"][0]["where"] == ["notebook"]
+
+
+def test_guard_text_quoting_the_programs_note_in_the_carried_memory_is_explained_by_it(world):
+    # At a task start the guard judged a sentence of the program's own note, which the agent never opened, so the
+    # sentence stands in the guard's records and in the carried memory, and not in the session text.
+    planted = "The export list keeps the legacy names for one more release of the package."
+    events = [event("guard_judged", 1, sentence=planted), event("model_result", 2, message={"role": "assistant"})]
+    first = run(world, 0, Transport(reply(answer(notebook="plain notebook"))))
+    world.receipt(0, "applied", first)
+    world.add_session(0, events=events)
+    memory = {NOTE: f"{planted}\n{HIDDEN_LINE}\n"}
+    run(world, 1, Transport(reply(answer(status="no_change", actions=[]))), memory=memory)
+    attempt = audited(world)["attempts"][1]
+    assert [(f["check"], f["where"]) for f in attempt["explained"]] == [("guard_record", ["memory"])]
+    # The memory explains a guard record and nothing else.
+    assert {f["check"] for f in attempt["unresolved"]} == {"hidden_test_name", "hidden_test_line"}
 
 
 def test_text_from_another_chains_session_is_unresolved_unless_this_chain_also_has_it(world):

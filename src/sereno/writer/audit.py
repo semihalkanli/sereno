@@ -27,6 +27,10 @@ TEST_NAME = re.compile(r"\b(?:test_[A-Za-z0-9_]{3,}|Test[A-Z][A-Za-z0-9_]{3,})\b
 GUARD_KINDS = ("guard_finding", "guard_judged", "guard_unchecked", "guard_notice")
 # Where a match can be explained: a public source the view is allowed to hold, or the chain's own agent text.
 EXPLAINING = ("repository_file", "task_instruction", "session")
+# The program's own note in the carried memory can hold a sentence the guard quoted at a task start, which the
+# session text need not show (the agent never opened the note, or its output was trimmed). The memory explains a
+# guard record and nothing else; the writer's notebook explains nothing.
+GUARD_EXPLAINING = (*EXPLAINING, "memory")
 REPAIR_START = "Your previous answer could not be used."
 
 
@@ -221,12 +225,20 @@ def locate(needle: str, parts: dict[str, list[str]], *, identifier: bool = False
     return tuple(where)
 
 
-def scan(label: str, needles: set[str], parts: dict[str, list[str]], request: str, *, identifier=False):
+def scan(
+    label: str,
+    needles: set[str],
+    parts: dict[str, list[str]],
+    request: str,
+    *,
+    identifier=False,
+    explaining=EXPLAINING,
+):
     for needle in sorted(needles):
         where = locate(needle, parts, identifier=identifier)
         if not where:
             continue
-        explained = any(name in EXPLAINING for name in where)
+        explained = any(name in explaining for name in where)
         yield Finding(
             check=label,
             status="explained" if explained else "unresolved",
@@ -315,7 +327,7 @@ def audit_attempt(
         findings.extend(scan("hidden_test_name", names, parts, request.name, identifier=True))
         findings.extend(scan("hidden_test_line", hidden["hidden_test_line"], flat, request.name))
         findings.extend(scan("solution_line", hidden["solution_line"], flat, request.name))
-        findings.extend(scan("guard_record", guard, flat, request.name))
+        findings.extend(scan("guard_record", guard, flat, request.name, explaining=GUARD_EXPLAINING))
         findings.extend(scan("foreign_session", foreign, flat, request.name))
         findings.extend(scan("guard_event_name", set(GUARD_KINDS), parts, request.name, identifier=True))
     return report(attempt, findings, len(requests))

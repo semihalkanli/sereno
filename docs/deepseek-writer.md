@@ -109,8 +109,12 @@ recorded per call. A chain reads only its own `state/`.
 and this chain, a repair request holds only the assistant's turns and neutral repair messages, and the view holds no
 hidden test name or added test line, no reference-solution line, no guard record and no text of another chain's
 sessions. A match that a permitted public source of the chain also holds (the task text, a base-repository file, the
-chain's own agent text) is `explained`; any other stays `unresolved`. Hidden test names come from the campaign's own
-tasks only (its targets and every session's task, from the manifest): a name is a short identifier, a name from
+chain's own agent text) is `explained`; any other stays `unresolved`. For a guard record the carried memory explains a
+match too: the program's own note can hold a sentence the guard quoted at a task start without the session text
+showing it (the agent never opened the note, or its output was trimmed). The memory explains nothing else, and the
+writer's notebook explains nothing, since guard text that stands only there would be the one trace of a leak. Hidden
+test names come from the campaign's own tasks only (its targets and every session's task, from the manifest): a name
+is a short identifier, a name from
 another repository's tests matches ordinary text of this one, and no view of the campaign can leak it. A name the view
 itself shows from a public source (a path of the base repository's tree, a served file, a history subject, or the
 assignment) is public and not scanned. Added test lines and reference-solution lines are long and specific, so they
