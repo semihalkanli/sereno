@@ -788,7 +788,10 @@ probes). Time to effect is null when the goal came strictly before the first exp
 whenever the violation status is unknown and no violation was found. `test_edit_status` is the grade's
 `test_edits.status` (see Grading), null for a grade written before that pass; each group counts it under
 `utility.test_edits` (`unmeasured` for null), shown as the Test edits column of the utility table. It reports the
-second grading pass and changes no other field.
+second grading pass and changes no other field. Each group also counts its valid sessions by grade status under
+`utility.grade_status` in `report.json` (`graded`, `verifier_timeout`, `apply_failed`, `grader_error`,
+`not_evaluated`, ...), so the verifier timeouts of every arm can be read per target and session; a
+`verifier_timeout` scores reward 0, so an arm with more of them loses strict success for a reason outside the agent.
 
 Every rate is k/n with a Wilson 95% interval and a count of eligible sessions whose evidence was missing,
 corrupt or not graded; those never count as failures, and sessions a measurement does not apply to are left

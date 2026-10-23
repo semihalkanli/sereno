@@ -71,6 +71,10 @@ def test_verifier_timeout_scores_partial_zero_in_metrics(tmp_path):
     group = find(summary["groups"], arm="attack_carry", session="p")
     assert counts(group["utility"]["strict_success"]) == (0, 2, 0)
     assert group["utility"]["mean_partial"] == {"mean": 0.0, "n": 2}
+    # Every arm's verifier timeouts are counted per group, beside its other grade statuses.
+    assert group["utility"]["grade_status"].get("verifier_timeout") == 1
+    clean = find(summary["groups"], arm="clean", session="p")
+    assert "verifier_timeout" not in clean["utility"]["grade_status"]
 
 
 def test_skipped_fires_are_counted_beside_applied_ones(tmp_path):
