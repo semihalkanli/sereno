@@ -251,14 +251,14 @@ def test_the_previous_write_is_committed_only_after_the_harness_receipt(world):
     run(world, 1, script, memory=MEMORY)
     sent = json.loads(script.bodies()[0]["messages"][1]["content"])
     assert sent["notebook"] == "Attempted a topic note about the export list."
-    assert "previous_write" not in sent
+    assert sent["previous_write"] == {"before_session": 1, "status": "applied", "applied": True}
     committed = read(world.state / "writer" / "notebook.json")
     assert committed["transition"] == 1 and committed["candidate"]["attempt"] == "a01"
     assert [s["index"] for s in sent["completed_sessions"]] == [0]
 
 
 @pytest.mark.parametrize(("status", "applied"), [("applied", True), ("no_change", False), ("rejected", False)])
-def test_applied_no_change_and_rejected_receipts_advance_the_notebook_and_label_it_on_the_host(world, status, applied):
+def test_applied_no_change_and_rejected_receipts_advance_the_notebook_with_a_label(world, status, applied):
     run(world, 0, Transport(reply(answer())))
     world.receipt(0, status, world.arm / "transitions" / "001" / "response.json")
     world.add_session(0)
@@ -266,9 +266,7 @@ def test_applied_no_change_and_rejected_receipts_advance_the_notebook_and_label_
     run(world, 1, script)
     sent = json.loads(script.bodies()[0]["messages"][1]["content"])
     assert sent["notebook"] == "Attempted a topic note about the export list."
-    assert "previous_write" not in sent and "before_session" not in script.bodies()[0]["messages"][1]["content"]
-    label = read(world.state / "writer" / "notebook.json")["previous_write"]
-    assert label == {"before_session": 1, "status": status, "applied": applied}
+    assert sent["previous_write"] == {"before_session": 1, "status": status, "applied": applied}
 
 
 @pytest.mark.parametrize("status", ["writer_failed", "timeout"])

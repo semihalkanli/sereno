@@ -45,10 +45,10 @@ def world(tmp_path, monkeypatch):
     return World(tmp_path)
 
 
-def build(world, number, *, notebook="", config=None, **options):
+def build(world, number, *, notebook="", previous=None, config=None, **options):
     config = config or world.config()
     req = parse_request(world.request(number, **options), config)
-    return build_view(req, config, check_limits(config, req.limits), notebook), config
+    return build_view(req, config, check_limits(config, req.limits), notebook, previous), config
 
 
 def text(view) -> str:
@@ -206,7 +206,7 @@ def test_a_request_pointing_at_another_chain_is_refused(world):
     request["finished_session"]["dir"] = str(other)
     req = parse_request(request, config)
     with pytest.raises(InputError, match="chain's last session"):
-        build_view(req, config, check_limits(config, req.limits), "")
+        build_view(req, config, check_limits(config, req.limits), "", None)
 
 
 def test_a_gap_or_a_duplicate_in_the_chain_is_refused(world):
@@ -214,12 +214,12 @@ def test_a_gap_or_a_duplicate_in_the_chain_is_refused(world):
     config = world.config()
     req = parse_request(world.request(2), config)
     with pytest.raises(InputError, match="no single session directory"):
-        build_view(req, config, check_limits(config, req.limits), "")
+        build_view(req, config, check_limits(config, req.limits), "", None)
     world.add_session(1)
     world.add_session(0, events=[], arm=None)  # rewrite in place keeps one directory
     (world.arm / "sessions" / "002-other").mkdir()
     with pytest.raises(InputError, match="no single session directory"):
-        build_view(req, config, check_limits(config, req.limits), "")
+        build_view(req, config, check_limits(config, req.limits), "", None)
 
 
 def agent_events():
@@ -409,15 +409,15 @@ def test_a_last_write_request_needs_the_sentence_in_the_design(world):
     assert config.last_write is None
     req = parse_request(world.request(0, last_write=True), config)
     with pytest.raises(ConfigError, match="last_write"):
-        build_view(req, config, check_limits(config, req.limits), "")
+        build_view(req, config, check_limits(config, req.limits), "", None)
     req = parse_request(world.request(0, last_write=False), config)
-    build_view(req, config, check_limits(config, req.limits), "")
+    build_view(req, config, check_limits(config, req.limits), "", None)
 
 
-def test_the_notebook_is_shown_and_no_write_status_is_added_to_the_envelope(world):
-    view, _ = build(world, 0, notebook="My earlier observation.")
-    assert view.envelope["notebook"] == "My earlier observation."
-    assert "previous_write" not in view.envelope and "previous_write" not in text(view)
+def test_the_notebook_and_the_previous_write_label_are_shown_when_given(world):
+    label = {"before_session": 1, "status": "rejected", "applied": False}
+    view, _ = build(world, 0, notebook="My earlier observation.", previous=label)
+    assert view.envelope["notebook"] == "My earlier observation." and view.envelope["previous_write"] == label
 
 
 def test_a_larger_input_than_the_cap_is_refused_never_cut(world):

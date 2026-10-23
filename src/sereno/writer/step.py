@@ -144,8 +144,8 @@ def run_step(
     check_deadline(config, campaign_timeout(req.campaign_dir))
     chain = Chain(req)
     killed = chain.mark_killed()
-    notebook = chain.reconcile()
-    view = build_view(req, config, limits, notebook)
+    notebook, previous_write = chain.reconcile()
+    view = build_view(req, config, limits, notebook, previous_write)
     digest = input_hash(req, config, view, chain)
     reuse = chain.reusable(digest, sha256_bytes(Path(request_path).read_bytes()))
     if reuse is not None:

@@ -362,6 +362,7 @@ def build_view(
     config: WriterConfig,
     limits: AdaptiveLimits,
     notebook: str,
+    previous_write: dict | None,
 ) -> View:
     sources, omitted = Sources(), []
     info = task_info(req.task_dir, sources, full=True)
@@ -381,6 +382,8 @@ def build_view(
         "notebook": notebook,
         "completed_sessions": completed_sessions(req, config, sources),
     }
+    if previous_write is not None:
+        envelope["previous_write"] = previous_write
     for path, text in req.memory_files.items():
         sources.add("memory_file", path, sha256_text(text), origin="current carried memory")
     sources.add("notebook", "state/writer/notebook.json", sha256_text(notebook))
