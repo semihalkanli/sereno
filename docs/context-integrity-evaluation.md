@@ -245,9 +245,12 @@ failures, `rejected` included, since a broken rule is a measured outcome. From t
 arm, `clean`, `clean_reset` and the attack arms alike, as with an exhausted budget: the sessions already started
 finish, the session after the last failure and every later one count as missing (a clean case copy whose origin
 session never ran too), and `run` exits 1. A resume then runs every arm on together, so the clean side never runs to
-its end while the adaptive side waits for a fixed program, which would undo the alternating order. The step that
-stopped the arm moves with its record to `transitions/stopped/<run>/NNN`, so a resume decides it again with the
-program (fixed by then); the earlier failures stay, since their sessions ran. With several workers, another chain's
+its end alone, which would undo the alternating order. The step that stopped the arm moves with its record to
+`transitions/stopped/<run>/NNN`, so a resume decides it again with the program; the earlier failures stay, since
+their sessions ran. A resume works only when the cause lay outside the recorded program, such as a provider outage,
+an exhausted balance or a missing key. A fix of the program's code or configuration changes its command or the
+sha256 of a file it names, and a fix in `sereno.context_eval` changes `code_sha256`; the resume then refuses the
+campaign, and it runs again from the start as a new campaign. With several workers, another chain's
 step can still be running when the arm stops: it is decided, but its session does not start either. If it failed, it
 moves to `transitions/stopped/<run>/NNN` too and joins the stop's steps; with any other status its record stays in
 place and a resume replays it. `campaign.json` and the output of `run` hold `adaptive_stop`: the reason and the
