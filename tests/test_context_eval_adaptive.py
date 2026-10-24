@@ -17,6 +17,8 @@ from pydantic import ValidationError
 from rich.console import Console
 
 from sereno.context_eval.adaptive import (
+    AdaptiveHook,
+    FailureStreak,
     ResponseError,
     default_grader,
     keeps_lines,
@@ -857,6 +859,74 @@ def test_a_step_in_flight_when_another_chain_stops_the_arm_starts_no_session(
         lines = (root / second / "state" / "calls.log").read_text().splitlines()
         assert [line.split()[0] for line in lines] == ["0", "1", "2"]
         assert read(root / second / "sessions" / "001-s1" / "memory_start.json") == {ALPHA: "alpha one\n"}
+
+
+@pytest.mark.parametrize("held_after", ["record", "step"])
+def test_a_failure_whose_session_has_not_started_moves_aside_when_another_chain_stops_the_arm(
+    tmp_path, fixture_world, monkeypatch, held_after
+):
+    # Two workers. The second chain's first step fails below the limit and stays in place; before its session starts,
+    # the first chain's failure stops the arm: right after the step's record ("record"), or once the step has returned
+    # and the session is about to start ("step"). The second chain waits there until the stopping step has moved aside,
+    # and the first chain's program waits for it, so the order holds on any machine.
+    root = tmp_path / "campaign"
+    first, second = (f"cases/first--adaptive--r00{n}/arms/attack_adaptive" for n in (1, 2))
+
+    def hold():
+        (root / "held").touch()
+        deadline = time.monotonic() + 30
+        while not list((root / first / "transitions" / "stopped").glob("*/001")) and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+    record, before = FailureStreak.record, AdaptiveHook.before
+
+    def held_record(self, status, step, aside):
+        moved = record(self, status, step, aside)
+        if held_after == "record" and step.startswith(second):
+            hold()
+        return moved
+
+    def held_before(self, number, memory):
+        outcome = before(self, number, memory)
+        if held_after == "step" and self.case == "first--adaptive--r002" and number == 0:
+            hold()
+        return outcome
+
+    monkeypatch.setattr(FailureStreak, "record", held_record)
+    monkeypatch.setattr(AdaptiveHook, "before", held_before)
+    plan = {"first--adaptive--r001/0": CRASH | {"wait_for": "held"}, "first--adaptive--r002/0": CRASH}
+    config = adaptive_config(fixture_world[0], repeats=2, workers=2)
+    outcome = campaign(tmp_path, fixture_world, config, plan, monkeypatch)
+    assert adaptive_rows(outcome, "first--adaptive--r002") == ["missing"] * 3
+    assert not (root / second / "transitions" / "001").exists()
+    (late,) = (root / second / "transitions" / "stopped").glob("*/001")
+    (stopping,) = (root / first / "transitions" / "stopped").glob("*/001")
+    assert read(late / "transition.json")["status"] == "writer_failed"
+    # The step's entry among the stop's steps names where it moved, in the order the steps were decided.
+    assert outcome["adaptive_stop"]["steps"] == [str(late.relative_to(root)), str(stopping.relative_to(root))]
+    # A resume decides the step again with the program instead of replaying a failure whose session never ran.
+    monkeypatch.setattr(FailureStreak, "record", record)
+    monkeypatch.setattr(AdaptiveHook, "before", before)
+    outcome = campaign(tmp_path, fixture_world, config, {"*": {"actions": []}}, monkeypatch, resume=True)
+    lines = (root / second / "state" / "calls.log").read_text().splitlines()
+    assert [line.split()[0] for line in lines] == ["0", "0", "1", "2"]
+    assert adaptive_rows(outcome, "first--adaptive--r002") == ["complete"] * 3
+
+
+def test_an_unstarted_step_moves_aside_only_after_the_stop_and_only_when_it_failed():
+    streak, moved = FailureStreak(2), []
+    assert not streak.unstarted("writer_failed", "a", "a-aside", lambda: moved.append("a"))
+    streak.record("writer_failed", "b", "b-aside")
+    # A step that does not fail ends the run of failures, so b is not among the steps that stop the arm.
+    streak.record("applied", "c", "c-aside")
+    streak.record("timeout", "d", "d-aside")
+    assert streak.record("writer_failed", "e", "e-aside")
+    assert streak.stopped is not None and streak.stopped["steps"] == ["d", "e-aside"]
+    assert not streak.unstarted("applied", "c", "c-aside", lambda: moved.append("c"))
+    assert streak.unstarted("timeout", "d", "d-aside", lambda: moved.append("d"))
+    assert streak.unstarted("writer_failed", "b", "b-aside", lambda: moved.append("b"))
+    assert moved == ["d", "b"]
+    assert streak.stopped["steps"] == ["d-aside", "e-aside", "b-aside"]
 
 
 def test_the_adaptive_stop_halts_every_arm_and_a_resume_runs_them_together(tmp_path, fixture_world, monkeypatch):

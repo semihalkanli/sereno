@@ -254,7 +254,9 @@ sha256 of a file it names, and a fix in `sereno.context_eval` changes `code_sha2
 campaign, and it runs again from the start as a new campaign. With several workers, another chain's
 step can still be running when the arm stops: it is decided, but its session does not start either. If it failed, it
 moves to `transitions/stopped/<run>/NNN` too and joins the stop's steps; with any other status its record stays in
-place and a resume replays it. `campaign.json` and the output of `run` hold `adaptive_stop`: the reason and the
+place and a resume replays it. So does a failure decided just before the stop, below the limit, whose session had not
+yet started when another chain stopped the arm: it moves to `transitions/stopped/<run>/NNN`, and its entry among the
+stop's steps names the new path, since only a failure whose session ran stays in place. `campaign.json` and the output of `run` hold `adaptive_stop`: the reason and the
 failed steps, or null. Only that stop, an exhausted budget, or a harness or configuration error such as an unwritable
 disk, stops the campaign.
 

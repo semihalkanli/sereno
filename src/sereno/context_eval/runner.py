@@ -848,10 +848,10 @@ def run_campaign(
             "user_file_after_sha256": fingerprint(memory[USER]),
         }
 
-    def advance(arm_dir: Path, target, step, start: int, transition=None) -> None:
+    def advance(arm_dir: Path, target, step, start: int, hook=None) -> None:
         """Run an arm's sessions from `start` on; each starts from the memory the previous one ended with, and the
-        repair session from that memory as the user repaired it. A `transition` (the adaptive hook) changes that
-        memory first, on the host, and hands the session the events that record it."""
+        repair session from that memory as the user repaired it. The adaptive `hook` changes that memory first, on the
+        host, hands the session the events that record it, and hears of a session that does not start."""
         if start == len(sessions):
             return
         previous = session_dir(arm_dir, start - 1, sessions[start - 1]) if start else None
@@ -860,17 +860,20 @@ def run_campaign(
             record, opening = None, ()
             if number == repairs:
                 memory, record = repair(memory)
-            if transition is not None:
+            if hook is not None:
                 try:
-                    memory, opening = transition(number, memory)
+                    memory, opening = hook.before(number, memory)
                 except AdaptiveStop:
                     # Like an exhausted budget: the sessions from here on stay missing and a resume runs them.
+                    hook.unstarted(number)
                     stop(arm_dir, number)
                     break
             directory = redo(session_dir(arm_dir, number, session))
             try:
-                memory, result = step(number, session, directory, memory, *([opening] if transition else []))
+                memory, result = step(number, session, directory, memory, *([opening] if hook else []))
             except NotStarted:
+                if hook is not None:
+                    hook.unstarted(number)
                 stop(arm_dir, number + 1)
                 break
             if record is not None:
@@ -965,7 +968,7 @@ def run_campaign(
                 streak=streak,
             )
             engine = engine_for([], adaptive_dir, start, enabled=False)
-            advance(adaptive_dir, target, run(target, engine), start, hook.before)
+            advance(adaptive_dir, target, run(target, engine), start, hook)
         carry_start, seed = len(sessions), config.seed + repeat
         if "attack_carry" in config.arms:
             carry_start = first_incomplete(arms / "attack_carry")
