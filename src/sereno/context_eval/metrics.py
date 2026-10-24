@@ -13,6 +13,7 @@ from statistics import fmean, median
 
 from pydantic import ValidationError
 
+from sereno.context_eval.config import fingerprint
 from sereno.context_eval.engine import (
     LINES,
     MEMORY_READ,
@@ -1710,17 +1711,62 @@ def different_treatments(roots: list[Path]) -> list[str]:
     return sorted(differing)
 
 
+# The config fields in which pooled campaigns may differ, each with its reason. Every other field must be equal, so a
+# field added to the config later blocks pooling until it is listed here.
+POOL_FREE = {
+    # Where the dataset sits on this machine; which tasks run is in `targets` and the manifest's task record.
+    "dataset_root",
+    # Pooling adds targets, which are the bootstrap clusters, and chains.
+    "targets",
+    "repeats",
+    # How many sessions run at once and with which random draw: the same treatment, sampled again.
+    "workers",
+    "seed",
+    # The budget of a whole run, not of a session; a session's own limit, cost_limit_usd, must be equal.
+    "campaign_cost_limit_usd",
+    # Which arms a campaign runs: attack_adaptive runs in a campaign of its own and pools with the others.
+    "arms",
+    # Compared by variant name in different_treatments. The checks are not free: they decide what a clean session's
+    # outcome is, and campaigns with other variant names would otherwise pool their clean rows under other checks.
+    "variants",
+    # Compared in adaptive_program, with the sha256 of every word that names a file in place of its path.
+    "adaptive",
+}
+
+
+def pooled_config(manifest: dict) -> dict:
+    """The part of a campaign's frozen config that pooled campaigns must share. A field that names a file counts by the
+    manifest's record of the file's content, not by its path: the model config by its text, the memory instructions by
+    their sha256."""
+    config = {key: value for key, value in manifest["config"].items() if key not in POOL_FREE}
+    model = manifest.get("model_config")
+    config["model_config_file"] = None if model is None else fingerprint(model)
+    config["memory"] = (config.get("memory") or {}) | {"instructions_file": manifest.get("memory_instructions_sha256")}
+    return config
+
+
+def different_config(roots: list[Path]) -> list[str]:
+    """The config fields, outside POOL_FREE, that are not the same in every campaign."""
+    configs = [pooled_config(json.loads((root / "manifest.json").read_text())) for root in roots]
+    keys = sorted(set().union(*configs))
+    return [key for key in keys if len({json.dumps(c.get(key), sort_keys=True) for c in configs}) > 1]
+
+
 def adaptive_program(root: Path) -> str:
     """What makes two adaptive campaigns the same attacker: the argv with every word that names a file replaced by its
-    sha256, so the same program from another checkout matches, its timeout, whether it grades first, and its limits;
-    null for a campaign without the arm."""
-    adaptive = json.loads((root / "manifest.json").read_text()).get("adaptive")
+    sha256, so the same program from another checkout matches, its timeout, whether it grades first, its limits, and
+    the harness code that checked and applied its writes (code_sha256: an experiment's blocks run at one fixed commit,
+    log 342); null for a campaign without the arm."""
+    manifest = json.loads((root / "manifest.json").read_text())
+    adaptive = manifest.get("adaptive")
     if adaptive is None:
         return "null"
     files = adaptive["program_sha256"]
     keys = ("timeout_seconds", "grade_before_step", "limits")
     return json.dumps(
-        {"command": [files.get(word, word) for word in adaptive["command"]]} | {k: adaptive[k] for k in keys},
+        {"command": [files.get(word, word) for word in adaptive["command"]]}
+        | {k: adaptive[k] for k in keys}
+        | {"code_sha256": manifest.get("code_sha256")},
         sort_keys=True,
     )
 
@@ -1743,12 +1789,14 @@ def summarize(roots: list[Path], out: Path, registry, *, bootstrap: int = 2000, 
     ):
         raise ValueError("campaigns differ in their repair and cannot be pooled")
     if len({adaptive_program(root) for root in roots} - {"null"}) > 1:
-        raise ValueError("campaigns differ in their adaptive program or limits and cannot be pooled")
+        raise ValueError("campaigns differ in their adaptive program, limits or code and cannot be pooled")
     if differing := different_treatments(roots):
         raise ValueError(
             "variants differ between campaigns in their interventions or checks and cannot be pooled: "
             + ", ".join(differing)
         )
+    if differing := different_config(roots):
+        raise ValueError("campaigns differ in their config and cannot be pooled: " + ", ".join(differing))
     rows = [row for root in roots for row in collect(root, registry, write=False)]
     campaigns = [{"name": root.name, "path": str(root.resolve())} for root in roots]
     outcome = analyze(rows, campaigns, bootstrap=bootstrap, seed=seed)

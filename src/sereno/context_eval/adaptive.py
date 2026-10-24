@@ -31,6 +31,8 @@ from sereno.context_eval.memory import USER, index_path, is_index, loaded_by, me
 from sereno.context_eval.schema import Adaptive, AdaptiveLimits, MemoryConfig, validate_path
 
 STATUSES = ("applied", "no_change", "rejected", "writer_failed", "timeout")
+# The statuses of a step the program failed; a run of them stops the arm.
+FAILED = frozenset({"writer_failed", "timeout"})
 SCHEMA_VERSION = "1.0"
 # What the harness keeps of the program's stdout and stderr, each, and the largest response it reads.
 CAPTURE_BYTES = 1_000_000
@@ -513,10 +515,12 @@ class AdaptiveStop(RuntimeError):
 
 class FailureStreak:
     """Steps that ended as writer_failed or timeout in a row across the campaign's adaptive chains, in the order they
-    were decided; a step that ends any other way resets the count. Shared by the chains of every worker."""
+    were decided; a step that ends any other way resets the count. Shared by the chains of every worker. `on_stop`
+    is called once with the reason when the streak stops the arm."""
 
-    def __init__(self, limit: int | None):
+    def __init__(self, limit: int | None, on_stop=None):
         self.limit, self.count, self.steps, self.stopped = limit, 0, [], None
+        self.on_stop = on_stop
         self.lock = threading.Lock()
 
     def check(self) -> None:
@@ -525,19 +529,44 @@ class FailureStreak:
                 raise AdaptiveStop(self.stopped["reason"])
 
     def record(self, status: str, step: str, aside: str) -> bool:
-        """Count one decided step; True when it reaches the limit, and the step then counts at `aside`."""
+        """Count one decided step; True when the step moves to `aside` and counts there: it reached the limit, or it
+        failed after the arm stopped (a step already in flight when another chain stopped the arm). A step that ends
+        any other way after the stop keeps its record in place."""
+        failed = status in FAILED
         with self.lock:
-            if status not in {"writer_failed", "timeout"}:
+            if self.stopped:
+                if failed:
+                    self.stopped["steps"].append(aside)
+                return failed
+            if not failed:
                 self.count, self.steps = 0, []
                 return False
             self.count += 1
-            if self.stopped or self.limit is None or self.count < self.limit:
+            if self.limit is None or self.count < self.limit:
                 self.steps.append(step)
                 return False
             self.stopped = {
                 "reason": f"the adaptive program failed {self.count} steps in a row",
                 "steps": [*self.steps, aside],
             }
+            if self.on_stop is not None:
+                self.on_stop(f"the adaptive arm stopped: {self.stopped['reason']}")
+            return True
+
+    def unstarted(self, status: str, step: str, aside: str, move) -> bool:
+        """A step decided before the stop and left in place whose session never started: another chain stopped the arm
+        between this step's record and its session. A failure then moves aside as one decided after the stop does:
+        `move` runs under the lock, and its entry in the stop's steps names `aside` (or joins them, when a later step
+        had ended the run of failures it was in). True when it moved."""
+        with self.lock:
+            if not self.stopped or status not in FAILED:
+                return False
+            move()
+            steps = self.stopped["steps"]
+            if step in steps:
+                steps[steps.index(step)] = aside
+            else:
+                steps.append(aside)
             return True
 
 
@@ -565,11 +594,14 @@ class AdaptiveHook:
         self.output, self.arm_dir, self.case, self.repeat, self.target = output, arm_dir, case, repeat, target
         self.projects, self.locate, self.grader, self.stamp = projects, locate, grader, stamp
         self.streak = streak or FailureStreak(config.adaptive.stop_after_failures)
+        # The step this run just decided and left in place, as (number, status), until its session starts or not.
+        self.decided: tuple[int, str] | None = None
 
     def before(self, number: int, memory: dict[str, str]) -> tuple[dict[str, str], list[tuple[str, dict]]]:
         """The memory session `number` starts from, given the memory the last complete session ended with, and the
         events to log when it starts. A recorded transition is replayed; the program is called only for one that was
         never recorded or was cut short. Raises AdaptiveStop once the program has failed too many steps in a row."""
+        self.decided = None
         self.streak.check()
         session = self.config.sessions[number]
         project = self.projects[session.task_id or self.target]
@@ -655,13 +687,37 @@ class AdaptiveHook:
             },
         }
         write_atomic(folder / "transition.json", record)
-        # The step that stops the arm moves aside with its record, so a resume decides it again with the program.
-        aside = self.arm_dir / "transitions" / "stopped" / self.stamp / folder.name
+        # The step that stops the arm, and a step that fails after the stop, moves aside with its record, so a resume
+        # decides it again with the program. Once the arm has stopped no session starts, whatever the step's status; a
+        # failure left in place whose session then does not start moves aside too (unstarted).
+        aside = self.aside(folder)
         if self.streak.record(status, str(folder.relative_to(self.output)), str(aside.relative_to(self.output))):
             aside.parent.mkdir(parents=True, exist_ok=True)
             folder.rename(aside)
-            self.streak.check()
+        else:
+            self.decided = (number, status)
+        self.streak.check()
         return after, record, applied
+
+    def aside(self, folder: Path) -> Path:
+        return self.arm_dir / "transitions" / "stopped" / self.stamp / folder.name
+
+    def unstarted(self, number: int) -> None:
+        """Session `number` does not start. When the arm stopped first and the step this run decided before it failed
+        and stayed in place, the step moves aside with its record, so a resume decides it again with the program
+        instead of replaying a failure whose session never ran."""
+        if self.decided is None or self.decided[0] != number:
+            return
+        folder = transition_dir(self.arm_dir, number)
+        aside = self.aside(folder)
+
+        def move():
+            aside.parent.mkdir(parents=True, exist_ok=True)
+            folder.rename(aside)
+
+        status = self.decided[1]
+        self.decided = None
+        self.streak.unstarted(status, str(folder.relative_to(self.output)), str(aside.relative_to(self.output)), move)
 
     def grade(self, directory: Path) -> tuple[str, str | None]:
         """Grade the session that just ended with the grader behind `grade`; a problem is a status, never a stop.

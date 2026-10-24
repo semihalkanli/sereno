@@ -94,16 +94,23 @@ def test_check_identity_names_what_differs(world):
     assert caught.value.code == "identity_mismatch" and "config_sha256" in str(caught.value)
 
 
-def test_the_code_hash_covers_the_package_sources():
+def test_the_code_hash_covers_the_package_and_the_harness_package_it_imports():
     import hashlib
     from pathlib import Path
 
+    import sereno.context_eval
     import sereno.writer
 
+    sources = [
+        *Path(sereno.writer.__file__).parent.glob("*.py"),
+        *Path(sereno.context_eval.__file__).parent.glob("*.py"),
+    ]
     digest = hashlib.sha256()
-    for source in sorted(Path(sereno.writer.__file__).parent.glob("*.py")):
-        digest.update(source.name.encode() + b"\0" + source.read_bytes() + b"\0")
+    for source in sorted(sources):
+        digest.update(f"{source.parent.name}/{source.name}".encode() + b"\0" + source.read_bytes() + b"\0")
     assert code_sha256() == digest.hexdigest()
+    # Both packages hold a config.py: each is named with its package, so neither can stand in for the other.
+    assert {"context_eval/config.py", "writer/config.py"} <= {f"{s.parent.name}/{s.name}" for s in sources}
 
 
 def test_exit_status_names_the_kind_of_failure_and_stderr_is_one_line(world, capsys, monkeypatch):

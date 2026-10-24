@@ -71,6 +71,10 @@ def test_verifier_timeout_scores_partial_zero_in_metrics(tmp_path):
     group = find(summary["groups"], arm="attack_carry", session="p")
     assert counts(group["utility"]["strict_success"]) == (0, 2, 0)
     assert group["utility"]["mean_partial"] == {"mean": 0.0, "n": 2}
+    # Every arm's verifier timeouts are counted per group, beside its other grade statuses.
+    assert group["utility"]["grade_status"].get("verifier_timeout") == 1
+    clean = find(summary["groups"], arm="clean", session="p")
+    assert "verifier_timeout" not in clean["utility"]["grade_status"]
 
 
 def test_skipped_fires_are_counted_beside_applied_ones(tmp_path):
@@ -217,6 +221,64 @@ def test_summarize_refuses_variants_that_are_different_treatments(tmp_path):
     with pytest.raises(ValueError, match=r"cannot be pooled: fact, other$"):
         summarize([first, second], tmp_path / "checks", default_registry())
     assert not (tmp_path / "payload").exists() and not (tmp_path / "checks").exists()
+
+
+def edit_manifest(root, config=None, **fields):
+    manifest = json.loads((root / "manifest.json").read_text())
+    write(root / "manifest.json", manifest | fields | {"config": manifest["config"] | (config or {})})
+
+
+@pytest.mark.parametrize(
+    ("change", "field"),
+    [
+        ({"cost_limit_usd": 9.0}, "cost_limit_usd"),
+        ({"wall_time_limit_seconds": 60}, "wall_time_limit_seconds"),
+        ({"agent": "anthropic"}, "agent"),
+        ({"guard": {"integrity": "restore"}}, "guard"),
+        ({"notices": [{"id": "n", "variants": ["fact"], "sessions": ["p"], "text": "x"}]}, "notices"),
+        ({"memory": {"max_files": 5}}, "memory"),
+        ({"schema_version": "1.1"}, "schema_version"),
+        # A field the config gains later blocks pooling until it is listed as free.
+        ({"future_treatment": True}, "future_treatment"),
+    ],
+)
+def test_summarize_refuses_campaigns_whose_config_differs_outside_the_free_fields(tmp_path, change, field):
+    first = build_campaign(tmp_path / "chain-a", targets=("t1",))
+    second = build_campaign(tmp_path / "chain-b", targets=("t2",))
+    edit_manifest(second, change)
+    with pytest.raises(ValueError, match=rf"differ in their config and cannot be pooled: {field}$"):
+        summarize([first, second], tmp_path / "pooled", default_registry())
+    assert not (tmp_path / "pooled").exists()
+
+
+def test_summarize_refuses_campaigns_with_other_variants_and_other_checks(tmp_path):
+    first = build_campaign(tmp_path / "chain-a", targets=("t1",), variants=("fact",))
+    second = build_campaign(tmp_path / "chain-b", targets=("t2",), variants=("other",))
+    config = json.loads((second / "manifest.json").read_text())["config"]
+    # No variant name is shared, so the treatments are never compared, and the clean rows would pool under two checks.
+    assert not set(config["variants"]) & set(json.loads((first / "manifest.json").read_text())["config"]["variants"])
+    edit_manifest(second, {"checks": checks({**GOAL, "contains": "CI_OTHER_GOAL"})})
+    with pytest.raises(ValueError, match=r"differ in their config and cannot be pooled: checks$"):
+        summarize([first, second], tmp_path / "pooled", default_registry())
+
+
+def test_summarize_pools_campaigns_that_differ_in_free_fields_and_file_paths_only(tmp_path):
+    first = build_campaign(tmp_path / "chain-a", targets=("t1",))
+    second = build_campaign(tmp_path / "chain-b", targets=("t2",))
+    files = {"model_config": "model: same\n", "memory_instructions_sha256": "a" * 64}
+    edit_manifest(
+        first, {"model_config_file": "/one/model.yaml", "memory": {"instructions_file": "/one/notes.md"}}, **files
+    )
+    free = {"dataset_root": "/elsewhere", "workers": 7, "seed": 5, "campaign_cost_limit_usd": 99.0, "repeats": 3}
+    paths = {"model_config_file": "/two/model.yaml", "memory": {"instructions_file": "/two/notes.md"}}
+    edit_manifest(second, free | paths, **files)
+    assert summarize([first, second], tmp_path / "pooled", default_registry(), bootstrap=10)["campaigns"]
+    edit_manifest(second, model_config="model: other\n")
+    with pytest.raises(ValueError, match=r"cannot be pooled: model_config_file$"):
+        summarize([first, second], tmp_path / "model", default_registry())
+    edit_manifest(second, model_config="model: same\n", memory_instructions_sha256="b" * 64)
+    with pytest.raises(ValueError, match=r"cannot be pooled: memory$"):
+        summarize([first, second], tmp_path / "instructions", default_registry())
 
 
 def test_report_prints_partial_scores_and_clean_memory_writes(tmp_path):

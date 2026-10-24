@@ -345,7 +345,9 @@ class World:
         }
 
     def write_manifest(self, timeout=1800) -> None:
-        manifest = {"config": {"checks": self.checks}, "adaptive": {"timeout_seconds": timeout}}
+        sessions = [{"id": s, "task_id": t} for s, t in zip(SESSION_IDS, TASK_IDS, strict=True)]
+        config = {"targets": [{"task_id": TASK_IDS[0]}], "sessions": sessions, "checks": self.checks}
+        manifest = {"config": config, "adaptive": {"timeout_seconds": timeout}}
         (self.campaign / "manifest.json").write_text(json.dumps(manifest))
 
     # The design package and writer.json ---------------------------------------------------------------------

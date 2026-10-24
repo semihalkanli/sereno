@@ -391,6 +391,10 @@ class ExperimentConfig(Contract):
                 )
             if self.repair is not None:
                 raise ValueError("attack_adaptive does not support repair")
+            # The guard keeps the memory a session starts from as already read, so with "changed" it would never read
+            # what the program planted between tasks (log 406).
+            if self.guard is not None and self.guard.read_at_start != "all":
+                raise ValueError("attack_adaptive with a guard needs guard.read_at_start: all")
             # The arm takes no interventions, so its cases do not depend on variants: one case per target and repeat.
             if self.variants not in ({"default": []}, {"adaptive": []}):
                 raise ValueError("attack_adaptive ignores variants and takes no interventions; leave variants out")

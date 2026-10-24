@@ -99,7 +99,7 @@ def test_the_notice_and_the_live_guard_work_in_one_session(tmp_path, factory):
         [],
         guard=GuardConfig(),
     )
-    runtime.guard.task_start("task", "t")
+    runtime.guard.task_start("task", "t", lineage_start=True)
     transport = Transport([native(bash("t1", "ls")), native(bash("t2", SUBMIT))])
     outcome = AnthropicAdapter(client=transport.client()).run(
         runtime, "task", "", adapter_config(tmp_path), runtime.session

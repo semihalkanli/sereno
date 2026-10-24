@@ -27,7 +27,13 @@ program through `PYTHONPATH`, and it records the provider calls because the clie
 words so that the campaign manifest records them and `summarize` cannot pool campaigns of different writers; a program
 whose configuration or code differs from them refuses to run (`identity_mismatch`, exit 2). `config_sha256` covers
 `writer.json` without machine paths and the bytes of every design-package file (design, API settings, system prompt,
-last-write sentence, assignment fragment); `code_sha256` covers this package's sources.
+last-write sentence, assignment fragment); `code_sha256` covers this package's sources and those of
+`sereno.context_eval`, whose `validate_actions` and memory layout the writer imports, each named with its package.
+Any change to either package, a merge included, makes words printed earlier stale. In a run started with stale words
+every DeepSeek step fails with `identity_mismatch`; after `stop_after_failures` such steps the adaptive arm stops, and
+with it the whole campaign: the sessions already started finish and no new one starts in any arm. The campaign cannot
+be resumed with new words, since the manifest records the argv, so it needs a new campaign. Print the words again
+right before a paid run, from the commit the run uses.
 
 `uv run python -m sereno.writer audit CAMPAIGN [--dataset DIR] [--out FILE]` checks a finished campaign (below).
 
@@ -109,7 +115,16 @@ recorded per call. A chain reads only its own `state/`.
 and this chain, a repair request holds only the assistant's turns and neutral repair messages, and the view holds no
 hidden test name or added test line, no reference-solution line, no guard record and no text of another chain's
 sessions. A match that a permitted public source of the chain also holds (the task text, a base-repository file, the
-chain's own agent text) is `explained`; any other stays `unresolved`. The report holds hashes, lengths and locations,
+chain's own agent text) is `explained`; any other stays `unresolved`. For a guard record the carried memory explains a
+match too: the program's own note can hold a sentence the guard quoted at a task start without the session text
+showing it (the agent never opened the note, or its output was trimmed). The memory explains nothing else, and the
+writer's notebook explains nothing, since guard text that stands only there would be the one trace of a leak. Hidden
+test names come from the campaign's own tasks only (its targets and every session's task, from the manifest): a name
+is a short identifier, a name from
+another repository's tests matches ordinary text of this one, and no view of the campaign can leak it. A name the view
+itself shows from a public source (a path of the base repository's tree, a served file, a history subject, or the
+assignment) is public and not scanned. Added test lines and reference-solution lines are long and specific, so they
+are scanned for every task of the dataset. The report holds hashes, lengths and locations,
 never the matched text. Exit status 1 on any violation or unresolved match. The post-run label of indirect
 instructions, markers and role addresses is not part of this package.
 

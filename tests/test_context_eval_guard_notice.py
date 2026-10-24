@@ -188,7 +188,7 @@ def live_runtime(tmp_path, factory, monkeypatch, judge, files, **settings):
         PROJECT,
         GuardConfig(**{**LIVE, **settings}),
     )
-    runtime.guard.task_start("task", "t")
+    runtime.guard.task_start("task", "t", lineage_start=True)
     return runtime
 
 

@@ -154,11 +154,15 @@ class WriterConfig:
 
 
 def code_sha256() -> str:
-    """A hash over this package's sources, recorded with every attempt: the campaign manifest hashes the words of the
-    command that name files, and with `python -m` that leaves the writer's own code out."""
+    """A hash over this package's sources and the harness package it imports (sereno.context_eval, whose
+    validate_actions and memory layout decide what the writer checks), recorded with every attempt: the campaign
+    manifest hashes the words of the command that name files, and with `python -m` that leaves the writer's own code
+    out."""
+    package = Path(__file__).parent
     digest = hashlib.sha256()
-    for source in sorted(Path(__file__).parent.glob("*.py")):
-        digest.update(source.name.encode() + b"\0" + source.read_bytes() + b"\0")
+    for source in sorted([*package.glob("*.py"), *(package.parent / "context_eval").glob("*.py")]):
+        name = f"{source.parent.name}/{source.name}"
+        digest.update(name.encode() + b"\0" + source.read_bytes() + b"\0")
     return digest.hexdigest()
 
 

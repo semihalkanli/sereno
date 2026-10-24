@@ -2,7 +2,6 @@
 grade-ready artifacts."""
 
 import hashlib
-import itertools
 import json
 import os
 import platform
@@ -12,7 +11,7 @@ import threading
 import time
 import uuid
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
@@ -93,11 +92,27 @@ class Budget:
         # Float sums of reservations need not return to exactly zero; the count of holders does.
         self.holders = 0
         self.unknown_cost = False
+        # Why the campaign starts no further session, such as the adaptive arm's stop; None while it runs.
+        self.halted: str | None = None
         self.condition = threading.Condition()
+
+    def halt(self, reason: str) -> None:
+        """Start no further session in any arm; the sessions already started finish."""
+        with self.condition:
+            self.halted = self.halted or reason
+            self.condition.notify_all()
+
+    def admit(self) -> None:
+        """Refuse a session once the campaign is halted, whether or not it reserves a cost budget."""
+        with self.condition:
+            if self.halted:
+                raise NotStarted(self.halted)
 
     def acquire(self, amount: float) -> float:
         with self.condition:
             while True:
+                if self.halted:
+                    raise NotStarted(self.halted)
                 if self.unknown_cost:
                     raise NotStarted("campaign cost accounting unavailable after a failed model call")
                 # A small tolerance keeps float sums such as 0.3 - 0.1 from refusing an exact fit.
@@ -119,14 +134,30 @@ class Budget:
             self.condition.notify_all()
 
 
-def run_session(config, session, task, identity, memory, engine, adapter, directory, budget, env_factory, opening=()):
+def run_session(
+    config,
+    session,
+    task,
+    identity,
+    memory,
+    engine,
+    adapter,
+    directory,
+    budget,
+    env_factory,
+    opening=(),
+    *,
+    lineage_start,
+):
     """Run one session in a fresh container. `opening` holds events (kind and fields) to log right after the session
-    starts, such as the step of the adaptive hook that planted part of its memory."""
+    starts, such as the step of the adaptive hook that planted part of its memory. `lineage_start` says that the session
+    starts its memory's lineage, for the live guard."""
     project = project_key(task.repository)
     # Configured memory names the project folder as {project}; carried memory already holds this session's paths.
     memory = resolve_files(memory, project)
     directory.mkdir(parents=True, exist_ok=False)
     try:
+        budget.admit()
         allowance = None if config.agent == "scripted" else budget.acquire(config.cost_limit_usd)
     except NotStarted:
         directory.rmdir()
@@ -211,7 +242,7 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         instruction = session.instruction or task.instruction
         if runtime.guard:
             # After the interventions, which stand for whatever changed memory between tasks; before the context.
-            runtime.guard.task_start(instruction, task.id)
+            runtime.guard.task_start(instruction, task.id, lineage_start=lineage_start)
         # Read after session_start interventions, so a planted instruction file loads as the repository's own.
         repo = repo_instructions(env.read_instructions(REPO_INSTRUCTIONS))
         context = mem.context(runtime.memory, repo)
@@ -674,7 +705,8 @@ def run_campaign(
         write_json(output / "manifest.json", manifest)
     # The cost limit applies to the spending of this run; a resume starts a new budget.
     budget = Budget(config.campaign_cost_limit_usd)
-    streak = FailureStreak(config.adaptive.stop_after_failures) if config.adaptive else None
+    # The adaptive arm's stop halts the whole campaign, so neither side of the comparison runs on alone.
+    streak = FailureStreak(config.adaptive.stop_after_failures, on_stop=budget.halt) if config.adaptive else None
     sessions = config.sessions
     started = datetime.now(UTC)
     superseded = output / "superseded" / started.strftime("%Y%m%dT%H%M%S.%fZ")
@@ -738,9 +770,10 @@ def run_campaign(
         return restored
 
     def run(target, engine):
-        """A step that runs the session in a fresh container."""
+        """A step that runs the session in a fresh container. A chain's first session starts its memory's lineage, and
+        so does a `reset` probe, which starts from the configured memory."""
 
-        def step(number, session, directory, memory, opening=()):
+        def step(number, session, directory, memory, opening=(), reset=False):
             task_id = session.task_id or target.task_id
             try:
                 return run_session(
@@ -755,6 +788,7 @@ def run_campaign(
                     budget,
                     env_factory,
                     opening,
+                    lineage_start=number == 0 or reset,
                 )
             except NotStarted:
                 raise
@@ -814,10 +848,10 @@ def run_campaign(
             "user_file_after_sha256": fingerprint(memory[USER]),
         }
 
-    def advance(arm_dir: Path, target, step, start: int, transition=None) -> None:
+    def advance(arm_dir: Path, target, step, start: int, hook=None) -> None:
         """Run an arm's sessions from `start` on; each starts from the memory the previous one ended with, and the
-        repair session from that memory as the user repaired it. A `transition` (the adaptive hook) changes that
-        memory first, on the host, and hands the session the events that record it."""
+        repair session from that memory as the user repaired it. The adaptive `hook` changes that memory first, on the
+        host, hands the session the events that record it, and hears of a session that does not start."""
         if start == len(sessions):
             return
         previous = session_dir(arm_dir, start - 1, sessions[start - 1]) if start else None
@@ -826,17 +860,20 @@ def run_campaign(
             record, opening = None, ()
             if number == repairs:
                 memory, record = repair(memory)
-            if transition is not None:
+            if hook is not None:
                 try:
-                    memory, opening = transition(number, memory)
+                    memory, opening = hook.before(number, memory)
                 except AdaptiveStop:
                     # Like an exhausted budget: the sessions from here on stay missing and a resume runs them.
+                    hook.unstarted(number)
                     stop(arm_dir, number)
                     break
             directory = redo(session_dir(arm_dir, number, session))
             try:
-                memory, result = step(number, session, directory, memory, *([opening] if transition else []))
+                memory, result = step(number, session, directory, memory, *([opening] if hook else []))
             except NotStarted:
+                if hook is not None:
+                    hook.unstarted(number)
                 stop(arm_dir, number + 1)
                 break
             if record is not None:
@@ -878,7 +915,7 @@ def run_campaign(
             if number != exposures:
                 return probe(number, session, directory, memory)
             if not ablated:
-                return probe(number, session, directory, config.memory.initial())
+                return probe(number, session, directory, config.memory.initial(), reset=True)
             memory, record = ablate(memory, events, exposure_journal(arm_dir))
             outcome = probe(number, session, directory, memory)
             write_atomic(directory / "ablation.json", record)
@@ -900,7 +937,7 @@ def run_campaign(
         if "clean_reset" in config.arms:
             reset_dir = origin(target, repeat, "clean_reset")
             starts["clean_reset"] = branch(reset_dir, target, arm_dir, "clean", start, [], False, enabled=False)
-        return (target.task_id, repeat), starts
+        return starts
 
     def run_case(item):
         target, (variant, events), repeat = item
@@ -913,23 +950,6 @@ def run_campaign(
                 case_dir / "case.json",
                 {"target": target.task_id, "variant": variant, "repeat": repeat, "seed": config.seed + repeat},
             )
-        for arm in ("clean", "clean_reset"):
-            if arm not in config.arms:
-                continue
-            # A copy follows its origin: re-running an origin session replaces its copy and every later one.
-            start = min(
-                first_incomplete(arms / arm, lambda session: True), origin_starts[(target.task_id, repeat)][arm]
-            )
-            for number, session in enumerate(sessions[start:], start=start):
-                # A clean_reset exposure copy names the clean session it shares, so it counts and grades once.
-                source = arm if not session.exposure else "clean"
-                try:
-                    share(origin(target, repeat, source), source)(
-                        number, session, redo(session_dir(arms / arm, number, session)), None
-                    )
-                except NotStarted:
-                    stop(arms / arm, number + 1)
-                    break
         if "attack_adaptive" in config.arms:
             # No interventions: the arm differs from the clean one only by what the program plants between sessions.
             adaptive_dir = arms / "attack_adaptive"
@@ -948,7 +968,7 @@ def run_campaign(
                 streak=streak,
             )
             engine = engine_for([], adaptive_dir, start, enabled=False)
-            advance(adaptive_dir, target, run(target, engine), start, hook.before)
+            advance(adaptive_dir, target, run(target, engine), start, hook)
         carry_start, seed = len(sessions), config.seed + repeat
         if "attack_carry" in config.arms:
             carry_start = first_incomplete(arms / "attack_carry")
@@ -963,16 +983,55 @@ def run_campaign(
                 branch(
                     arms / arm, target, arms / "attack_carry", "attack_carry", carry_start, events, ablated, seed=seed
                 )
+        # The clean copies come last: the case's attack arms run beside its origin, and the copies wait for it.
+        for arm in ("clean", "clean_reset"):
+            if arm not in config.arms:
+                continue
+            origin_start = origins[(target.task_id, repeat)].result()[arm]
+            # A copy follows its origin: re-running an origin session replaces its copy and every later one.
+            start = min(first_incomplete(arms / arm, lambda session: True), origin_start)
+            for number, session in enumerate(sessions[start:], start=start):
+                # A clean_reset exposure copy names the clean session it shares, so it counts and grades once.
+                source = arm if not session.exposure else "clean"
+                try:
+                    share(origin(target, repeat, source), source)(
+                        number, session, redo(session_dir(arms / arm, number, session)), None
+                    )
+                except NotStarted:
+                    stop(arms / arm, number + 1)
+                    break
         return case_id
 
+    origins, jobs = {}, {}
     try:
         with ThreadPoolExecutor(max_workers=config.workers) as pool:
-            origin_starts = {}
-            if "clean" in config.arms:
-                origin_starts = dict(pool.map(run_origin, itertools.product(config.targets, range(config.repeats))))
-            cases = list(
-                pool.map(run_case, itertools.product(config.targets, config.variants.items(), range(config.repeats)))
-            )
+            # Clean and attack chains alternate: each origin is followed at once by its target's and repeat's cases,
+            # in variant order, so a run cut short and the hours between chains fall on both sides alike. The queue is
+            # first in, first out, so an origin has started before any case that waits for it.
+            for planned in config.targets:
+                for repeat in range(config.repeats):
+                    if "clean" in config.arms:
+                        origins[(planned.task_id, repeat)] = pool.submit(run_origin, (planned, repeat))
+                    for variant in config.variants.items():
+                        jobs[(planned.task_id, variant[0], repeat)] = pool.submit(run_case, (planned, variant, repeat))
+            try:
+                done, _ = wait([*origins.values(), *jobs.values()], return_when=FIRST_EXCEPTION)
+            except BaseException:
+                # An interrupt of the run itself, such as Ctrl-C: the jobs not yet started are dropped and the running
+                # ones finish before the sweep; a resume runs the rest.
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise
+            if errors := [error for future in done if (error := future.exception()) is not None]:
+                # Jobs not yet started are dropped; a resume runs them.
+                pool.shutdown(wait=True, cancel_futures=True)
+                raise errors[0]
+            # The case list keeps the order of targets, variants and repeats.
+            cases = [
+                jobs[(planned.task_id, name, repeat)].result()
+                for planned in config.targets
+                for name in config.variants
+                for repeat in range(config.repeats)
+            ]
     finally:
         # Also when a session raised out of the pool: no container this run failed to remove is left behind unretried.
         unremoved = sweep()

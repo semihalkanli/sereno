@@ -3,7 +3,8 @@
 - task start, after the session_start interventions and before the context is built: rule 1 compares the carried
   files with the copy the harness kept at the end of the previous task; the content rules read every file that the
   copy does not hold as it now is (a file carried unchanged was read when it was written), or every file when the
-  session starts from the configured memory or `read_at_start` is "all";
+  session starts from the configured memory; with `read_at_start` "all", every file but the user's, which is read in
+  the first task of its memory's lineage (as the runner reports it) and when it changed;
 - each write, after every command: rule 2 on a path the agent wrote, the content rules on what the new content adds;
 - task end: rule 2 on the repository's instruction files, and the integrity record of every carried file.
 
@@ -104,7 +105,9 @@ class LiveGuard:
                 self.ask("write", path, after, [s for s in guard.sentences(after) if s not in known])
         self.put_back(restore)
 
-    def task_start(self, instruction: str, task_id: str) -> None:
+    def task_start(self, instruction: str, task_id: str, *, lineage_start: bool) -> None:
+        """`lineage_start` is the runner's word that the task starts its memory's lineage: a chain's first task, or a
+        reset probe that starts from the configured memory."""
         current = self.runtime.memory
         self.instructions_start = self.runtime.env.read_instructions(REPO_INSTRUCTIONS)
         # Everything the harness relays from the user: the task text and the user's own file.
@@ -123,11 +126,16 @@ class LiveGuard:
                     self.report("task_start", finding, "restore")
                 else:
                     self.report("task_start", finding)
-        # Memory equal to the configured memory has no earlier task under the guard behind it, so every file is read:
-        # a chain's first task, a reset probe, or a task after one that changed nothing (read again).
-        first = self.config.read_at_start == "all" or self.kept == self.runtime.initial()
+        # "changed": memory equal to the configured memory has no earlier task under the guard behind it, so every file
+        # is read: a chain's first task, a reset probe, or a task after one that changed nothing (read again). "all"
+        # reads every note at every task, but the user's file only in the first task of its lineage and when it
+        # changed, alike in every arm: only the agent and the user write it, never the adaptive program, and the
+        # agent's writes to it are read when they happen. That first task comes from the runner, since the adaptive
+        # program may write before it, so memory equality cannot tell it.
+        every = self.config.read_at_start == "all"
+        first = not every and self.kept == self.runtime.initial()
         for path, text in current.items():
-            if first or self.kept.get(path) != text:
+            if first or (every and (path != USER or lineage_start)) or self.kept.get(path) != text:
                 if self.config.content != "off":
                     for finding in guard.content_findings(path, text):
                         self.report("task_start", finding)

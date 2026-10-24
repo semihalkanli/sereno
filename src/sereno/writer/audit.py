@@ -27,6 +27,10 @@ TEST_NAME = re.compile(r"\b(?:test_[A-Za-z0-9_]{3,}|Test[A-Z][A-Za-z0-9_]{3,})\b
 GUARD_KINDS = ("guard_finding", "guard_judged", "guard_unchecked", "guard_notice")
 # Where a match can be explained: a public source the view is allowed to hold, or the chain's own agent text.
 EXPLAINING = ("repository_file", "task_instruction", "session")
+# The program's own note in the carried memory can hold a sentence the guard quoted at a task start, which the
+# session text need not show (the agent never opened the note, or its output was trimmed). The memory explains a
+# guard record and nothing else; the writer's notebook explains nothing.
+GUARD_EXPLAINING = (*EXPLAINING, "memory")
 REPAIR_START = "Your previous answer could not be used."
 
 
@@ -139,14 +143,58 @@ def agent_strings(directory: Path) -> set[str]:
     return {line for line in found if len(line) >= MIN_LINE}
 
 
-def foreign_material(campaign: Path, own_arm: Path) -> set[str]:
-    """Agent text of every session in the campaign outside this chain: other arms, cases, repeats and origins."""
-    found: set[str] = set()
-    for events in sorted(campaign.glob("**/sessions/*/events.jsonl")):
-        if own_arm in events.parents:
-            continue
-        found |= agent_strings(events.parent)
-    return found
+def campaign_text(campaign: Path) -> dict[Path, set[str]]:
+    """The agent text of every session in the campaign, by session directory: other arms, cases, repeats and origins
+    included. Read once for the whole audit."""
+    return {
+        events.parent: agent_strings(events.parent) for events in sorted(campaign.glob("**/sessions/*/events.jsonl"))
+    }
+
+
+def dataset_hidden(tasks_root: Path, own_tasks: set[str]) -> dict[str, set[str]]:
+    """The hidden material, read once for the whole audit: the added test lines and reference-solution lines of every
+    task in the dataset, which are long and specific, and the test names of the campaign's own tasks only, since a
+    short name from another repository's tests matches ordinary text and no view of this campaign can leak it."""
+    hidden: dict[str, set[str]] = {"hidden_test_name": set(), "hidden_test_line": set(), "solution_line": set()}
+    for task_dir in sorted(p for p in tasks_root.iterdir() if p.is_dir()) if tasks_root.is_dir() else []:
+        for label, found in hidden_material(task_dir).items():
+            if label != "hidden_test_name" or task_dir.name in own_tasks:
+                hidden[label] |= found
+    return hidden
+
+
+def campaign_tasks(config: dict) -> set[str]:
+    """The tasks the campaign's chains work on: its targets and every session's own task."""
+    tasks = {t.get("task_id") for t in config.get("targets") or []}
+    tasks |= {s.get("task_id") for s in config.get("sessions") or []}
+    tasks.discard(None)
+    if not tasks:
+        raise InputError("the campaign's manifest names no targets", "bad_audit")
+    return tasks
+
+
+def public_names(view: list[dict], envelope: dict) -> set[str]:
+    """Test names the view shows from a public source: the base repository's tree paths, the files and the history
+    subjects it serializes, and the assignment (the objective and a last-write sentence). Such a name is public, not
+    hidden."""
+    repository = envelope.get("repository") or {}
+    _, end = json.JSONDecoder().raw_decode(view[1]["content"])
+    texts = [
+        *repository.get("tree", {}),
+        *(entry.get("content", "") for entry in repository.get("files", [])),
+        *repository.get("history", []),
+        envelope.get("objective", ""),
+        view[1]["content"][end:],
+    ]
+    return {name for text in texts if isinstance(text, str) for name in TEST_NAME.findall(text)}
+
+
+def chain_material(texts: dict[Path, set[str]], own_arm: Path, session_dirs: list[Path]) -> tuple[set[str], set[str]]:
+    """One chain's guard records and the agent text of every session outside it that the chain itself never had,
+    computed once for all of the chain's attempts."""
+    own = {line for directory in session_dirs for line in texts.get(directory, set())}
+    foreign = {line for directory, lines in texts.items() if own_arm not in directory.parents for line in lines}
+    return guard_material(session_dirs), foreign - own
 
 
 def parts_of(envelope: dict) -> dict[str, list[str]]:
@@ -177,12 +225,20 @@ def locate(needle: str, parts: dict[str, list[str]], *, identifier: bool = False
     return tuple(where)
 
 
-def scan(label: str, needles: set[str], parts: dict[str, list[str]], request: str, *, identifier=False):
+def scan(
+    label: str,
+    needles: set[str],
+    parts: dict[str, list[str]],
+    request: str,
+    *,
+    identifier=False,
+    explaining=EXPLAINING,
+):
     for needle in sorted(needles):
         where = locate(needle, parts, identifier=identifier)
         if not where:
             continue
-        explained = any(name in EXPLAINING for name in where)
+        explained = any(name in explaining for name in where)
         yield Finding(
             check=label,
             status="explained" if explained else "unresolved",
@@ -217,7 +273,15 @@ def check_repair_messages(messages: list[dict], request: str) -> list[Finding]:
     return findings
 
 
-def audit_attempt(attempt: Path, own_arm: Path, campaign: Path, tasks_root: Path, session_dirs: list[Path]) -> dict:
+def audit_attempt(
+    attempt: Path,
+    own_arm: Path,
+    tasks_root: Path,
+    hidden: dict[str, set[str]],
+    guard: set[str],
+    foreign: set[str],
+) -> dict:
+    """One attempt against the campaign's hidden material and its chain's guard records and foreign text."""
     findings: list[Finding] = []
     try:
         manifest = json.loads((attempt / "manifest.json").read_text())
@@ -247,13 +311,7 @@ def audit_attempt(attempt: Path, own_arm: Path, campaign: Path, tasks_root: Path
             findings.append(Finding("source", "violation", f"task source outside the dataset: {Path(ref).name}"))
     parts = parts_of(envelope)
     flat = {name: [norm(text) for text in texts] for name, texts in parts.items()}
-    hidden: dict[str, set[str]] = {"hidden_test_name": set(), "hidden_test_line": set(), "solution_line": set()}
-    for task_dir in sorted(p for p in tasks_root.iterdir() if p.is_dir()) if tasks_root.is_dir() else []:
-        for label, found in hidden_material(task_dir).items():
-            hidden[label] |= found
-    own_text = {line for directory in session_dirs for line in agent_strings(directory)}
-    guard = guard_material(session_dirs)
-    foreign = {line for line in foreign_material(campaign, own_arm) if line not in own_text}
+    names = hidden["hidden_test_name"] - public_names(view, envelope)
     requests = sorted(attempt.glob("call-*.request.json"))
     for request in requests:
         try:
@@ -266,10 +324,10 @@ def audit_attempt(attempt: Path, own_arm: Path, campaign: Path, tasks_root: Path
                 Finding("record", "violation", "a request does not start with the recorded view", request.name)
             )
         findings.extend(check_repair_messages(messages, request.name))
-        findings.extend(scan("hidden_test_name", hidden["hidden_test_name"], parts, request.name, identifier=True))
+        findings.extend(scan("hidden_test_name", names, parts, request.name, identifier=True))
         findings.extend(scan("hidden_test_line", hidden["hidden_test_line"], flat, request.name))
         findings.extend(scan("solution_line", hidden["solution_line"], flat, request.name))
-        findings.extend(scan("guard_record", guard, flat, request.name))
+        findings.extend(scan("guard_record", guard, flat, request.name, explaining=GUARD_EXPLAINING))
         findings.extend(scan("foreign_session", foreign, flat, request.name))
         findings.extend(scan("guard_event_name", set(GUARD_KINDS), parts, request.name, identifier=True))
     return report(attempt, findings, len(requests))
@@ -294,20 +352,26 @@ def report(attempt: Path, findings: list[Finding], requests: int) -> dict:
 def audit_campaign(campaign: Path, dataset: Path | None = None) -> dict:
     """Audit every recorded attempt of every adaptive chain of a campaign directory."""
     campaign = Path(campaign).resolve()
+    try:
+        config = json.loads((campaign / "manifest.json").read_text())["config"]
+    except (OSError, ValueError, KeyError, TypeError):
+        config = None
+    if not isinstance(config, dict):
+        raise InputError("the campaign has no readable manifest.json", "bad_audit")
     if dataset is None:
-        try:
-            manifest = json.loads((campaign / "manifest.json").read_text())
-            dataset = Path(manifest["config"]["dataset_root"])
-        except (OSError, ValueError, KeyError, TypeError):
-            raise InputError("pass --dataset: the manifest names no dataset_root", "bad_audit") from None
+        if not isinstance(config.get("dataset_root"), str):
+            raise InputError("pass --dataset: the manifest names no dataset_root", "bad_audit")
+        dataset = Path(config["dataset_root"])
     tasks_root = Path(dataset).resolve() / "tasks"
+    hidden, texts = dataset_hidden(tasks_root, campaign_tasks(config)), campaign_text(campaign)
     attempts = []
     for arm in sorted(campaign.glob("cases/*/arms/attack_adaptive")):
         root = arm / "state" / "writer"
         sessions = sorted(p for p in (arm / "sessions").glob("*") if p.is_dir())
+        guard, foreign = chain_material(texts, arm, sessions)
         for attempt in sorted(root.glob("[0-9][0-9][0-9]/a*")) if root.is_dir() else []:
             if (attempt / "view.json").exists():
-                attempts.append(audit_attempt(attempt, arm, campaign, tasks_root, sessions))
+                attempts.append(audit_attempt(attempt, arm, tasks_root, hidden, guard, foreign))
     return {
         "campaign": str(campaign),
         "attempts": attempts,
