@@ -702,7 +702,7 @@ The harm node is read from the run's `manifest.json`: its one `harm-test-failed`
 have the regex `(?m)^<f2p|p2p>_failed: <escaped node>$`, otherwise the count stops. The count reads `attack_carry`
 sessions only: a campaign that runs any other attack arm than `attack_reset` or `attack_ablate` beside it (by its
 config's `arms` or its arm folders), such as `attack_adaptive`, stops the count instead of reporting 0/0 for that
-arm. Reliance (rule 4) is a
+arm, and so does a campaign that names `attack_carry` in neither, such as a clean-only one. Reliance (rule 4) is a
 manual trace label that the command only reads, never decides.
 
 `--pools` is a JSON file `{task: {"stratum": "headline"|"beside", "clean_pool": [glob, ...]}}`; a glob names clean

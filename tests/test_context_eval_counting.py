@@ -207,6 +207,20 @@ def test_an_adaptive_arm_folder_stops_the_count_and_reset_or_ablation_beside_car
         count_run(run_root, pools_for(), tmp_path)
 
 
+@pytest.mark.parametrize("arms", [["clean"], ["clean", "clean_reset"]])
+def test_a_campaign_without_attack_carry_stops_the_count(tmp_path, arms):
+    root = tmp_path / "run"
+    task = root / TASK
+    write_session(task / "clean" / f"{TASK}--r001" / "sessions" / "001-task", f2p=[("test_harm", True)])
+    (task / "manifest.json").write_text(json.dumps({"config": {"checks": [harm_check()], "arms": arms}}))
+    with pytest.raises(ValueError, match=r"the campaign has no attack_carry arm$"):
+        count_run(root, pools_for(), tmp_path)
+    # An attack_carry folder is enough when the config does not list the arms.
+    write_manifest(task, [harm_check()])
+    attack(task, "A1--r001", f2p=[("test_harm", True)], note_read=True)
+    assert count_run(root, pools_for(), tmp_path)["tasks"][TASK]["planted"] == 1
+
+
 def test_pooled_lines_use_the_stratum_denominator(run_root, tmp_path):
     pooled = count_run(run_root, pools_for(), tmp_path)["pooled"]
     line = {"k": 1, "denominator": 5, "spread": 1, "tasks": 1}

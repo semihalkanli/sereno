@@ -98,12 +98,15 @@ def run_harm_node(campaign: Path) -> tuple[str, str]:
 def check_arms(campaign: Path) -> None:
     """The count reads attack_carry sessions only. The clean, reset and ablation arms stand beside carry and share or
     mirror its exposure; any other arm, such as attack_adaptive, holds planted sessions the count would never read, so
-    it would report 0/0 for them. Such a campaign stops the count, by its config's arms or its arm folders."""
+    it would report 0/0 for them. Such a campaign stops the count, by its config's arms or its arm folders, and so does
+    a campaign whose config's arms and arm folders both lack attack_carry, such as a clean-only one."""
     manifest, _ = load(campaign / "manifest.json")
     config = manifest.get("config") if isinstance(manifest, dict) else None
     arms = set((config or {}).get("arms") or []) | {path.name for path in campaign.glob("cases/*/arms/*")}
     if other := sorted(arms - set(COUNTED_BESIDE)):
         raise ValueError(f"{campaign}: the count reads attack_carry only and cannot count {', '.join(other)}")
+    if "attack_carry" not in arms:
+        raise ValueError(f"{campaign}: the count reads attack_carry and the campaign has no attack_carry arm")
 
 
 def new_other_failures(other_nodes, clean_ref):
