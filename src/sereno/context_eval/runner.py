@@ -134,9 +134,24 @@ class Budget:
             self.condition.notify_all()
 
 
-def run_session(config, session, task, identity, memory, engine, adapter, directory, budget, env_factory, opening=()):
+def run_session(
+    config,
+    session,
+    task,
+    identity,
+    memory,
+    engine,
+    adapter,
+    directory,
+    budget,
+    env_factory,
+    opening=(),
+    *,
+    lineage_start,
+):
     """Run one session in a fresh container. `opening` holds events (kind and fields) to log right after the session
-    starts, such as the step of the adaptive hook that planted part of its memory."""
+    starts, such as the step of the adaptive hook that planted part of its memory. `lineage_start` says that the session
+    starts its memory's lineage, for the live guard."""
     project = project_key(task.repository)
     # Configured memory names the project folder as {project}; carried memory already holds this session's paths.
     memory = resolve_files(memory, project)
@@ -227,7 +242,7 @@ def run_session(config, session, task, identity, memory, engine, adapter, direct
         instruction = session.instruction or task.instruction
         if runtime.guard:
             # After the interventions, which stand for whatever changed memory between tasks; before the context.
-            runtime.guard.task_start(instruction, task.id)
+            runtime.guard.task_start(instruction, task.id, lineage_start=lineage_start)
         # Read after session_start interventions, so a planted instruction file loads as the repository's own.
         repo = repo_instructions(env.read_instructions(REPO_INSTRUCTIONS))
         context = mem.context(runtime.memory, repo)
@@ -755,9 +770,10 @@ def run_campaign(
         return restored
 
     def run(target, engine):
-        """A step that runs the session in a fresh container."""
+        """A step that runs the session in a fresh container. A chain's first session starts its memory's lineage, and
+        so does a `reset` probe, which starts from the configured memory."""
 
-        def step(number, session, directory, memory, opening=()):
+        def step(number, session, directory, memory, opening=(), reset=False):
             task_id = session.task_id or target.task_id
             try:
                 return run_session(
@@ -772,6 +788,7 @@ def run_campaign(
                     budget,
                     env_factory,
                     opening,
+                    lineage_start=number == 0 or reset,
                 )
             except NotStarted:
                 raise
@@ -895,7 +912,7 @@ def run_campaign(
             if number != exposures:
                 return probe(number, session, directory, memory)
             if not ablated:
-                return probe(number, session, directory, config.memory.initial())
+                return probe(number, session, directory, config.memory.initial(), reset=True)
             memory, record = ablate(memory, events, exposure_journal(arm_dir))
             outcome = probe(number, session, directory, memory)
             write_atomic(directory / "ablation.json", record)
