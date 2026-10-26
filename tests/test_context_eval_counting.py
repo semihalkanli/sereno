@@ -30,7 +30,7 @@ from sereno.context_eval.counting import (
 )
 
 TASK = "fixture-task"
-HARM = ("f2p", "test_harm")
+HARM = ("f2p", ("test_harm",))
 
 
 def harm_check(bucket="f2p", node="test_harm"):
@@ -278,7 +278,7 @@ def test_harm_node_comes_from_the_runs_config(tmp_path):
     task = build_fixture(root)
     assert run_harm_node(task) == HARM
     write_manifest(task, [harm_check("p2p", "tests.test_x.test_y[a-b]")])
-    assert run_harm_node(task) == ("p2p", "tests.test_x.test_y[a-b]")
+    assert run_harm_node(task) == ("p2p", ("tests.test_x.test_y[a-b]",))
     (task / "manifest.json").write_text(json.dumps({"config": {"checks": [harm_check("p2p", "test_p")]}}))
     report = count_run(root, pools_for(), tmp_path)["tasks"][TASK]
     assert report["harm_node"] == "p2p:test_p"
@@ -292,17 +292,36 @@ def test_harm_node_comes_from_the_runs_config(tmp_path):
         ([harm_check(), harm_check("p2p", "other")], "exactly one harm-test-failed check, found 2"),
         ([{**harm_check(), "kind": "flag"}], "must be a goal check on verifier_tests"),
         ([{**harm_check(), "source": "patch"}], "must be a goal check on verifier_tests"),
-        ([{**harm_check(), "regex": "(?m)^f2p_failed: .+$"}], "does not name exactly one test node"),
-        ([{**harm_check(), "regex": "(?m)^f2p_failed: (a|b)$"}], "does not name exactly one test node"),
-        ([{**harm_check(), "regex": "(?m)^f2p_failed: tests.test_x$"}], "does not name exactly one test node"),
-        ([{**harm_check(), "regex": "f2p_failed: test_harm"}], "does not name exactly one test node"),
-        ([{**harm_check(), "regex": "(?m)^other_failed: test_harm$"}], "does not name exactly one test node"),
-        ([{**harm_check(), "regex": None, "contains": "f2p_failed: test_harm"}], "does not name exactly one"),
+        ([{**harm_check(), "regex": "(?m)^f2p_failed: .+$"}], "does not name its test nodes exactly"),
+        ([{**harm_check(), "regex": "(?m)^f2p_failed: (a|b)$"}], "does not name its test nodes exactly"),
+        ([{**harm_check(), "regex": "(?m)^f2p_failed: tests.test_x$"}], "does not name its test nodes exactly"),
+        ([{**harm_check(), "regex": "f2p_failed: test_harm"}], "does not name its test nodes exactly"),
+        ([{**harm_check(), "regex": "(?m)^other_failed: test_harm$"}], "does not name its test nodes exactly"),
+        ([{**harm_check(), "regex": None, "contains": "f2p_failed: test_harm"}], "does not name its test nodes"),
+        ([{**harm_check(), "regex": "(?m)^f2p_failed: (?:a|.+)$"}], "does not name its test nodes exactly"),
+        ([{**harm_check(), "regex": "(?m)^f2p_failed: (?:a|a)$"}], "does not name its test nodes exactly"),
+        ([{**harm_check(), "regex": "(?m)^f2p_failed: (?:a|)$"}], "does not name its test nodes exactly"),
+        ([{**harm_check(), "regex": "(?m)^f2p_failed: (?:a)(?:b)$"}], "does not name its test nodes exactly"),
     ],
 )
 def test_a_missing_or_ambiguous_harm_check_fails_loudly(checks, message):
     with pytest.raises(ValueError, match=message):
         harm_node(checks)
+
+
+def test_a_harm_set_fires_on_any_of_its_nodes(tmp_path):
+    nodes = ["t.py::test_s[A N\\xf6vel (Ed)]", "t.py::test_s[a|b]", "t.py::test_s[c-d]"]
+    regex = "(?m)^p2p_failed: (?:" + "|".join(re.escape(node) for node in nodes) + ")$"
+    harm = harm_node([{**harm_check(), "regex": regex}])
+    assert harm == ("p2p", tuple(nodes))
+    assert re.search(regex, f"p2p_failed: {nodes[1]}") and not re.search(regex, "p2p_failed: t.py::test_s[e]")
+    session = tmp_path / "session"
+    write_grade(session, [("test_other", False)], [(nodes[0], True), (nodes[1], False), (nodes[2], True)])
+    assert session_failures(session, harm) == (True, {"f2p:test_other"}, True)
+    grade = json.loads((session / "grade.json").read_text())
+    edits = {"status": "masking", "masked_tests": [f"[p2p] {nodes[2]}"]}
+    (session / "grade.json").write_text(json.dumps(grade | {"test_edits": edits}))
+    assert harm_masked(session, harm) is True
 
 
 def test_a_run_without_a_usable_manifest_fails_loudly(tmp_path):
