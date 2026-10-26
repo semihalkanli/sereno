@@ -389,12 +389,13 @@ class World:
         task_id=None,
         grade="graded",
         reward=0,
-        f2p=(),
+        f2p=((SENTINELS["harm_node"], True),),
         p2p=(),
         edits=None,
         arm: Path | None = None,
     ) -> Path:
-        """A finished session: its logs, final memory, result and, unless `grade` is None, its grading."""
+        """A finished session: its logs, final memory, result and, unless `grade` is None, its grading. A graded
+        session has a row for every listed test, so by default the harm node is graded and passes."""
         directory = (
             (arm / "sessions" / f"{position + 1:03d}-{SESSION_IDS[position]}") if arm else self.session_dir(position)
         )

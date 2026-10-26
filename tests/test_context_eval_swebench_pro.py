@@ -4,7 +4,7 @@ import pytest
 
 from sereno.context_eval import pro_ctrf
 from sereno.context_eval.dataset import load_task
-from sereno.context_eval.swebench_pro import export_task, short_id
+from sereno.context_eval.swebench_pro import export, export_task, short_id
 
 BASE = "a" * 40
 INSTANCE = f"instance_internetarchive__openlibrary-{'b' * 40}-v{'c' * 40}"
@@ -88,17 +88,51 @@ def test_export_refuses_what_the_shared_grader_cannot_reproduce(sources):
 def test_ctrf_reads_harm_ids_the_official_parser_missed():
     parsed = {"tests": [{"name": "t.py::test_old", "status": "PASSED"}, {"name": "t.py::test_x", "status": "ERROR"}]}
     harm = ["t.py::test_harm[A N\\xf6vel (Ed)]", "t.py::test_harm[b c]", "t.py::test_gone", "t.py::test_old"]
+    config = {"f2p_node_ids": [], "p2p_node_ids": ["t.py::test_old", *harm], "harm_node_ids": harm}
     lines = [
         "t.py::test_harm[A N\\xf6vel (Ed)] RERUN [ 10%]",
         "t.py::test_harm[A N\\xf6vel (Ed)] FAILED [ 10%]",
-        "t.py::test_harm[b c] PASSED [ 20%]",
+        "t.py::test_harm[b c] PASSED [  20%]",
         "FAILED t.py::test_harm[A N\\xf6vel (Ed)] - AssertionError",
-        "t.py::test_harm[b c]x PASSED",
+        "t.py::test_harm[A N\\xf6vel (Ed)] PASSED",
+        "t.py::test_harm[b c]x PASSED [ 30%]",
+        "t.py::test_gone PASSED and more [ 40%]",
     ]
-    rows = {t["name"]: t["status"] for t in pro_ctrf.convert(parsed, harm, lines)["results"]["tests"]}
+    rows = {t["name"]: t["status"] for t in pro_ctrf.convert(parsed, config, lines)["results"]["tests"]}
     assert rows == {
         "t.py::test_old": "passed",
         "t.py::test_x": "failed",
         "t.py::test_harm[A N\\xf6vel (Ed)]": "failed",
         "t.py::test_harm[b c]": "passed",
     }
+
+
+def test_ctrf_refuses_a_graded_name_that_both_passed_and_failed():
+    def parsed(*rows):
+        return {"tests": [{"name": name, "status": status} for name, status in rows]}
+
+    config = {"f2p_node_ids": ["TestNew"], "p2p_node_ids": ["Test_CUE"], "harm_node_ids": ["Test_CUE"]}
+    for rows in ([("Test_CUE", "PASSED"), ("Test_CUE", "FAILED")], [("TestNew", "SKIPPED"), ("TestNew", "PASSED")]):
+        with pytest.raises(ValueError, match="both passed and did not pass"):
+            pro_ctrf.convert(parsed(*rows), config, [])
+    same = parsed(("Test_CUE", "FAILED"), ("Test_CUE", "ERROR"), ("TestServer", "PASSED"), ("TestServer", "FAILED"))
+    assert [t["status"] for t in pro_ctrf.convert(same, config, [])["results"]["tests"]] == ["failed"] * 2 + [
+        "passed",
+        "failed",
+    ]
+
+
+def test_a_harm_file_must_cover_every_instance_and_name_only_known_ones(sources, tmp_path):
+    official, grader, out = sources
+    rows = tmp_path / "rows.json"
+    rows.write_text(json.dumps([row()]))
+    entry = {"run": [], "node_ids": ["t.py::test_old"]}
+    for content, message in (({}, "has no entry"), ({INSTANCE: entry, INSTANCE + "x": entry}, "not in")):
+        (tmp_path / "harm.json").write_text(json.dumps(content))
+        with pytest.raises(KeyError, match=message):
+            export(rows, official, grader, out, [INSTANCE], tmp_path / "harm.json")
+    (tmp_path / "harm.json").write_text(json.dumps({INSTANCE: entry}))
+    assert [d.name for d in export(rows, official, grader, out, [INSTANCE], tmp_path / "harm.json")] == [
+        short_id(INSTANCE)
+    ]
+    assert [d.name for d in export(rows, official, grader, out, [INSTANCE])] == [short_id(INSTANCE)]

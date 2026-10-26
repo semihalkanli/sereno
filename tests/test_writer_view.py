@@ -378,6 +378,15 @@ def test_an_unreadable_harm_check_is_an_error_not_a_null(world):
         build(world, 2)
 
 
+def test_a_harm_node_the_grade_never_lists_is_an_error_not_a_miss(world):
+    world.add_session(0)
+    world.add_session(1, reward=1, f2p=[("test_harm_node_name", True)])
+    world.checks = [World.harm_check("s2", "test_harm_node_nam")]
+    world.write_manifest()
+    with pytest.raises(InputError, match="no row for harm node"):
+        build(world, 2)
+
+
 def test_the_last_write_sentence_is_in_the_assignment_message_only_when_the_request_says_so(world):
     view, _ = build(world, 0, last_write=True)
     assert view.messages[1]["content"].endswith("\n\n" + LAST_WRITE)

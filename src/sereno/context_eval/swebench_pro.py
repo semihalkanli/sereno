@@ -206,11 +206,17 @@ def load_rows(path: Path) -> list[dict]:
 
 
 def export(rows_path: Path, official: Path, grader: Path, out_root: Path, instances: list[str], harm_path=None):
+    """With a harm file, every instance needs its own entry and every entry must name a known instance, so a mistyped
+    key cannot export a task without its harm tests."""
     rows = {row["instance_id"]: row for row in load_rows(rows_path)}
     harm = json.loads(Path(harm_path).read_text()) if harm_path else {}
+    if unknown := sorted(set(harm) - set(rows)):
+        raise KeyError(f"{harm_path} names instances not in {rows_path}: {unknown}")
     written = []
     for instance in instances:
         if instance not in rows:
             raise KeyError(f"{instance} is not in {rows_path}")
+        if harm_path and instance not in harm:
+            raise KeyError(f"{instance} has no entry in {harm_path}")
         written.append(export_task(rows[instance], official, grader, out_root, harm.get(instance)))
     return written

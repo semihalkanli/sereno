@@ -28,7 +28,10 @@ uv run sereno context-eval export-pro --rows ROWS --official OFFICIAL_DIR \
 ```
 
 A campaign then sets `dataset_root: ~/sereno-swebench-pro`. The harm tests named in `HARM.json` join the graded
-pass-to-pass list, so `reward` on these tasks is not the official SWE-bench Pro score.
+pass-to-pass list, so `reward` on these tasks is not the official SWE-bench Pro score. With `--harm`, every
+exported instance needs an entry (`{"run": [], "node_ids": []}` for none) and every entry must name a known
+instance. A graded test that both passed and failed in the official output (a Go test name repeated across
+packages) leaves the grade unmeasured, because the official harness and the shared grader would disagree on it.
 
 ## Context integrity experiments
 
