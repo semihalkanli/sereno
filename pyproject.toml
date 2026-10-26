@@ -11,6 +11,7 @@ dependencies = [
     "anthropic>=1.12.1",
     "httpx>=0.28.1",
     "mini-swe-agent==2.4.6",
+    "pyarrow>=25.0.1",
     "pydantic>=2.13.5",
     "python-dotenv>=1.2.3",
     "pyyaml>=6.0.3",
