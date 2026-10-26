@@ -8,6 +8,7 @@ from sereno.context_eval.swebench_pro import export, export_task, short_id
 
 BASE = "a" * 40
 INSTANCE = f"instance_internetarchive__openlibrary-{'b' * 40}-v{'c' * 40}"
+GRADER = '# grader\nr = git("apply", "--whitespace=nowarn", "--allow-empty", str(test_patch),\n'
 
 
 def row(**changes):
@@ -44,7 +45,7 @@ def sources(tmp_path):
     for name in ("run_script.sh", "parser.py"):
         (official / f"{INSTANCE}.{name}").write_text(f"# {name}\n")
     grader = tmp_path / "grader.py"
-    grader.write_text("# grader\n")
+    grader.write_text(GRADER)
     return official, grader, tmp_path / "out"
 
 
@@ -71,6 +72,7 @@ def test_export_writes_a_task_the_runner_loads(sources):
     for name in ("Dockerfile", "test.patch", "grader.py", "run_script.sh", "parser.py", "to_ctrf.py"):
         assert (directory / "tests" / name).is_file()
     assert (directory / "solution" / "solution.patch").read_text() == "diff --git a/x.py b/x.py\n"
+    assert (directory / "tests" / "grader.py").read_text() == GRADER.replace('"--allow-empty", ', "")
 
 
 def test_export_refuses_what_the_shared_grader_cannot_reproduce(sources):
@@ -80,6 +82,11 @@ def test_export_refuses_what_the_shared_grader_cannot_reproduce(sources):
         export_task(row(before_repo_set_cmd=extra), official, grader, out)
     with pytest.raises(ValueError, match="fail-to-pass"):
         export_task(row(), official, grader, out, {"node_ids": ["t.py::test_new"]})
+    with pytest.raises(ValueError, match="empty test patch"):
+        export_task(row(test_patch="\n"), official, grader, out)
+    grader.write_text("# grader\n")
+    with pytest.raises(ValueError, match="exactly one"):
+        export_task(row(), official, grader, out)
     (official / f"{INSTANCE}.parser.py").write_text("")
     with pytest.raises(FileNotFoundError):
         export_task(row(), official, grader, out)
