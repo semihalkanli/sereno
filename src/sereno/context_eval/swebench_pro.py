@@ -37,6 +37,8 @@ finish() {
 }
 trap finish EXIT
 cd /app || { mkdir -p /logs/verifier; exit 6; }
+# The collected patch carries every untracked file the session left, so files the image leaves untracked go first.
+git -c safe.directory=/app clean -fdq || { mkdir -p /logs/verifier; exit 9; }
 
 python3 /tests/grader.py prepare || exit $?
 [ -f /logs/verifier/reward.json ] && exit 0

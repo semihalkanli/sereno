@@ -69,6 +69,7 @@ def test_export_writes_a_task_the_runner_loads(sources):
     assert config["source"]["selection"] == ["t.py", "t2.py"]
     script = (directory / "tests" / "test.sh").read_text()
     assert "bash /tests/run_script.sh 't.py,t2.py' >" in script
+    assert script.index("git -c safe.directory=/app clean -fdq") < script.index("grader.py prepare")
     for name in ("Dockerfile", "test.patch", "grader.py", "run_script.sh", "parser.py", "to_ctrf.py"):
         assert (directory / "tests" / name).is_file()
     assert (directory / "solution" / "solution.patch").read_text() == "diff --git a/x.py b/x.py\n"
