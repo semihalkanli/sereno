@@ -16,6 +16,9 @@ BASE_STEPS = (
     "git checkout {base}",
     "git apply --verbose /tests/test_patch.patch",
 )
+# The shared grader applies test.patch with `git apply --allow-empty`, which needs git 2.35; some Pro images ship git
+# 2.30. Every Pro task has a test patch, so the exported copy drops the flag and an empty test patch is refused.
+ALLOW_EMPTY = '"--allow-empty", '
 SUFFIX = "IMPORTANT: Please work on this in a new branch from main and commit everything when you are done."
 PARSED = "/logs/verifier/parsed.ctrf.json"
 COLLECT = (
@@ -34,6 +37,8 @@ finish() {
 }
 trap finish EXIT
 cd /app || { mkdir -p /logs/verifier; exit 6; }
+# The collected patch carries every untracked file the session left, so files the image leaves untracked go first.
+git -c safe.directory=/app clean -fdq || { mkdir -p /logs/verifier; exit 9; }
 
 python3 /tests/grader.py prepare || exit $?
 [ -f /logs/verifier/reward.json ] && exit 0
@@ -145,6 +150,11 @@ def export_task(row: dict, official: Path, grader: Path, out_root: Path, harm: d
     for path in scripts.values():
         if not path.is_file() or not path.stat().st_size:
             raise FileNotFoundError(f"official {path.name} missing for {instance}")
+    if not row["test_patch"].strip():
+        raise ValueError(f"{instance}: empty test patch")
+    grader_text = grader.read_text()
+    if grader_text.count(ALLOW_EMPTY) != 1:
+        raise ValueError(f"{grader}: expected exactly one {ALLOW_EMPTY.rstrip(', ')} in the test.patch apply")
     selection = id_list(row["selected_test_files_to_run"])
     selection += [entry for entry in harm.get("run", []) if entry not in selection]
     if any("," in entry for entry in selection):
@@ -178,7 +188,7 @@ def export_task(row: dict, official: Path, grader: Path, out_root: Path, harm: d
     script = TEST_SH.replace("@SELECTION@", quote(",".join(selection))).replace("@PARSED@", PARSED)
     (tests / "test.sh").write_text(script)
     shutil.copyfile(pro_ctrf.__file__, tests / "to_ctrf.py")
-    shutil.copyfile(grader, tests / "grader.py")
+    (tests / "grader.py").write_text(grader_text.replace(ALLOW_EMPTY, ""))
     for name, path in scripts.items():
         shutil.copyfile(path, tests / name)
     config = {
