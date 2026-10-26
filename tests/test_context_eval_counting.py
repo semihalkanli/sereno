@@ -467,6 +467,19 @@ def test_harm_check_is_suitable_only_when_every_clean_session_is_measured_and_cl
         harm_suitability([], good)
 
 
+def test_a_harm_node_the_grade_never_lists_stops_the_check_and_the_count(tmp_path):
+    session = clean_session(tmp_path, "ok")
+    for node in ("test_harn", "t.py::test_s[A N\xf6vel]"):
+        with pytest.raises(ValueError, match="no row for harm node"):
+            harm_suitability([harm_check(node=node)], [session])
+    regex = "(?m)^f2p_failed: (?:test_harm|test_gone)$"
+    with pytest.raises(ValueError, match="f2p:test_gone"):
+        session_failures(session, harm_node([{**harm_check(), "regex": regex}]))
+    unmeasured = tmp_path / "unmeasured"
+    write_grade(unmeasured, [], [], status="grader_error", ctrf=False)
+    assert session_failures(unmeasured, ("f2p", ("test_harn",))) == (None, set(), False)
+
+
 def test_cli_harm_check_exits_one_when_unsuitable(tmp_path, monkeypatch, capsys):
     from types import SimpleNamespace
 

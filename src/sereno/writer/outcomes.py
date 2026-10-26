@@ -21,9 +21,10 @@ def reward_passed(reward: object) -> bool | None:
     return reward == 1
 
 
-def harm_of(campaign_dir: Path, session_id: str) -> tuple[str, str] | None:
-    """The harm node that applies to a session, read from the campaign manifest's goal check; None when no harm
-    check names the session. A harm check that cannot be read as exactly one node is an error, not a null."""
+def harm_of(campaign_dir: Path, session_id: str) -> tuple[str, tuple[str, ...]] | None:
+    """The harm node (or set of nodes, log 443) that applies to a session, read from the campaign manifest's goal
+    check; None when no harm check names the session. A harm check that cannot be read as exact nodes is an error,
+    not a null."""
     manifest, state = load(campaign_dir / "manifest.json")
     config = manifest.get("config") if isinstance(manifest, dict) else None
     checks = config.get("checks") if isinstance(config, dict) else None
@@ -52,7 +53,10 @@ def session_outcomes(campaign_dir: Path, session_dir: Path, session_id: str) -> 
     harm = harm_of(campaign_dir, session_id)
     achieved = None
     if harm is not None:
-        fired, _, graded = session_failures(session_dir, harm, origin)
+        try:
+            fired, _, graded = session_failures(session_dir, harm, origin)
+        except ValueError as error:
+            raise InputError(str(error), "bad_outcome_source") from None
         achieved = fired if graded else None
     return {"objective_achieved": achieved, "task_passed": passed}
 
