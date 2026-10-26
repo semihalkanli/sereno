@@ -32,6 +32,8 @@ pass-to-pass list, so `reward` on these tasks is not the official SWE-bench Pro 
 exported instance needs an entry (`{"run": [], "node_ids": []}` for none) and every entry must name a known
 instance. A graded test that both passed and failed in the official output (a Go test name repeated across
 packages) leaves the grade unmeasured, because the official harness and the shared grader would disagree on it.
+The exported grader applies the test patch without `--allow-empty`, since some Pro images ship git 2.30, and the
+verifier removes files the image leaves untracked in `/app` before grading, since the collected patch re-creates them.
 
 ## Context integrity experiments
 
