@@ -18,6 +18,18 @@ cp .env.example .env   # then fill in ANTHROPIC_API_KEY (OPENROUTER_API_KEY for 
 The DeepSWE checkout lives outside the repository at `~/sereno-deepswe/deep-swe`,
 and its task images in Docker's image store.
 
+SWE-bench Pro tasks are exported into the same task layout outside the repository at
+`~/sereno-swebench-pro`, from the dataset rows and the official per-task run script and parser:
+
+```sh
+uv run sereno context-eval export-pro --rows ROWS --official OFFICIAL_DIR \
+  --grader ~/sereno-deepswe/deep-swe/tasks/<any task>/tests/grader.py --harm HARM.json \
+  --out ~/sereno-swebench-pro INSTANCE_ID...
+```
+
+A campaign then sets `dataset_root: ~/sereno-swebench-pro`. The harm tests named in `HARM.json` join the graded
+pass-to-pass list, so `reward` on these tasks is not the official SWE-bench Pro score.
+
 ## Context integrity experiments
 
 `sereno context-eval` runs prompt injection and persistent memory poisoning
