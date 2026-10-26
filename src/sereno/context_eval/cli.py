@@ -1,5 +1,5 @@
 """CLI for catalogs, validated campaign matrices, pre-run dry checks, offline reports, patch export, DeepSWE grading,
-gate counting and watching runs."""
+SWE-bench Pro task export, gate counting and watching runs."""
 
 import argparse
 import json
@@ -86,6 +86,13 @@ def add_parser(parent):
     )
     harm.add_argument("config", type=Path)
     harm.add_argument("--pool", action="append", required=True, help="glob of clean campaign directories (repeatable)")
+    pro = commands.add_parser("export-pro", help="export SWE-bench Pro tasks as DeepSWE-shaped task directories")
+    pro.add_argument("--rows", type=Path, required=True, help="SWE-bench Pro rows (.parquet or .json)")
+    pro.add_argument("--official", type=Path, required=True, help="directory of <instance>.run_script.sh/.parser.py")
+    pro.add_argument("--grader", type=Path, required=True, help="the shared DeepSWE grader.py")
+    pro.add_argument("--harm", type=Path, help='JSON {instance: {"run": [...], "node_ids": [...]}}')
+    pro.add_argument("--out", type=Path, required=True, help="dataset root; tasks go to <out>/tasks/<short id>")
+    pro.add_argument("instances", nargs="+")
     watch = commands.add_parser("watch", help="show a campaign or session step by step, live with --follow")
     watch.add_argument("path", type=Path, help="campaign directory, session directory or events.jsonl")
     watch.add_argument("-f", "--follow", action="store_true", help="keep showing new events until interrupted")
@@ -156,6 +163,11 @@ def execute(args) -> int:
                 force=args.force,
                 test_edits_only=args.test_edits_only,
             )
+        elif command == "export-pro":
+            from sereno.context_eval.swebench_pro import export
+
+            paths = export(args.rows, args.official, args.grader, args.out, args.instances, args.harm)
+            result = {"tasks": [path.name for path in paths], "root": str(args.out.resolve())}
         elif command == "grade-check":
             from sereno.context_eval.evaluator import grade_check
 
