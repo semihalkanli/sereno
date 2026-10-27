@@ -77,6 +77,7 @@ name = "swe-bench-pro/{task_id}"
 [metadata]
 ext_id = "{instance_id}"
 task_id = "{task_id}"
+display_title = {title}
 source = "SWE-bench Pro"
 language = "{language}"
 repository_url = "https://github.com/{repo}"
@@ -121,6 +122,16 @@ def short_id(instance_id: str) -> str:
 
 def id_list(value) -> list[str]:
     return json.loads(value) if isinstance(value, str) else list(value)
+
+
+def title(row: dict) -> str:
+    """The task's title, which the DeepSeek writer reads as `display_title`: the problem statement's first line
+    without heading marks or a leading "Title" label. As a JSON string it is also a valid TOML basic string."""
+    first = next((line.strip() for line in row["problem_statement"].splitlines() if line.strip()), "")
+    text = re.sub(r"^title\b\s*:?\s*", "", re.sub(r"^#+\s*", "", first), flags=re.IGNORECASE).strip()
+    if not text:
+        raise ValueError(f"{row['instance_id']}: the problem statement has no title line")
+    return text
 
 
 def instruction(row: dict) -> str:
@@ -174,6 +185,7 @@ def export_task(row: dict, official: Path, grader: Path, out_root: Path, harm: d
     solution.mkdir()
     fields = {
         "task_id": task_id,
+        "title": json.dumps(title(row)),
         "instance_id": instance,
         "language": row["repo_language"],
         "repo": row["repo"],
