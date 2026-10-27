@@ -1,10 +1,11 @@
 import json
+import tomllib
 
 import pytest
 
 from sereno.context_eval import pro_ctrf
 from sereno.context_eval.dataset import load_task
-from sereno.context_eval.swebench_pro import export, export_task, short_id
+from sereno.context_eval.swebench_pro import export, export_task, short_id, title
 
 BASE = "a" * 40
 INSTANCE = f"instance_internetarchive__openlibrary-{'b' * 40}-v{'c' * 40}"
@@ -47,6 +48,21 @@ def sources(tmp_path):
     grader = tmp_path / "grader.py"
     grader.write_text(GRADER)
     return official, grader, tmp_path / "out"
+
+
+def test_title_is_the_first_line_without_heading_marks_or_a_title_label(sources):
+    assert (
+        title(row(problem_statement="\n## Title: CSRF needs a secure option\n\nBody")) == "CSRF needs a secure option"
+    )
+    assert title(row(problem_statement="# Title Clarify the import surface")) == "Clarify the import surface"
+    hyphen = "non\u2011ISBN"
+    assert title(row(problem_statement=f"# Identification of {hyphen} codes.")) == f"Identification of {hyphen} codes."
+    with pytest.raises(ValueError, match="no title line"):
+        title(row(problem_statement="## Title:\n"))
+    official, grader, out = sources
+    directory = export_task(row(problem_statement='# Quote "this" \\ here\nBody'), official, grader, out)
+    metadata = tomllib.loads((directory / "task.toml").read_text())["metadata"]
+    assert metadata["display_title"] == 'Quote "this" \\ here'
 
 
 def test_short_id_keeps_repo_and_commit_prefix():
