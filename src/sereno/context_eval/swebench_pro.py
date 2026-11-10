@@ -45,7 +45,7 @@ python3 /tests/grader.py prepare || exit $?
 
 export RUN_LOG=/logs/verifier/run.log
 bash /tests/run_script.sh @SELECTION@ > /logs/verifier/stdout.log 2> /logs/verifier/stderr.log
-cat /logs/verifier/stdout.log /logs/verifier/stderr.log > "$RUN_LOG"
+@HARM_COMMANDS@cat /logs/verifier/stdout.log /logs/verifier/stderr.log > "$RUN_LOG"
 python3 /tests/parser.py /logs/verifier/stdout.log /logs/verifier/stderr.log /logs/verifier/output.json || exit 7
 python3 /tests/to_ctrf.py /logs/verifier/output.json @PARSED@ /logs/verifier/stdout.log /tests/config.json || exit 8
 
@@ -153,7 +153,9 @@ def check_setup(row: dict) -> None:
 
 def export_task(row: dict, official: Path, grader: Path, out_root: Path, harm: dict | None = None) -> Path:
     """Write tasks/<short id>/ under `out_root`. `harm` is {"run": [entries added to the test selection],
-    "node_ids": [parsed test names]}; both are needed, since a listed name that never runs grades as failed."""
+    "commands": [shell commands run after the official script], "node_ids": [parsed test names]}. A listed name that
+    never runs grades as failed, so a harm test the official script cannot reach needs its own command: the v2 Go
+    scripts run fixed packages, and a name added to the selection is only searched in them."""
     check_setup(row)
     harm = harm or {}
     instance, task_id = row["instance_id"], short_id(row["instance_id"])
@@ -170,6 +172,9 @@ def export_task(row: dict, official: Path, grader: Path, out_root: Path, harm: d
     selection += [entry for entry in harm.get("run", []) if entry not in selection]
     if any("," in entry for entry in selection):
         raise ValueError(f"{instance}: a selected test contains a comma")
+    commands = list(harm.get("commands", []))
+    if any(not isinstance(command, str) or not command.strip() or "\n" in command for command in commands):
+        raise ValueError(f"{instance}: a harm command must be one non-empty line")
     f2p = id_list(row["fail_to_pass"])
     harm_ids = list(harm.get("node_ids", []))
     if set(harm_ids) & set(f2p):
@@ -197,7 +202,11 @@ def export_task(row: dict, official: Path, grader: Path, out_root: Path, harm: d
     (solution / "solution.patch").write_text(row["patch"])
     (tests / "test.patch").write_text(row["test_patch"])
     (tests / "Dockerfile").write_text(DOCKERFILE.format(image=row["docker_image"]))
+    extra = "".join(
+        f"( {command} ) >> /logs/verifier/stdout.log 2>> /logs/verifier/stderr.log\n" for command in commands
+    )
     script = TEST_SH.replace("@SELECTION@", quote(",".join(selection))).replace("@PARSED@", PARSED)
+    script = script.replace("@HARM_COMMANDS@", extra)
     (tests / "test.sh").write_text(script)
     shutil.copyfile(pro_ctrf.__file__, tests / "to_ctrf.py")
     (tests / "grader.py").write_text(grader_text.replace(ALLOW_EMPTY, ""))
@@ -208,7 +217,12 @@ def export_task(row: dict, official: Path, grader: Path, out_root: Path, harm: d
         "f2p_node_ids": f2p,
         "p2p_node_ids": p2p,
         "harm_node_ids": harm_ids,
-        "source": {"benchmark": "SWE-bench Pro", "instance_id": instance, "selection": selection},
+        "source": {
+            "benchmark": "SWE-bench Pro",
+            "instance_id": instance,
+            "selection": selection,
+            "harm_commands": commands,
+        },
         "grade": {"format": "ctrf", "node_id": "name", "tool_label": pro_ctrf.TOOL_LABEL, "reports": [PARSED]},
     }
     (tests / "config.json").write_text(json.dumps(config, indent=1) + "\n")
