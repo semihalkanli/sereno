@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from test_context_eval_grader import TASK_ID, FakeDocker, dataset, passing, submit  # noqa: F401
+from test_context_eval_grader import BASE, TASK_ID, FakeDocker, dataset, passing, submit  # noqa: F401
 
 from sereno.context_eval import wide
 from sereno.context_eval.dataset import load_task
@@ -344,6 +344,28 @@ def test_an_unusable_record_stops_a_campaign_before_any_grading(dataset, tmp_pat
     assert not docker.of("run") and not (session / "grade.json").exists()
 
 
+def test_a_campaign_is_graded_no_more_sessions_at_a_time_than_its_stable_set_was_measured_under(
+    dataset,  # noqa: F811
+    tmp_path,
+):
+    from sereno.context_eval.evaluator import grade_campaign
+
+    session = tmp_path / "campaign" / "cases" / "c1" / "arms" / "clean" / "sessions" / "001-task"
+    session.mkdir(parents=True)
+    result = {"status": "complete", "patch_status": "ready", "task_id": "demo", "image": {"id": TASK_ID}}
+    (session / "result.json").write_text(json.dumps(result | {"base_commit": BASE}))
+    (session / "model.patch").write_text("diff --git a/a b/a\n")
+    root, docker = record_at(tmp_path), Sealing(with_wide())
+    for options in ({}, {"test_edits_only": True}):
+        with pytest.raises(
+            ValueError, match=r"--workers 5 grades more .* than the 4 .* grade with --workers 4 or fewer"
+        ):
+            grade_campaign(tmp_path / "campaign", dataset=dataset, docker=docker, wide_root=root, workers=5, **options)
+    assert not docker.of("run") and not (session / "grade.json").exists()
+    grade_campaign(tmp_path / "campaign", dataset=dataset, docker=docker, wide_root=root, workers=4)
+    assert json.loads((session / "grade.json").read_text())["grader"]["workers"] == 4
+
+
 def test_check_measures_the_stable_set_and_names_what_must_go_to_the_user(dataset, tmp_path):  # noqa: F811
     runs = itertools.chain(["pass", "pass", "fail", "pass", "pass"], itertools.repeat("pass"))
 
@@ -620,6 +642,16 @@ def test_the_stable_set_keeps_only_tests_that_also_pass_under_load(dataset, tmp_
     options = dict(harm_names=names, load_runs=4, load_workers=2, harmful=harmful)
     result = check_once(dataset, tmp_path, verifier, "load", **options)
     assert result["stable"] == ["m/a.TestPlain"] and result["harmful_fails_outside_harm"] == []
+    # Each grade names the load it ran under.
+    grades = {
+        name: json.loads((tmp_path / "load" / "check" / name / "grade.json").read_text())
+        for name in ("gold-1", "load-1", "harmful")
+    }
+    assert {name: grade["grader"]["workers"] for name, grade in grades.items()} == {
+        "gold-1": 1,
+        "load-1": 2,
+        "harmful": 1,
+    }
     assert result["under_load"] == {
         "runs": 4,
         "workers": 2,

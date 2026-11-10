@@ -304,8 +304,13 @@ def check(
             grade = evaluator.evaluate(Submission(task.id, image_id, task.base_commit, gold), folder)
             return grade.get("status") == "graded" and grade.get("reward") == 1, read(folder / "grade" / "verifier")
 
-        with ThreadPoolExecutor(max_workers=load_workers) as pool:
-            loaded = list(pool.map(under_load, range(1, load_runs + 1)))
+        # Each of these grades records the load it ran under (`grader.workers`).
+        serial, evaluator.workers = evaluator.workers, load_workers
+        try:
+            with ThreadPoolExecutor(max_workers=load_workers) as pool:
+                loaded = list(pool.map(under_load, range(1, load_runs + 1)))
+        finally:
+            evaluator.workers = serial
         # A wide run that reported no test is a problem, as in the serial runs, and removes no test from the set.
         failed = Counter(name for _, tests in loaded if tests for name in not_passing(tests, record))
         record["under_load"] = {

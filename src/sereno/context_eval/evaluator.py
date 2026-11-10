@@ -294,10 +294,13 @@ def edit_status(grade) -> str | None:
 class DeepSWEEvaluator:
     """EvaluatorAdapter for DeepSWE. Every Docker call goes through `docker(args, timeout)`, `run_docker` by default."""
 
-    def __init__(self, dataset_root: Path, *, docker=None, wide_root: Path | None = None):
+    def __init__(self, dataset_root: Path, *, docker=None, wide_root: Path | None = None, workers: int = 1):
         self.root = Path(dataset_root)
         self.docker = docker or run_docker
         self.wide_root = wide_root
+        # How many gradings its caller runs at a time; each grade records it, since a stable set holds only under the
+        # load it was measured under.
+        self.workers = workers
         # Records being measured by `wide_check`, by task id: run as they are, never read from or written to disk.
         self.pending: dict[str, dict] = {}
         self.locks: dict[str, threading.Lock] = {}
@@ -332,7 +335,11 @@ class DeepSWEEvaluator:
         started = time.monotonic()
         output_dir = Path(output_dir)
         grade = blank_grade(submission.task_id) | {"task_image_id": submission.image_id}
-        grade["grader"] = {"graded_at": datetime.now(UTC).isoformat(timespec="seconds"), "code_sha256": harness()}
+        grade["grader"] = {
+            "graded_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "code_sha256": harness(),
+            "workers": self.workers,
+        }
         patch = None
         try:
             patch = Path(submission.patch).read_bytes()
@@ -683,26 +690,35 @@ def grade_campaign(
     docker=None,
     wide_root: Path | None = None,
 ):
-    """Grade every complete session. `test_edits_only` adds only the second pass to existing grades that lack it or
-    whose second pass is `unknown`."""
+    """Grade every complete session, `workers` at a time. `test_edits_only` adds only the second pass to existing
+    grades that lack it or whose second pass is `unknown`. With a task's wide record, `workers` may not exceed the
+    gradings at a time its stable set was measured under (`under_load.workers`)."""
     if force and test_edits_only:
         raise ValueError("--force and --test-edits-only exclude each other")
     campaign = Path(campaign).resolve()
     if dataset is None:
         dataset = Path(json.loads((campaign / "manifest.json").read_text())["config"]["dataset_root"])
-    evaluator = DeepSWEEvaluator(Path(dataset).expanduser().resolve(), docker=docker, wide_root=wide_root)
+    evaluator = DeepSWEEvaluator(
+        Path(dataset).expanduser().resolve(), docker=docker, wide_root=wide_root, workers=workers
+    )
     directories = session_dirs(campaign)
     copies = {d: shared_origin(campaign, d) for d in directories}
     written, kept, backfilled, unreadable = [], [], [], {}
     # A record that cannot be used stops the grading before any container starts; met inside a grading it would
-    # cost the session its official grade.
+    # cost the session its official grade. So do more gradings at a time than the stable set was measured under.
     tasks = {}
     for directory in directories:
         result = read_object(directory / "result.json") or {}
         if isinstance(result.get("task_id"), str) and isinstance(result.get("image"), dict):
             tasks[result["task_id"], result["image"].get("id")] = None
     for task_id, image_id in sorted(tasks, key=str):
-        evaluator.wide_record(task_id, image_id)
+        record = evaluator.wide_record(task_id, image_id)
+        measured = (record or {}).get("under_load", {}).get("workers")
+        if record is not None and workers > measured:
+            raise ValueError(
+                f"--workers {workers} grades more sessions at a time than the {measured} the stable set of {task_id} "
+                f"was measured under; grade with --workers {measured} or fewer"
+            )
 
     def backfill(directory: Path, origin: Path | None = None) -> None:
         grade = read_object(directory / "grade.json")
@@ -794,7 +810,7 @@ def read_object(path: Path) -> dict | None:
 def grade_check(dataset: Path, task_ids: list[str], *, out: Path | None = None, workers: int = 1, docker=None):
     dataset = Path(dataset).expanduser().resolve()
     out = Path(out or Path("runs/context-eval/grade-check") / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
-    evaluator = DeepSWEEvaluator(dataset, docker=docker)
+    evaluator = DeepSWEEvaluator(dataset, docker=docker, workers=workers)
     tasks = {}
     for task_id in dict.fromkeys(task_ids):
         task = load_task(dataset, task_id)
