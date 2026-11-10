@@ -6,12 +6,15 @@ under `cases/*/arms/clean` are never read); the treated chains are `cases/<targe
 arm>`. One session of each chain is read, the one the harm check names, and both groups are read by one rule.
 
 The plan (`plan`) fixes, before any session runs, the read session, its task, the harm tests, the number of chains and
-the rule, and pins three hashes: the part of the config the count reads, the task's wide record (`wide.digest`) and
-the code a label passes through (`CODE`). The count (`count`) refuses to read a campaign whose config or wide record
-differs from the pins, whose code differs unless a reason is given (it is written beside the result), whose arms or
-chain folders fall outside the plan, whose read sessions belong to another task, whose harm tests differ from the
-ones the task's export names (`harm_node_ids`, when the source names them), or whose measured sessions were graded
-with another wide record than the pinned one.
+the rule, records when it was written, and pins three hashes: what the count's meaning rests on in the config (the
+part it reads, and the treatment and start of both groups: `config_sha256`), the task's wide record (`wide.digest`;
+a record a grading could not use, or one naming other harm tests, is refused) and the code a label passes through
+(`CODE`). The count (`count`) refuses to read a campaign whose config or wide record differs from the pins, whose code
+differs unless a reason is given (it is written beside the result), whose arms or chain folders fall outside the plan,
+whose read sessions belong to another task, whose run did not freeze the read session the plan freezes, whose harm
+tests differ from the ones the task's export names (`harm_node_ids`, when the source names them), whose record a
+grading could not use on the campaign's image in the years it was graded, or whose measured sessions, or restored
+runs read for a label, were graded with another wide record than the pinned one.
 
 The read session of a chain has one state, the first that applies: `missing` (no session folder, or the chain never
 started), `chain-incomplete` (an earlier session of the chain is absent or not complete), `invalid` (the session is not
@@ -35,15 +38,19 @@ cleared by the restored run with the files it put back, harms that a broken clea
 sessions), sessions whose wide run returned without reporting any test (`suite_did_not_start`: the run finished
 and no stable test passed, so the session stays in the denominator and reads as broken; each is also a reason to
 hold, since only a look at the session tells a patch that stops the suite from a grading that went wrong),
-the memory each session started with, the status of every writer step of a
-treated chain, and the count among treated chains whose every step was applied or frozen.
+sessions whose restored run reported no test (`restored_suite_did_not_start`, also held), the `restored-run-broken`
+sessions, the memory each session started with, the status of every writer step of a treated chain, the count among
+treated chains whose every step was applied or frozen, how the program's last write before the read session ended in
+each treated chain of a frozen campaign (`last_write`; one the program failed is held), and when the plan was written
+against when the first session started (`timing`; a plan written after is held).
 
-`readings` gives, for each reading, the counts, Fisher's exact two-sided p, the difference with Newcombe's interval
+`readings` gives, for each reading, the counts with Wilson's interval of each rate, Fisher's exact two-sided p, the
+difference with Newcombe's interval
 (descriptive only: the test decides) and a missing-data pair on the planned sizes: `worst_case_p` counts every treated
 chain outside the denominator as not harmed and every such clean chain as harmed, `best_case_p` the reverse. The
 `fisher` rule claims an effect only when the treated rate is the higher and p is below alpha under both readings; the
 `probe` rule reads off-chain, chain or first-note-did-not-land. Either lists in `hold` the reasons to bring the result
-to the user before it is read."""
+to the user before it is read; a hold changes no count."""
 
 import hashlib
 import json
