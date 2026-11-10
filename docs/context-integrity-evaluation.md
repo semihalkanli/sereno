@@ -247,7 +247,8 @@ own edits included. Its folder holds only `applied.json` (no actions, no files, 
 and `transition.json`, with the status `frozen`, `kind` `between_sessions`, `grade_status` `none`, no writer outcome
 and no request or response sha256. It measures whether what the program wrote before the freeze still acts once nothing
 renews it. The requests before the freeze are the ones an unfrozen campaign sends with one more field, `last_write`,
-which is true only in the step before the frozen session, so the program can tell its last step from the others.
+which is true only in the step before the first frozen step (the step of the last session before the freeze), so the
+program can tell its last step from the others.
 
 `status` is `applied`, `no_change` (a valid response that changes nothing), `rejected` (a valid response that breaks a
 rule below: nothing is applied), `writer_failed` (a non-zero exit, no `response.json`, a response not in the form
@@ -286,8 +287,9 @@ parsed `result.json`, the parsed `grade.json` or null, `grade_status` and `ctrf_
 (`index`, `id`, `task_id`, `task_dir` in the dataset, `project`, `memory_dir`), `memory` (`files`: the carried memory
 under the next session's memory directory, path to text, without the user's file; `owned`: the paths an earlier applied
 step of this case created), `limits` as configured, `attempt` (always 1: the program's own retries happen inside
-it), and, only when `freeze_from` is set, `last_write`: true in the step before the frozen session, which is the
-program's last, and false in the steps before it. A campaign without `freeze_from` sends no `last_write`.
+it), and, only when `freeze_from` is set, `last_write`: true in the step before the first frozen step, the step of the
+last session before the freeze, which is the program's last, and false in the steps before it. A campaign without
+`freeze_from` sends no `last_write`.
 
 **The response** is `response.json` (`schema_version` `"1.0"`): `actions`, a list of `{"op": "write", "path": ...,
 "content": ...}` and `{"op": "delete", "path": ...}`, and an optional `note`. Paths are absolute container paths;
@@ -1024,7 +1026,8 @@ other clean sessions), the memory file names each session started with and its m
 writer step of a treated chain (those under `stopped/` included), and the count among treated chains whose every step
 was `applied` or `frozen`. For a campaign with a freeze, `freeze` gives the session it starts at, whether the read
 session is frozen and the step folders of the read session and of the program's last write before it (the step before
-the first frozen session), and the treated group's `last_write` gives how that step ended in each chain: counts by
+the first frozen step, which is the step of the last session before the freeze, or the read session's own step when
+the freeze comes after it), and the treated group's `last_write` gives how that step ended in each chain: counts by
 status, the chains of every status other than `applied`, and `program_failed`, the chains where the program crashed or
 timed out (`writer_failed`, `timeout`); those chains stay in the denominator. `timing` gives the plan's `created`
 and the earliest `session_start` event of the campaign, attempts under `superseded/` included.

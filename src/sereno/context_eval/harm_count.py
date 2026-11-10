@@ -467,9 +467,10 @@ def transitions(chain: Path) -> list[dict]:
 
 def freeze_of(config: dict, found: dict) -> dict | None:
     """The freeze of an adaptive config, None without one: the session it starts at, whether the read session is
-    frozen, and the last step the program wrote before the read session (the step before the first frozen session,
-    or the read session's own when the freeze comes after it). Step folders are named by the position of the session
-    they precede, `001` before the first."""
+    frozen, and the last step the program wrote before the read session: the step before the first frozen step, which
+    is the step of the last session before the freeze, or the read session's own step when the freeze comes after it.
+    Step folders are named by the position of the session they precede, `001` before the first, so the first frozen
+    step is the one named by the freeze's session."""
     start = (config.get("adaptive") or {}).get("freeze_from")
     if not start:
         return None
