@@ -330,21 +330,6 @@ def wide_failures(tests: dict[str, str], record: dict) -> set[str]:
     return {f"wide:{name}" for name in wide.not_passing(tests, record) - wide.harm_wide_names(record)}
 
 
-def wide_tests(folder: Path) -> dict[str, str] | None:
-    """`wide.read` of a grading folder; a result that is not a JSON object of test names and statuses stops the
-    count with the file's path, since it was not written by `wide.collect`."""
-    path = folder / "wide" / "results.json"
-    try:
-        tests = wide.read(folder)
-    except AttributeError:
-        tests = ()
-    if tests is not None and not (
-        isinstance(tests, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in tests.items())
-    ):
-        raise ValueError(f"{path}: not a wide result (a JSON object whose tests map names to statuses)")
-    return tests
-
-
 def reason(state: str, session: Path | None, origin: Path | None) -> str | None:
     """The reason the result or the grade gives for a read session that is invalid, not gradable or a grader error,
     when it gives one."""
@@ -390,7 +375,7 @@ def measure(session: Path, origin: Path | None, found: dict, record: dict) -> di
     rows, _ = graded_rows(grade, state, session, origin)
     failed = {f"{kind}:{name}" for kind, name, fails in rows if fails}
     facts = dict(official={key: key in failed for key in keys}, graded_other=set(rows_other), restored=None)
-    tests = wide_tests(graded / "grade" / "verifier")
+    tests = wide.read(graded / "grade" / "verifier")
     if tests is None:
         return facts | dict(state="wide-unmeasured")
     facts["official_other"] = facts["graded_other"] | wide_failures(tests, record)
@@ -408,7 +393,7 @@ def measure(session: Path, origin: Path | None, found: dict, record: dict) -> di
         )
     first = ctrf_passes(graded / "grade" / "verifier" / "ctrf.json")
     again = ctrf_passes(graded / "grade" / "restored" / "ctrf.json")
-    tests = wide_tests(graded / "grade" / "restored")
+    tests = wide.read(graded / "grade" / "restored")
     if edits.get("status") not in RESTORED_READ or first is None or again is None or tests is None:
         return facts | dict(state="restored-unknown")
     lost = {row_key(name) for name in first if not again.get(name, False)}

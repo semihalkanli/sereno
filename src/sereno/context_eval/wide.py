@@ -191,13 +191,21 @@ def collect(raw: Path, destination: Path, record: dict) -> None:
 
 def read(grade_folder: Path) -> dict[str, str] | None:
     """Each test's status in the wide run of one grading (`grade/verifier` or `grade/restored`); None when the run
-    is missing or did not finish."""
+    is missing, cannot be parsed or did not finish. A result of another shape was not written by `collect` and raises
+    ValueError with the file's path."""
     path = Path(grade_folder) / "wide" / "results.json"
     try:
         result = json.loads(path.read_text())
     except (OSError, ValueError):
         return None
-    return result["tests"] if result.get("complete") else None
+    if not isinstance(result, dict):
+        raise ValueError(f"{path}: not a wide result (a JSON object whose tests map names to statuses)")
+    if not result.get("complete"):
+        return None
+    tests = result.get("tests")
+    if not isinstance(tests, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in tests.items()):
+        raise ValueError(f"{path}: not a wide result (a JSON object whose tests map names to statuses)")
+    return tests
 
 
 def not_passing(tests: dict[str, str], record: dict) -> set[str]:

@@ -523,3 +523,60 @@ def test_a_gold_grading_under_load_whose_suite_reported_no_test_is_a_problem(dat
         result["under_load"]["not_passing"] == {} and result["under_load"]["runs_with_a_stable_test_not_passing"] == 0
     )
     assert result["problems"] == ["2 of 2 gold gradings under load reported no test in their wide run"]
+
+
+def test_a_wide_result_of_another_shape_is_refused_with_its_path(tmp_path):
+    results = tmp_path / "grade" / "wide" / "results.json"
+    results.parent.mkdir(parents=True)
+    for text, expected in (
+        ("{", None),
+        (json.dumps({"complete": False, "tests": []}), None),
+        (json.dumps({"complete": True, "tests": {"a": "pass"}}), {"a": "pass"}),
+    ):
+        results.write_text(text)
+        assert wide.read(tmp_path / "grade") == expected
+    for value in ([], {"complete": True}, {"complete": True, "tests": ["a"]}, {"complete": True, "tests": {"a": 1}}):
+        results.write_text(json.dumps(value))
+        with pytest.raises(ValueError, match=re.escape(f"{results}: not a wide result")):
+            wide.read(tmp_path / "grade")
+
+
+def test_the_stable_set_keeps_only_tests_that_also_pass_under_load(dataset, tmp_path):  # noqa: F811
+    lock, calls = threading.Lock(), itertools.count(1)
+
+    def verifier(logs, patch):
+        passing(logs, patch)
+        with lock:
+            index = next(calls)
+        # The serial repeat is quiet; under load the timing test fails in two gradings and the harm test in one.
+        # The harmful patch (the sixth grading) fails the timing test too, which is then no longer a stable test.
+        timing = "fail" if index in (3, 4, 6) else "pass"
+        events = [
+            {"Action": "pass", "Package": "m/a", "Test": "TestPlain"},
+            {"Action": timing, "Package": "m/a", "Test": "TestTiming"},
+            {"Action": "fail" if index in (5, 6) else "pass", "Package": "m/a", "Test": "TestGuard"},
+        ]
+        write_raw(logs / "wide", "0", "\n".join(json.dumps(event) for event in events))
+
+    (tmp_path / "load").mkdir()
+    names = {"TestGuard": ["m/a.TestGuard"]}
+    harmful = tmp_path / "harmful.patch"
+    harmful.write_text("diff --git a/harmful b/harmful\n")
+    options = dict(harm_names=names, load_runs=4, load_workers=2, harmful=harmful)
+    result = check_once(dataset, tmp_path, verifier, "load", **options)
+    assert result["stable"] == ["m/a.TestPlain"] and result["harmful_fails_outside_harm"] == []
+    assert result["under_load"] == {
+        "runs": 4,
+        "workers": 2,
+        "not_passing_grades": 0,
+        "unfinished": 0,
+        "no_test": 0,
+        "runs_with_a_stable_test_not_passing": 3,
+        "not_passing": {"m/a.TestGuard": 1, "m/a.TestTiming": 2},
+    }
+    # A harm test that fails under the reference solution is no stable test either, so the harm cannot be shown.
+    assert result["problems"] == [
+        "harm tests that did not pass in every gold run under load: ['m/a.TestGuard']",
+        "the harmful patch fails none of the harm tests",
+    ]
+    assert wide.digest(result) == wide.digest({k: v for k, v in result.items() if k != "under_load"})
