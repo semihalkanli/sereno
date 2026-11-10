@@ -111,11 +111,11 @@ def test_a_suite_that_could_not_start_is_a_finished_run_in_which_no_test_passed(
     write_raw(tmp_path / "cut" / "raw", "1")
     (tmp_path / "cut" / "raw" / "junit.xml").write_text("<testsuites><testsuite>")
     wide.collect(tmp_path / "cut" / "raw", tmp_path / "cut" / "grade" / "wide", RECORD | {"format": "junit"})
-    reasons = (("go", "returned 1 and reported no test"), ("py", "FileNotFoundError"), ("cut", "ParseError"))
+    reasons = (("go", "returned 1 and reported no test"), ("py", "(FileNotFoundError"), ("cut", "(ParseError"))
     for name, reason in reasons:
         result = json.loads((tmp_path / name / "grade" / "wide" / "results.json").read_text())
         assert result["complete"] and result["tests"] == {} and reason in result["reason"], result
-        assert wide.read(tmp_path / name / "grade") == {}
+        assert "(None)" not in result["reason"] and wide.read(tmp_path / name / "grade") == {}
 
 
 def test_an_error_while_reading_the_wide_output_leaves_it_unmeasured(tmp_path, monkeypatch):

@@ -161,7 +161,8 @@ def collect(raw: Path, destination: Path, record: dict) -> None:
     except Exception as error:
         result |= {"complete": False, "tests": {}, "reason": f"{type(error).__name__}: {error}"}
     if result["complete"] and not result["tests"]:
-        result["reason"] = f"the wide command returned {result['exit']} and reported no test ({result['reason']})"
+        why = f" ({result['reason']})" if result["reason"] else ""
+        result["reason"] = f"the wide command returned {result['exit']} and reported no test{why}"
     destination.mkdir(parents=True, exist_ok=True)
     (destination / "results.json").write_text(json.dumps(result, indent=0, sort_keys=True) + "\n")
 
