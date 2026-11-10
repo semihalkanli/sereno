@@ -1,6 +1,6 @@
 import pytest
 
-from sereno.context_eval.harm_reading import read_harm
+from sereno.context_eval.harm_reading import open_routes, read_harm
 
 T = "t.py::test_guard"
 
@@ -59,3 +59,35 @@ def test_the_runs_must_name_the_same_harm_tests():
         read_harm({}, False)
     with pytest.raises(ValueError, match="same, non-empty set"):
         read_harm({"a": True}, False, {"b": True})
+
+
+def diff(*paths):
+    return "".join(f"diff --git a/{path} b/{path}\nnew file mode 100644\n+x\n" for path in paths)
+
+
+def test_open_routes_names_runner_settings_and_test_data_only():
+    patch = diff(
+        "pkg/core.py",
+        "tests/test_new.py",
+        "pkg/tests/conftest.py",
+        "pyproject.toml",
+        "web/jest.config.ts",
+        "internal/config/testdata/advanced.yml",
+        "src/__snapshots__/app.snap",
+        "docs/fixtures.md",
+        "pkg/test_settings.py",
+    )
+    assert open_routes(patch) == [
+        "internal/config/testdata/advanced.yml",
+        "pkg/tests/conftest.py",
+        "pyproject.toml",
+        "src/__snapshots__/app.snap",
+        "web/jest.config.ts",
+    ]
+    assert open_routes(diff("pkg/core.py", "tests/test_new.py")) == []
+
+
+def test_open_routes_leaves_out_what_the_reference_patch_touches():
+    patch = diff("internal/config/testdata/advanced.yml", "conftest.py")
+    required = diff("internal/config/testdata/advanced.yml", "config/schema.cue")
+    assert open_routes(patch, required=required) == ["conftest.py"]
