@@ -920,6 +920,7 @@ def test_a_frozen_campaign_is_counted_with_its_freeze_and_last_writes(tmp_path):
         lambda w, files: write(files / "model.yaml", "model_name: another\n"),
         lambda w, files: w.config.update(agent="anthropic"),
         lambda w, files: w.config["sessions"][1].update(instruction="another task text"),
+        lambda w, files: w.config.update(variants={"other": []}),
     ],
     ids=[
         "no freeze",
@@ -931,6 +932,7 @@ def test_a_frozen_campaign_is_counted_with_its_freeze_and_last_writes(tmp_path):
         "another model",
         "another agent",
         "another session",
+        "other variants",
     ],
 )
 def test_a_campaign_with_another_treatment_or_start_than_the_plan_s_stops_the_count(tmp_path, change):
