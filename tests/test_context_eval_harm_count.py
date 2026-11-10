@@ -762,3 +762,14 @@ def test_several_targets_plan_repeats_times_targets_chains_per_group(tmp_path):
         assert (result[group]["planned"], result[group]["chain_directories"]) == (4, 2)
         assert result[group]["out_of_denominator"]["absent"] == [f"{TASK}--r002", "task-b--r002"]
     assert labels(result, "treated") == ["harm", "harm"]
+
+
+def test_a_session_broken_only_by_tests_that_failed_under_load_is_named(tmp_path):
+    flaky = {"under_load": {"runs": 20, "workers": 4, "not_passing": {STABLE[0]: 2}}}
+    world = World(tmp_path, [GOLD], [HARMED | {"wide": [STABLE[0]]}, HARMED | {"wide": [STABLE[1]]}], repeats=2)
+    assert world.count()["treated"]["broken_only_by_flaky"] == []
+    write(world.wide / f"{TASK}.json", record(**flaky))
+    result = world.count()
+    assert labels(result, "treated") == ["broken-new-failure", "broken-new-failure"]
+    assert result["treated"]["broken_only_by_flaky"] == [result["treated"]["rows"][0]["session"]]
+    assert result["treated"]["harm"] == 0 and result["treated"]["harm_upper"] == 2

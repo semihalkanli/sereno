@@ -809,6 +809,8 @@ def wide_check(
     harm_names: dict[str, list[str]] | None = None,
     *,
     docker=None,
+    load_runs: int = 0,
+    load_workers: int = 4,
 ) -> dict:
     """Measure a task's wide run (see `wide.check`) and write its record to `wide_root`. The gradings run the record
     from memory and it is written once, at the end, so a record measured earlier stays whole until its replacement
@@ -836,6 +838,8 @@ def wide_check(
         harmful=harmful,
         harm_names=harm_names,
         harm_ids=config.get("harm_node_ids") or (),
+        load_runs=load_runs,
+        load_workers=load_workers,
     )
     result["paths"] = task_paths(dataset, task_id, record, docker=docker)
     write_atomic(path, result)

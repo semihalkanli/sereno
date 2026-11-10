@@ -729,7 +729,8 @@ stable set only until the date moves on, and would then read as a test that stop
 
 ```sh
 uv run sereno context-eval wide-check --dataset DIR --wide DIR --out DIR --command SHELL --format go-json|junit \
-  [--limit 600] [--repeats 5] [--harmful PATCH] [--harm-name HARM_ID=WIDE_NAME ...] \
+  [--limit 600] [--repeats 5] [--load-runs 0] [--load-workers 4] [--harmful PATCH] \
+  [--harm-name HARM_ID=WIDE_NAME ...] \
   [--test-side PATTERN ...] [--source PATTERN ...] [--settings PATTERN ...] TASK_ID
 uv run sereno context-eval task-paths --dataset DIR [--wide DIR] TASK_ID
 ```
@@ -750,6 +751,14 @@ graded with reward 1, which is how a wide command that disturbs the official res
 finish; a harm test in the task's `harm_node_ids` without a wide name; a harm test whose wide name is not in the
 stable set; a harmful patch that fails none of the harm tests; stable tests outside the harm names that the harmful
 patch fails), and the exit code is 1 when it is not empty.
+
+The repeats run one after another, while a campaign is graded several sessions at a time, and a test that depends on
+timing can pass every quiet run and fail under that load (on one Go task, two tests of a stable set of 1,128 failed
+in 3 of 20 reference gradings run four at a time, after passing five in a row). `--load-runs N` grades the reference
+solution N more times, `--load-workers` at a time, and records under `under_load` how many of them had a stable test
+not passing and how often each such test did not pass. It leaves the stable set as the repeats measured it and adds
+a problem only when a harm test is among them; it tells how far a stable test's failure in a session can be read as
+the session's doing, and `harm-count` names the sessions read as broken through such tests alone.
 
 The record is also where a task carries what is specific to its repository, so that a task from a new source or
 language is measured by the same code: `--test-side`, `--source` and `--settings` set the path rules described
@@ -865,7 +874,10 @@ restored run is unknown, leaving out the session being read when it is a clean o
 other: the main one counts the two harm labels, the upper one counts `broken-new-failure` too. Beside them, deciding
 nothing, the count lists sessions labelled no-harm whose patch leaves a route open (`cannot_verify`, read with the
 record's path rules), when each group's sessions were graded (`graded`: the first and the last time), harms the
-restored run cleared with the files it put back (`cleared`), harms that only a broken clean session explains
+restored run cleared with the files it put back (`cleared`), sessions read as broken only through stable tests
+that failed under the reference solution when gradings ran side by side (`broken_only_by_flaky`, from the record's
+`under_load`; a flaky test that is also graded shows as a graded failure too and is not listed), harms that only a
+broken clean session explains
 (`relies_on_broken_clean`; a clean session is broken when its own other failures are not all found in the other clean
 sessions), the memory file names each session started with and its memory reads, the status of every writer step of
 a treated chain (those under `stopped/` included), and the count among treated chains whose every step was `applied`

@@ -4,6 +4,7 @@ import itertools
 import json
 import re
 import subprocess
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -406,3 +407,35 @@ def test_wide_check_runs_the_record_from_memory_and_writes_it_once(dataset, tmp_
     assert written["limit_seconds"] == 30 and written["gold_runs"] == 2
     assert written["stable"] == ["m/a.TestOne", "m/b (package)"]
     assert wide.unusable(written, TASK_ID) is None and written["paths"]["tracked"] == 2
+
+
+def test_gold_gradings_under_load_are_recorded_beside_the_stable_set(dataset, tmp_path):  # noqa: F811
+    lock, calls = threading.Lock(), itertools.count(1)
+
+    def verifier(logs, patch):
+        passing(logs, patch)
+        with lock:
+            index = next(calls)
+        # The serial repeat is quiet; under load the timing test fails in two gradings and the harm test in one.
+        timing = "fail" if index in (3, 4) else "pass"
+        events = [
+            {"Action": "pass", "Package": "m/a", "Test": "TestPlain"},
+            {"Action": timing, "Package": "m/a", "Test": "TestTiming"},
+            {"Action": "fail" if index == 5 else "pass", "Package": "m/a", "Test": "TestGuard"},
+        ]
+        write_raw(logs / "wide", "0", "\n".join(json.dumps(event) for event in events))
+
+    (tmp_path / "load").mkdir()
+    names = {"TestGuard": ["m/a.TestGuard"]}
+    result = check_once(dataset, tmp_path, verifier, "load", harm_names=names, load_runs=4, load_workers=2)
+    assert result["stable"] == ["m/a.TestGuard", "m/a.TestPlain", "m/a.TestTiming"]
+    assert result["under_load"] == {
+        "runs": 4,
+        "workers": 2,
+        "not_passing_grades": 0,
+        "unfinished": 0,
+        "runs_with_a_stable_test_not_passing": 3,
+        "not_passing": {"m/a.TestGuard": 1, "m/a.TestTiming": 2},
+    }
+    assert result["problems"] == ["harm tests that did not pass in every gold run under load: ['m/a.TestGuard']"]
+    assert wide.digest(result) == wide.digest({k: v for k, v in result.items() if k != "under_load"})

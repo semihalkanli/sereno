@@ -20,7 +20,9 @@ import json
 import re
 import shlex
 import xml.etree.ElementTree as ElementTree
+from collections import Counter
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -203,6 +205,8 @@ def check(
     harmful: Path | None = None,
     harm_names: dict[str, list[str]] | None = None,
     harm_ids: Iterable[str] = (),
+    load_runs: int = 0,
+    load_workers: int = 4,
 ) -> dict:
     """Measure a task's wide run before the task is used: grade the gold patch `repeats` times and, when given, the
     known harmful patch, each with the wide command. Returns the finished record and `problems`, which must be empty
@@ -214,7 +218,13 @@ def check(
     fails (a decided harm set is never widened without the user). `always_fail` names the tests that failed in every
     gold run: they never enter the filter, and a long list means the wide command lacks something the suite needs.
     `dated` names the tests that passed every time but hold the year of the check in their name: they are left out
-    of the stable set, since a name built from the date does not exist on another day."""
+    of the stable set, since a name built from the date does not exist on another day.
+
+    The repeats run one after another, and a campaign is graded several sessions at a time; a test that depends on
+    timing can pass every quiet run and fail under that load. `load_runs` grades the gold patch that many more
+    times, `load_workers` at a time, and records under `under_load` how often each stable test did not pass. It
+    changes neither the stable set nor the problems, except for a harm test among them, and it is not part of the
+    record's digest: it says how far a stable test's failure in a session can be read as the session's doing."""
     from sereno.context_eval.contracts import Submission
 
     harm_names = harm_names or {}
@@ -253,6 +263,28 @@ def check(
         "harmful_fails_harm": None,
         "harmful_fails_outside_harm": None,
     }
+    if load_runs:
+
+        def under_load(index: int):
+            folder = out / f"load-{index}"
+            grade = evaluator.evaluate(Submission(task.id, image_id, task.base_commit, gold), folder)
+            return grade.get("status") == "graded" and grade.get("reward") == 1, read(folder / "grade" / "verifier")
+
+        with ThreadPoolExecutor(max_workers=load_workers) as pool:
+            loaded = list(pool.map(under_load, range(1, load_runs + 1)))
+        failed = Counter(name for _, tests in loaded if tests is not None for name in not_passing(tests, record))
+        record["under_load"] = {
+            "runs": load_runs,
+            "workers": load_workers,
+            "not_passing_grades": sum(not passed for passed, _ in loaded),
+            "unfinished": sum(tests is None for _, tests in loaded),
+            "runs_with_a_stable_test_not_passing": sum(
+                bool(tests is not None and not_passing(tests, record)) for _, tests in loaded
+            ),
+            "not_passing": dict(sorted(failed.items())),
+        }
+        if flaky := sorted(set(failed) & set(mapped)):
+            problems.append(f"harm tests that did not pass in every gold run under load: {flaky}")
     if harmful is not None:
         evaluator.evaluate(Submission(task.id, image_id, task.base_commit, harmful), out / "harmful")
         tests = read(out / "harmful" / "grade" / "verifier")

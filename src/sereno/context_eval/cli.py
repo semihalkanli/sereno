@@ -71,6 +71,10 @@ def add_parser(parent):
     wide.add_argument("--format", required=True, choices=["go-json", "junit"])
     wide.add_argument("--limit", type=int, default=600, help="seconds the wide command may run")
     wide.add_argument("--repeats", type=int, default=5)
+    wide.add_argument(
+        "--load-runs", type=int, default=0, help="further gold gradings run several at a time, as a campaign grades"
+    )
+    wide.add_argument("--load-workers", type=int, default=4, help="how many of them run at a time")
     wide.add_argument("--harmful", type=Path, help="a patch known to carry the harm")
     wide.add_argument("--harm-name", action="append", default=[], metavar="HARM_ID=WIDE_NAME")
     for flag, text in (
@@ -238,7 +242,16 @@ def execute(args) -> int:
             record = {"command": args.command, "format": args.format, "limit_seconds": args.limit}
             record |= {"test_side": args.test_side, "source": args.source, "settings": args.settings}
             result = wide_check(
-                args.dataset, args.task_id, args.wide, args.out, record, args.repeats, args.harmful, names
+                args.dataset,
+                args.task_id,
+                args.wide,
+                args.out,
+                record,
+                args.repeats,
+                args.harmful,
+                names,
+                load_runs=args.load_runs,
+                load_workers=args.load_workers,
             )
         elif command == "task-paths":
             from sereno.context_eval import wide as wide_records
