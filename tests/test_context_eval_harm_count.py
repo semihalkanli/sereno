@@ -1,6 +1,6 @@
-"""Harm count against a plan: Fisher's exact test, the plan and its pins, every session state and label, the wide
-filter, the leave-one-out reference, shared copies, three-session chains, the layout checks, the rules and their
-holds, the missing-data pair and the CLI."""
+"""Harm count against a plan: Fisher's and Boschloo's exact tests, the plan and its pins, every session state and
+label, the wide filter, the leave-one-out reference, shared copies, three-session chains, the layout checks, the rules
+and their holds, the missing-data pair and the CLI."""
 
 import ast
 import json
@@ -21,7 +21,7 @@ from sereno.context_eval.config import fingerprint, load_config
 from sereno.context_eval.harm_count import config_sha256, count, plan
 from sereno.context_eval.memory import INSTRUCTIONS
 from sereno.context_eval.schema import Adaptive
-from sereno.context_eval.stats import fisher_exact
+from sereno.context_eval.stats import GRID, boschloo_exact, boschloo_region, boschloo_supremum, fisher_exact
 
 TASK = "fixture-task"
 IMAGE = "sha256:image"
@@ -65,6 +65,96 @@ def test_fisher_agrees_with_a_rational_brute_force():
             for k1 in range(n1 + 1):
                 for k2 in range(n2 + 1):
                     assert fisher_exact(k1, n1, k2, n2) == pytest.approx(float(brute_fisher(k1, n1, k2, n2)), rel=1e-12)
+
+
+# ---- Boschloo -------------------------------------------------------------------------------------------------------
+
+
+def brute_boschloo(k1, n1, k2, n2, coarse=2000, fine=100):
+    """Boschloo's p by direct summation over the tables of the region at each scanned rate: a coarse scan, then a fine
+    scan around every coarse rate that the second-derivative bound leaves in reach of the supremum. Returns the
+    largest scanned value and how far below the supremum it can be."""
+    observed = brute_fisher(k1, n1, k2, n2)
+    region = [
+        (comb(n1, y1) * comb(n2, y2), y1 + y2)
+        for y1 in range(n1 + 1)
+        for y2 in range(n2 + 1)
+        if brute_fisher(y1, n1, y2, n2) <= observed
+    ]
+    n = n1 + n2
+
+    def probability(pi):
+        return sum(weight * pi**s * (1 - pi) ** (n - s) for weight, s in region)
+
+    # The sum is a polynomial whose second derivative is at most 2n(n - 1) in size; the rate nearest its maximum on a
+    # scan of step h is at most n(n - 1)h^2/4 below it.
+    def reach(step):
+        return n * (n - 1) * step * step / 4
+
+    scanned = [probability(i / coarse) for i in range(coarse + 1)]
+    best = max(scanned)
+    near = [i for i, value in enumerate(scanned) if value >= best - reach(1 / coarse)]
+    for i in near:
+        for j in range(fine + 1):
+            pi = (i - 0.5 + j / fine) / coarse
+            if 0 <= pi <= 1:
+                best = max(best, probability(pi))
+    return best, reach(1 / (coarse * fine))
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        (0, 5, 0, 5),
+        (2, 5, 0, 5),
+        (5, 5, 0, 5),
+        (3, 5, 3, 5),
+        (4, 10, 0, 10),
+        (6, 10, 1, 10),
+        (3, 7, 1, 9),
+        (0, 12, 4, 7),
+        (5, 8, 5, 12),
+        (9, 15, 2, 20),
+        (7, 20, 1, 15),
+    ],
+)
+def test_boschloo_agrees_with_a_dense_scan_summed_table_by_table(table):
+    p = boschloo_exact(*table)
+    scanned, reach = brute_boschloo(*table)
+    # A scan can only fall short of the supremum, by at most its reach.
+    assert scanned - 1e-12 <= p <= scanned + reach + 1e-12
+
+
+def test_boschloo_is_never_above_fisher_and_the_same_for_either_group_first_up_to_12_plus_12():
+    sizes = sorted(((n1, n2) for n1 in range(1, 13) for n2 in range(1, 13)), key=sum)
+    for n1, n2 in sizes:
+        for k1 in range(n1 + 1):
+            for k2 in range(n2 + 1):
+                p = boschloo_exact(k1, n1, k2, n2)
+                assert p <= fisher_exact(k1, n1, k2, n2)
+                assert p == boschloo_exact(k2, n2, k1, n1)
+
+
+def test_boschloo_is_null_for_an_empty_group():
+    assert boschloo_exact(0, 0, 1, 3) is None and boschloo_exact(1, 3, 0, 0) is None
+    assert boschloo_exact(0, 0, 0, 0) is None
+
+
+def test_at_40_plus_40_five_against_none_is_below_alpha_for_boschloo_only_and_four_for_neither():
+    assert fisher_exact(5, 40, 0, 40) == pytest.approx(0.0547427, abs=1e-7)
+    assert boschloo_exact(5, 40, 0, 40) == pytest.approx(0.0330196410411165, rel=1e-9)
+    assert fisher_exact(4, 40, 0, 40) > boschloo_exact(4, 40, 0, 40) == pytest.approx(0.0820037347, rel=1e-9)
+    # A region holding every table has probability 1 at every rate.
+    assert boschloo_exact(0, 40, 0, 40) == boschloo_exact(20, 40, 20, 40) == 1.0
+
+
+def test_the_refinement_finds_the_supremum_between_grid_rates():
+    found = boschloo_supremum(boschloo_region(4, 40, 0, 40))
+    # The maximum lies between two grid rates: the refined value is above the best grid value, never below it.
+    assert found.p > found.grid and found.p - found.grid < 1e-6
+    assert round(found.rate * GRID) != found.rate * GRID
+    on_grid = boschloo_supremum(boschloo_region(5, 40, 0, 40))
+    assert on_grid.rate == 0.5 and on_grid.p == on_grid.grid
 
 
 # ---- a synthetic campaign ------------------------------------------------------------------------------------------
