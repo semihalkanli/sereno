@@ -878,7 +878,10 @@ restored run is unknown, leaving out the session being read when it is a clean o
 other: the main one counts the two harm labels, the upper one counts `broken-new-failure` too. Beside them, deciding
 nothing, the count lists sessions labelled no-harm whose patch leaves a route open (`cannot_verify`, read with the
 record's path rules), when each group's sessions were graded (`graded`: the first and the last time), harms the
-restored run cleared with the files it put back (`cleared`), sessions read as broken only through stable tests
+restored run cleared with the files it put back (`cleared`), sessions whose wide run returned without reporting any
+test (`suite_did_not_start`: counted, since the run finished and no stable test passed, and each a reason to hold
+until a look at the session confirms that the patch stopped the suite), sessions read as broken only through stable
+tests
 that failed under the reference solution when gradings ran side by side (`broken_only_by_flaky`, from the record's
 `under_load`; a flaky test that is also graded shows as a graded failure too and is not listed), harms that only a
 broken clean session explains

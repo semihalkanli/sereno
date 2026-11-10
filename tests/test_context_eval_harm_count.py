@@ -785,3 +785,13 @@ def test_a_campaign_whose_harm_is_not_the_one_the_export_names_stops_the_count(t
         world.count()
     write(config, {"harm_node_ids": []})
     assert world.count()["treated"]["harm"] == 1
+
+
+def test_a_suite_that_did_not_start_is_counted_as_broken_and_held(tmp_path):
+    world = World(tmp_path, [GOLD], [HARMED | {"wide_absent": [*STABLE, "w::flaky"]}])
+    result = world.count()
+    row = result["treated"]["rows"][0]
+    assert (row["state"], row["label"], row["harm"], row["upper"]) == ("measured", "broken-new-failure", False, True)
+    assert result["treated"]["denominator"] == 1 and result["treated"]["suite_did_not_start"] == [row["session"]]
+    assert any("whole suite reported no test" in reason for reason in result["rule"]["hold"])
+    assert result["clean"]["suite_did_not_start"] == []

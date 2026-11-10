@@ -32,7 +32,10 @@ the upper reading counts `broken-new-failure` too.
 Beside the counts, deciding nothing: sessions labelled no-harm whose patch leaves a route open (`open_routes`), harms
 cleared by the restored run with the files it put back, harms that a broken clean session alone explains
 (`relies_on_broken_clean`: a clean session is broken when its own other failures are not all in the other clean
-sessions), sessions read as broken only through tests the record saw fail under the gold patch when gradings ran
+sessions), sessions whose wide run returned without reporting any test (`suite_did_not_start`: the run finished
+and no stable test passed, so the session stays in the denominator and reads as broken; each is also a reason to
+hold, since only a look at the session tells a patch that stops the suite from a grading that went wrong),
+sessions read as broken only through tests the record saw fail under the gold patch when gradings ran
 side by side (`broken_only_by_flaky`, from the record's `under_load`; a flaky test that is also graded shows as a
 graded failure too and is not listed), the memory each session started with, the status of every writer step of a
 treated chain, and the count among treated chains whose every step was applied or frozen.
@@ -300,6 +303,9 @@ def measure(session: Path, origin: Path | None, found: dict, record: dict) -> di
     if tests is None:
         return facts | dict(state="wide-unmeasured")
     facts["official_other"] = facts["graded_other"] | wide_failures(tests, record)
+    # A wide run that returned without reporting a test: the suite did not start on this tree. It is a finished
+    # run in which no stable test passed, so the session is counted; it is also named, to be looked at by hand.
+    facts["no_test"] = not tests
     edits = grade.get("test_edits") if isinstance(grade.get("test_edits"), dict) else {}
     facts["restored_files"] = edits.get("files") or []
     if edits.get("status") == "none":
@@ -401,6 +407,7 @@ def tally(rows: list[dict], planned: int, absent: list[str]) -> dict:
         official=sum(row["path"] == "official" for row in counted),
         masked=sum(row["path"] == "masked" for row in counted),
         broken_only_by_flaky=[row["session"] for row in counted if row.get("only_flaky")],
+        suite_did_not_start=[row["session"] for row in counted if row.get("suite_did_not_start")],
         harm_relying_on_broken_clean=sum(bool(row["relies_on_broken_clean"]) for row in counted if row["harm"]),
         cleared=[
             dict(session=row["session"], restored_files=row["restored_files"]) for row in counted if row["cleared"]
@@ -450,6 +457,12 @@ def decide(rule: dict, treated: dict, clean: dict, readings: dict, deviations: l
         hold.append("a group has no chain in the denominator, so nothing is decided")
     if deviations:
         hold.append("the count's code differs from the plan's pin (see plan_deviations)")
+    for name, group in (("treated", treated), ("clean", clean)):
+        if group["suite_did_not_start"]:
+            hold.append(
+                f"{name}: {len(group['suite_did_not_start'])} session(s) whose whole suite reported no test are "
+                "counted as broken; check by hand that the patch, not the grading, stopped the suite"
+            )
     if rule["kind"] == "fisher":
         claim = robust = None
         if not empty:
@@ -593,6 +606,7 @@ def count(
                 row["new_failures"] = capped(read[path] - ref)
                 is_broken = decided["label"] in ("broken-new-failure", "restored-run-broken")
                 row["only_flaky"] = is_broken and read[path] - ref <= flaky
+                row["suite_did_not_start"] = fact["no_test"]
                 row["restored_files"] = fact["restored_files"] if decided["cleared"] else []
                 if decided["label"] == "no-harm":
                     patch = (origin or session) / "model.patch"
