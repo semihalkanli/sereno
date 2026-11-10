@@ -821,7 +821,8 @@ def wide_check(
 ) -> dict:
     """Measure a task's wide run (see `wide.check`) and write its record to `wide_root`. The gradings run the record
     from memory and it is written once, at the end, so a record measured earlier stays whole until its replacement
-    is, and no grading elsewhere meets a half-made one. `unusable` in the result
+    is, and no grading elsewhere meets a half-made one. The image's files are listed (`task_paths`) before the first
+    grading, so an image the listing fails on stops the check before any grading is spent. `unusable` in the result
     says why a grading would refuse the record written (fewer runs than the rule, a problem, an empty stable set), or
     is None."""
     dataset, wide_root, out = Path(dataset).expanduser().resolve(), Path(wide_root), Path(out)
@@ -830,6 +831,7 @@ def wide_check(
     image = evaluator.inspect(task.image)
     if image is None:
         raise ValueError(f"task image {task.image} is not available locally")
+    paths = task_paths(dataset, task_id, record, docker=docker)
     out.mkdir(parents=True, exist_ok=False)
     wide_root.mkdir(parents=True, exist_ok=True)
     path = wide_root / f"{task_id}.json"
@@ -850,7 +852,7 @@ def wide_check(
         load_runs=load_runs,
         load_workers=load_workers,
     )
-    result["paths"] = task_paths(dataset, task_id, record, docker=docker)
+    result["paths"] = paths
     write_atomic(path, result)
     summary = {"record": str(path.resolve()), "stable": len(result["stable"]), "out": str(out.resolve())}
     return result | summary | {"unusable": wide.unusable(result, image["Id"])}

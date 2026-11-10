@@ -505,6 +505,16 @@ def test_cli_wide_check_says_a_record_measured_below_the_rule_is_unusable(datase
     assert json.loads(capsys.readouterr().out)["unusable"] is None
 
 
+def test_wide_check_lists_the_image_s_files_before_any_grading(dataset, tmp_path):  # noqa: F811
+    from sereno.context_eval.evaluator import wide_check
+
+    docker = listing(code=1)
+    with pytest.raises(RuntimeError, match="cannot list the files of fixture/task:v1: git: not found"):
+        wide_check(dataset, "demo", tmp_path / "wide", tmp_path / "check", RECORD, docker=docker)
+    assert [args for args in docker.of("run") if "--entrypoint" not in args] == []
+    assert not (tmp_path / "check").exists() and not (tmp_path / "wide" / "demo.json").exists()
+
+
 def test_a_gold_grading_under_load_whose_suite_reported_no_test_is_a_problem(dataset, tmp_path):  # noqa: F811
     lock, calls = threading.Lock(), itertools.count(1)
 
