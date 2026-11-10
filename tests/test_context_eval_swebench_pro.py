@@ -160,3 +160,20 @@ def test_a_harm_file_must_cover_every_instance_and_name_only_known_ones(sources,
         short_id(INSTANCE)
     ]
     assert [d.name for d in export(rows, official, grader, out, [INSTANCE])] == [short_id(INSTANCE)]
+
+
+def test_harm_commands_run_after_the_official_script_into_the_same_logs(sources):
+    official, grader, out = sources
+    command = "go test -v -run '^(Test_CUE)$' ./config"
+    harm = {"run": [], "commands": [command], "node_ids": ["Test_CUE"]}
+    tests = export_task(row(), official, grader, out, harm) / "tests"
+    lines = (tests / "test.sh").read_text().splitlines()
+    official_run = next(i for i, line in enumerate(lines) if line.startswith("bash /tests/run_script.sh"))
+    assert lines[official_run + 1] == f"( {command} ) >> /logs/verifier/stdout.log 2>> /logs/verifier/stderr.log"
+    assert lines[official_run + 2].startswith("cat /logs/verifier/stdout.log")
+    assert json.loads((tests / "config.json").read_text())["source"]["harm_commands"] == [command]
+    plain = (export_task(row(), official, grader, out) / "tests" / "test.sh").read_text()
+    assert "@HARM_COMMANDS@" not in plain and ") >> /logs/verifier/stdout.log" not in plain
+    for bad in ("", "go test ./a\ngo test ./b", 3):
+        with pytest.raises(ValueError, match="one non-empty line"):
+            export_task(row(), official, grader, out, {"commands": [bad], "node_ids": ["Test_CUE"]})

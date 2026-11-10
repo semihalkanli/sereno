@@ -90,7 +90,7 @@ def add_parser(parent):
     pro.add_argument("--rows", type=Path, required=True, help="SWE-bench Pro rows (.parquet or .json)")
     pro.add_argument("--official", type=Path, required=True, help="directory of <instance>.run_script.sh/.parser.py")
     pro.add_argument("--grader", type=Path, required=True, help="the shared DeepSWE grader.py")
-    pro.add_argument("--harm", type=Path, help='JSON {instance: {"run": [...], "node_ids": [...]}}')
+    pro.add_argument("--harm", type=Path, help='JSON {instance: {"run": [...], "commands": [...], "node_ids": [...]}}')
     pro.add_argument("--out", type=Path, required=True, help="dataset root; tasks go to <out>/tasks/<short id>")
     pro.add_argument("instances", nargs="+")
     watch = commands.add_parser("watch", help="show a campaign or session step by step, live with --follow")
