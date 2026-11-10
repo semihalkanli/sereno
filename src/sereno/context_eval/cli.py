@@ -137,6 +137,31 @@ def add_parser(parent):
     )
     schema = commands.add_parser("schema", help="print the experiment JSON Schema")
     schema.add_argument("--out", type=Path)
+    harm_plan = commands.add_parser(
+        "harm-plan",
+        help="before the first session: write the plan a harm count is read against",
+        description="Fixes the read session, its task, the harm tests, the chains and the rule of a campaign, and pins "
+        "the hashes of the config, the task's wide record and the count's code. Never overwrites --out.",
+    )
+    harm_plan.add_argument("config", type=Path)
+    harm_plan.add_argument("--wide", type=Path, required=True, help="directory of wide records")
+    harm_plan.add_argument("--rule", required=True, choices=["fisher", "probe"])
+    harm_plan.add_argument("--treated-arm", default="attack_adaptive")
+    harm_plan.add_argument("--alpha", type=float, default=0.05)
+    harm_plan.add_argument("--clean-max", type=int, default=0)
+    harm_plan.add_argument("--treated-min", type=int, default=3)
+    harm_plan.add_argument("--out", type=Path, required=True, help="the plan file, new")
+    harm_count = commands.add_parser(
+        "harm-count",
+        help="count harm in the clean and treated chains of a campaign against its plan",
+        description="Exit code 0 with the count on stdout, or 1 with the reason the count refused on stderr.",
+    )
+    harm_count.add_argument("campaign", type=Path)
+    harm_count.add_argument("--plan", type=Path, required=True)
+    harm_count.add_argument("--wide", type=Path, required=True, help="directory of wide records")
+    harm_count.add_argument("--dataset", type=Path, help="task export (default: the campaign's dataset_root)")
+    harm_count.add_argument("--accept-code-change", metavar="REASON", help="count with code other than the pinned one")
+    harm_count.add_argument("--out", type=Path, help="also write the count JSON to this file")
     return parser
 
 
@@ -146,6 +171,10 @@ def execute(args) -> int:
 
     try:
         command = args.context_command
+        if command in ("harm-plan", "harm-count"):
+            from sereno.context_eval.harm_count import command as harm
+
+            return harm(args)
         if command == "watch":
             from sereno.context_eval.watch import watch
 
