@@ -634,6 +634,13 @@ def session_dirs(campaign: Path) -> list[Path]:
     return sorted(p for p in campaign.glob("cases/*/arms/*/sessions/*") if p.is_dir())
 
 
+def origin_dirs(campaign: Path) -> list[Path]:
+    """The sessions a clean arm ran once per target and repeat (`clean/<target>--rNNN`, `clean_reset/...`), less the
+    copies among them. A case reaches them through its copies under `cases/*/arms`."""
+    found = (p for arm in ("clean", "clean_reset") for p in campaign.glob(f"{arm}/*/sessions/*"))
+    return sorted(p for p in found if p.is_dir() and not (p / "branch.json").exists())
+
+
 def shared_origin(campaign: Path, directory: Path) -> Path | None:
     if not (directory / "branch.json").exists():
         return None
@@ -703,6 +710,10 @@ def grade_campaign(
     )
     directories = session_dirs(campaign)
     copies = {d: shared_origin(campaign, d) for d in directories}
+    # An origin whose case jobs failed before they wrote its copies is graded on its own, not left to a resume.
+    alone = [d for d in origin_dirs(campaign) if d not in set(copies.values())]
+    directories += alone
+    copies |= dict.fromkeys(alone)
     written, kept, backfilled, unreadable = [], [], [], {}
     # A record that cannot be used stops the grading before any container starts; met inside a grading it would
     # cost the session its official grade. So do more gradings at a time than the stable set was measured under.

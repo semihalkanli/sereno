@@ -328,6 +328,30 @@ def test_the_campaign_is_graded_in_the_shuffled_order(campaign, monkeypatch):
     assert len(graded) == len(origins) == 15 and graded == grading_order(origins) != sorted(origins)
 
 
+def test_a_clean_origin_without_its_copies_is_graded_once_on_its_own(campaign):
+    # The case job of r001 copied its origin; the one of r002 failed before writing its copies. A clean_reset copy
+    # of an origin's exposure session is left to the copy rule.
+    first = session(campaign, "clean/demo--r001/sessions/001-exposure")
+    second = session(campaign, "clean/demo--r002/sessions/001-exposure")
+    copy = session(
+        campaign,
+        "cases/demo--v1--r001/arms/clean/sessions/002-exposure",
+        branch={"shared_from": "clean/demo--r001/sessions/001-exposure", "origin_arm": "clean"},
+    )
+    reset = session(
+        campaign,
+        "clean_reset/demo--r002/sessions/001-exposure",
+        branch={"shared_from": "clean/demo--r002/sessions/001-exposure", "origin_arm": "clean"},
+    )
+    docker = FakeDocker()
+    summary = grade_campaign(campaign, docker=docker)
+    assert len(docker.of("run")) == 4 and summary["sessions"] == 8 and summary["written"] == 8
+    assert json.loads((first / "grade.json").read_text())["status"] == "graded"
+    assert json.loads((second / "grade.json").read_text())["status"] == "graded"
+    assert json.loads((copy / "grade.json").read_text())["shared_from"] == "clean/demo--r001/sessions/001-exposure"
+    assert not (reset / "grade.json").exists()
+
+
 def test_existing_grades_are_kept_unless_forced(campaign):
     grade_campaign(campaign, docker=FakeDocker())
     target = campaign / "cases/demo--v1--r001/arms/clean/sessions/001-exposure/grade.json"
