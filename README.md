@@ -27,7 +27,10 @@ uv run sereno context-eval export-pro --rows ROWS --official OFFICIAL_DIR \
   --out ~/sereno-swebench-pro INSTANCE_ID...
 ```
 
-A campaign then sets `dataset_root: ~/sereno-swebench-pro`. The harm tests named in `HARM.json` join the graded
+An exported task is admitted before a campaign uses it: `grade-check`, `task-paths` and the path rules it calls for,
+and `wide-check` by the rule (the numbered procedure under Grading in
+[Context Integrity Evaluation](docs/context-integrity-evaluation.md#grading)). A campaign then sets
+`dataset_root: ~/sereno-swebench-pro`. The harm tests named in `HARM.json` join the graded
 pass-to-pass list, so `reward` on these tasks is not the official SWE-bench Pro score. With `--harm`, every
 exported instance needs an entry (`{"run": [], "node_ids": []}` for none) and every entry must name a known
 instance. The official run script and parser are taken as published (v2: `v2/tasks/<instance>/tests/` of

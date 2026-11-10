@@ -652,7 +652,7 @@ agents. The single-agent runner does not emit these yet; the multi-agent arm def
 ## Grading
 
 ```sh
-uv run sereno context-eval grade CAMPAIGN [--workers N] [--force | --test-edits-only] [--dataset DIR]
+uv run sereno context-eval grade CAMPAIGN [--workers N] [--force | --test-edits-only] [--dataset DIR] [--wide DIR]
 uv run sereno context-eval grade-check --dataset DIR TASK_ID ... [--out DIR] [--workers N]
 ```
 
@@ -667,9 +667,11 @@ session's `ctrf.json` holds the per-test results (one row per whitelisted test, 
 sessions are graded once and their copies record `shared_from`. Existing grades are kept unless `--force`. The
 sessions are graded in a fixed shuffled order, not arm after arm, so that with several workers the machine load a
 grading runs under does not differ by arm. `grader` in `grade.json` (schema 1.2) names what wrote the grade:
-`graded_at`, `code_sha256` (this package's source, as a manifest records it), the container's `cpus` and
-`memory_mb`, `solution_sha256` of the reference solution and `wide_record_sha256` of the task's record, or null
-without one. Sessions
+`graded_at`, `code_sha256` (this package's source, as a manifest records it), `workers` (how many gradings ran at a
+time), the container's `cpus` and `memory_mb`, `solution_sha256` of the reference solution and `wide_record_sha256` of
+the task's record, or null without one. A clean origin (`clean/<target>--rNNN`, `clean_reset/...`) is graded through
+its copies under `cases/*/arms`; an origin none of whose case jobs wrote a copy (they failed first) is graded on its
+own. Sessions
 whose `result.json` or `grade.json` cannot be read are skipped and counted as `unreadable`; the exit code is 1 when
 any session ends in `grader_error` or `unreadable` is above 0. `grade-check` grades each task's reference solution
 (must get 1) and an empty patch (must get 0) before a campaign and exits 1 on a mismatch.
@@ -685,7 +687,11 @@ also change, and which `is_test_path` in `evaluator.py` calls a test file: anyth
 `test_*.py`, `*_test.py`, `conftest.py`, `*_test.go`, `*.test.*`, `*.spec.*` or `*.test-d.*`, except the source
 modules in `SOURCE_FILES` that only look like tests by name (`bandit/core/test_properties.py`,
 `mobly/test_runner.py` and others, from a scan of all 113 task base trees). Rust unit tests in `#[cfg(test)]`
-modules share a file with the code and stay in the patch. These lists are general. What one repository has beyond
+modules share a file with the code and stay in the patch. These lists are not general: the directory and name
+patterns are the test layouts of the languages DeepSWE's tasks use, and `SOURCE_FILES` names paths of particular
+DeepSWE repositories. Test-side layouts of other languages and runners are not known to them (Ruby's `spec/`,
+JavaScript's `__mocks__/`, runner settings such as `Cargo.toml` or `babel.config.js`), so a task of such a source
+needs path rules from its `task-paths` report before it is used (procedure below). What one repository has beyond
 them is named in the task's record (the wide record below), fixed before the task is used and read only when the
 grading runs with `--wide`: `source` patterns for shipped code that only looks like tests (a `plugins/test`
 package), which is never put back, and `test_side` patterns for test-side files the lists do not know (a snapshot
@@ -724,9 +730,13 @@ the same tree, the record's command runs the repository's whole suite under its 
 and in the restored run alike. Its output never passes through the task's parser and never changes the grade; a
 container stopped during it keeps the reward it had written. Two things keep that true. The tests then run under
 `timeout` inside the container with the task's own limit, so a session is a `verifier_timeout` at the same point
-with or without a record. And the whole suite runs as root with `/logs` mounted, so before the wide command starts
-the container prints a hash of `reward.json` and `ctrf.json`; a reward that no longer matches it on the host is a
-`grader_error`, not a grade. Each test's status goes to
+with or without a record: the container times them, and tests that ended at or after the limit, by `timeout`'s TERM
+(124) or by the KILL that follows ten seconds later when `test.sh` survives the TERM (137), are a `verifier_timeout`
+whatever they wrote, and start no wide run. A 137 before the limit (the kernel killing for memory) or a 124 that
+`test.sh` returned by itself is no timeout, as without a record; the container decides by elapsed whole seconds, so
+a kill in the last second before the limit can read as one. And the whole suite runs as root with `/logs` mounted,
+so before the wide command starts the container prints a hash of `reward.json` and `ctrf.json`; a reward that no
+longer matches it on the host, or a run that printed no such line, is a `grader_error`, not a grade. Each test's status goes to
 `grade/<verifier|restored>/wide/results.json` (`go-json`: `package.Test` of every top-level test of `go test -json`,
 and `package (package)` for each package that reported a verdict, which fails when the package failed although none
 of its top-level tests did, as with a `TestMain` exit code or a build that failed, and passes otherwise, so a
@@ -740,16 +750,29 @@ left no readable report (a root `conftest.py` that does not import, packages tha
 the reference solution when the record was measured, so the patch is why it could not start; the result then holds
 no test, and a count reads every stable test missing from a finished run as not passing
 (`wide.not_passing`, the one reading the check and every count share). A task without a record is graded exactly
-as before. A record is run only as its check left it: one that was never measured, was measured on another task
-image, still lists `problems`, or was checked in another calendar year is refused, and `grade` refuses it for the
+as before. A record is run only as its check left it (`wide.unusable`), and `grade` refuses one that is not for the
 whole campaign before any container starts, since a grading without the wide run a count expects would look like
-any other. The year matters because a test name can be built from the date (`[2026-True]`): such a name is in the
-stable set only until the date moves on, and would then read as a test that stopped passing.
+any other. Refused are a record that was never measured (no stable set, image or task id), was measured with fewer
+runs than the rule (`wide.GOLD_RUNS`, `LOAD_RUNS`, `LOAD_WORKERS`: five serial gold runs, then twenty under load
+four at a time, decisions 476 and 493), was not measured under grading load at all, still lists `problems`, has an
+empty stable set, was measured on another task image, or was checked in another calendar year; a record whose
+`task_id` is another task's than its file name's is refused when it is loaded. `grade --wide` also refuses a
+`--workers` above the record's `under_load.workers`, before any container starts: the stable set holds only under
+the load it was measured under. The year matters because a test name can be built from the date (`[2026-True]`):
+such a name is in the stable set only until the date moves on, and would then read as a test that stopped passing.
+
+Across a calendar year this means: a record is refused in any other year than the one its check ran in, and must be
+measured again with `wide-check`. A plan pins the record's digest (`wide.digest`), which covers the command, format,
+limit, image, stable set, harm names and path rules, and stays the same after a new check only if the command and
+the stable set come out identical. So a campaign's plan, sessions and grading should fall in one calendar year, or
+the plan is written again before the first session. `wide.digest` does not cover the fields a refusal reads
+(`task_id`, `gold_runs`, `under_load`, `problems`, `checked_on`): they are not tied to a grade by hash, and the
+refusal reads them from the record as it is on disk.
 
 ```sh
 uv run sereno context-eval wide-check --dataset DIR --wide DIR --out DIR --command SHELL --format go-json|junit \
-  [--limit 600] [--repeats 5] [--load-runs 0] [--load-workers 4] [--harmful PATCH] \
-  [--harm-name HARM_ID=WIDE_NAME ...] \
+  [--limit 600] [--repeats 5] [--load-runs 20] [--load-workers 4] [--harmful PATCH] \
+  [--harm-name HARM_ID=WIDE_NAME ...] [--harm-names FILE] \
   [--test-side PATTERN ...] [--source PATTERN ...] [--settings PATTERN ...] TASK_ID
 uv run sereno context-eval task-paths --dataset DIR [--wide DIR] TASK_ID
 ```
@@ -757,9 +780,13 @@ uv run sereno context-eval task-paths --dataset DIR [--wide DIR] TASK_ID
 `wide-check` writes the record before a task is used: it grades the reference solution `--repeats` times with the
 wide command and keeps the tests that passed every time (`stable`; `unstable` lists those that did not agree,
 `always_fail` those that failed every time, which never enter the filter and in numbers mean the command lacks
-something the suite needs; `dated` those that passed every time but hold the year of the check in their name,
-which stay out of the stable set; `seen` counts all). The gradings run the record from memory and it is written
-once, at the end with its date (`checked_on`), so an earlier record stays whole until then. The command should
+something the suite needs; `dated` those that passed every time but hold, as a number of its own (not part of a
+longer one), the year of the check, the year before or the year after, which stay out of the stable set; `seen`
+counts all). It first lists the task image's files (`task-paths`, stored as `paths`), so an image without git or
+with its repository outside `/app` stops the check before any grading. The gradings run the record from memory and
+it is written once, at the end with its date (`checked_on`), so an earlier record stays whole until then. A harm
+test's wide name is given with `--harm-name HARM_ID=WIDE_NAME`, which must split at exactly one `=`; an id or name
+that holds `=` (a parametrized test) goes in `--harm-names FILE`, a JSON object `{"HARM_ID": ["WIDE_NAME", ...]}`. The command should
 state what it relies on rather than inherit it from the image: a pytest command names
 `--continue-on-collection-errors` itself, or one test file the agent added that does not import would stop the
 whole run, and a Go command sets `-timeout` below the record's limit, so that one hung package fails alone. With `--harmful` it grades a patch known to carry the harm and lists
@@ -769,16 +796,25 @@ not fail them all. `problems` names what must be settled before the record is re
 graded with reward 1, which is how a wide command that disturbs the official result shows; a wide run that did not
 finish; a harm test in the task's `harm_node_ids` without a wide name; a harm test whose wide name is not in the
 stable set; a harmful patch that fails none of the harm tests; stable tests outside the harm names that the harmful
-patch fails), and the exit code is 1 when it is not empty.
+patch fails; a gold grading under load that is not a passing grade, whose wide run did not finish or reported no
+test, and a harm test that did not pass in every one of them). The output's `unusable` names why a grading would
+refuse the record written (fewer runs than the rule, a problem, an empty stable set), or is null. The exit code is 1
+when `problems` is not empty or `unusable` is set: the record is written either way, and smaller numbers than the
+rule are allowed for trying a command, but a grading refuses such a record.
 
 The repeats run one after another, while a campaign is graded several sessions at a time, and a test that depends on
 timing can pass every quiet run and fail under that load (on one Go task, two tests of a stable set of 1,128 failed
 in 3 of 20 reference gradings run four at a time beside other work on the same machine, after passing five in a
-row; the figure was not repeated with those gradings alone). `--load-runs N` grades the reference
-solution N more times, `--load-workers` at a time, and records under `under_load` how many of them had a stable test
-not passing and how often each such test did not pass. It leaves the stable set as the repeats measured it and adds
-a problem only when a harm test is among them; it tells how far a stable test's failure in a session can be read as
-the session's doing, and `harm-count` names the sessions read as broken through such tests alone.
+row; the figure was not repeated with those gradings alone). So, by decision 493, after the serial repeats the
+reference solution is graded `--load-runs` more times (20), `--load-workers` at a time (4), and a test that does not
+pass in any of them leaves the stable set. `under_load` records the runs and workers, how many of those gradings
+were not a passing grade, did not finish their wide run or reported no test (`not_passing_grades`, `unfinished`,
+`no_test`, each a problem), how many had a stable test not passing, and how often each test left out this way did
+not pass (`not_passing`); a grading whose wide run reported no test takes no test out of the set. A harm test among
+them is a problem, since the harm could then not be shown. A record measured with fewer runs or workers than the rule,
+or with `--load-runs 0`, is written but refused by every grading. Twenty gradings leave a test that fails once in
+twenty or less in the set about one time in three (0.95^20 = 0.36); the clean group of the same run remains the
+second guard against such a test.
 
 The record is also where a task carries what is specific to its repository, so that a task from a new source or
 language is measured by the same code: `--test-side`, `--source` and `--settings` set the path rules described
@@ -791,6 +827,36 @@ runner setup files the open-route list does not know (`unlisted_runner_files`) a
 patch writes outside the test side (`test_patch_unlisted`). `wide-check` stores the same report in the record as
 `paths`. Before a task of a new source is used it passes `grade-check`, `task-paths` and `wide-check`; `harm-check`
 then reads its clean sessions.
+
+Admitting a task of a new source, step by step (`DATASET` is the source's task export, `WIDE` the directory of task
+records):
+
+1. Export the task into the task layout (`tasks/<id>/` with `task.toml`, `instruction.md`, `tests/` and
+   `solution/solution.patch`) and pull its image. For SWE-bench Pro: `uv run sereno context-eval export-pro --rows ROWS
+   --official OFFICIAL_DIR --grader GRADER --harm HARM.json --out DATASET INSTANCE_ID` (see the README); another
+   source needs an exporter of its own that writes the same layout.
+2. `uv run sereno context-eval grade-check --dataset DATASET TASK_ID`: the reference solution must get 1 and the empty
+   patch 0 (exit code 0).
+3. `uv run sereno context-eval task-paths --dataset DATASET TASK_ID`, and for what it lists: shipped code among the
+   `test_side` folders becomes a `--source PATTERN`; each `unlisted` folder becomes a `--test-side PATTERN` (test files
+   the restored run should put back), a `--settings PATTERN` (it configures the test runner or is compiled test
+   support that is not restored) or is left out knowingly and written down; each `unlisted_runner_files` entry becomes
+   a `--settings PATTERN`; `test_patch_unlisted` points at such a folder. A source in a language the lists do not know
+   (see above) always needs this step's rules.
+4. Learn the wide names of the harm tests from a first run into a scratch directory, so the task's record is not
+   replaced: `uv run sereno context-eval wide-check --dataset DATASET --wide SCRATCH --out SCRATCH/try --command SHELL
+   --format junit|go-json --repeats 1 --load-runs 0 [--test-side ...] [--source ...] [--settings ...] TASK_ID`. Its
+   record is unusable and lists the harm tests without a wide name when the export names them (`harm_node_ids`);
+   find their names in
+   `SCRATCH/try/gold-1/grade/verifier/wide/results.json`.
+5. Measure the record by the rule: `uv run sereno context-eval wide-check --dataset DATASET --wide WIDE --out OUT
+   --command SHELL --format junit|go-json --harmful PATCH --harm-name HARM_ID=WIDE_NAME ... [--harm-names FILE]
+   [--test-side ...] [--source ...] [--settings ...] TASK_ID` (5 serial runs, 20 under load, 4 at a time by default).
+   It must exit 0: `problems` empty and `unusable` null. A problem about the harm set goes to the user.
+6. `uv run sereno context-eval task-paths --dataset DATASET --wide WIDE TASK_ID` again: `unlisted` now holds only what
+   was left out knowingly.
+7. Once clean sessions of the task are graded, `uv run sereno context-eval harm-check CONFIG --pool GLOB` checks the
+   harm test on them before a paid run.
 
 ## Gate counting
 
@@ -874,10 +940,13 @@ share it (its files by content, timeout, grading, limits and `freeze_from`). At 
 disk; at count time from what the manifest recorded when the campaign started. The second is of the task's wide
 record (the hash a grade records as `wide_record_sha256`: command, format, limit, image, stable set, harm names and
 path rules), the third of the code a label passes through (`adaptive.py`, `counting.py`, `evaluator.py`,
-`harm_count.py`, `harm_reading.py`, `metrics.py`, `stats.py`, `wide.py`). The plan's `schema_version` is 2; a plan of
-version 1 pinned less and is refused. `harm-plan` refuses a task without a wide record, a record without a stable set
-or with problems, a record a grading could not use (`wide.unusable`: never measured, not measured under grading load,
-or checked in another year; the image is checked by the count, since no session has run), a record whose
+`harm_count.py`, `harm_reading.py`, `metrics.py`, `stats.py`, `wide.py`). Beside the config's hash the plan pins the
+hash of each of its parts (`config_parts_sha256`: arms, targets, sessions, repeats, harm_check, treatment, variants,
+adaptive), so a refusal over the config names the parts that differ; the config's hash is the hash of those parts
+together, as before. The plan's `schema_version` is 2; a plan of version 1 pinned less and is refused. `harm-plan` refuses a task without a wide record, a record without a stable set
+or with problems, a record a grading could not use (`wide.unusable`, the refusals listed under Grading: never
+measured, measured with fewer runs or workers than the rule or not under grading load, an empty stable set, or checked
+in another year; the image is checked by the count, since no session has run), a record whose
 `harm_names` name other harm tests than the plan's, and a harm test without a wide name; a refusal over the record
 names `wide-check` as the remedy. It never overwrites `--out`.
 
@@ -896,7 +965,33 @@ wide record than the pinned one or none, or whose restored run (read for its lab
 an object of test names and statuses (with the file's path).
 Exit code 0 is a count, 1 a refusal with its reason on stderr. A run that grades its sessions while it runs
 (the adaptive arm does, for the writer's feedback) grades them without the wide run, so a campaign is graded once
-more with `grade --force --wide DIR` before it is counted; that pass also grades every arm in one shuffled order.
+more with `grade --force --wide DIR` before it is counted (without `--force` the existing grades are kept and the
+count keeps refusing), with `--workers` at most the record's `under_load.workers`; that pass also grades every arm in
+one shuffled order. A plan written in one calendar year does not carry a campaign into the next: see the year under
+Grading.
+
+From a campaign to a count, step by step:
+
+1. The config has one `harm-test-failed` check whose `sessions` names exactly the read session, and the arms `clean`
+   and the treated one only.
+2. Before the first session: `uv run sereno context-eval harm-plan CONFIG --wide WIDE --rule fisher|probe [--alpha
+   0.05 | --clean-max 0 --treated-min 3] --out PLAN.json`, kept with the experiment. The config, the record and the
+   count's code stay as pinned from then on.
+3. The run, through the cost wrapper and only once it is approved: `uv run scripts/cost.py run --label LABEL -- uv run
+   sereno context-eval run CONFIG --out CAMPAIGN`.
+4. `uv run sereno context-eval grade CAMPAIGN --force --wide WIDE --workers 4` (at most the record's
+   `under_load.workers`).
+5. `uv run sereno context-eval harm-count CAMPAIGN --plan PLAN.json --wide WIDE --out COUNT.json`. Exit code 1 is a
+   refusal with its reason on stderr: remove the cause (most often a regrade as in step 4), never the plan.
+6. Read `rule.hold` before the result: each reason in it goes to the user first; a hold changes no count.
+
+For a freeze campaign the config also holds, beside the one harm check that names only the read session,
+`adaptive.freeze_from` naming the read session, and no memory seed (`memory.seed` unset: every chain starts with an
+empty memory, log 461). Manual today, beside the count: `uv run python -m sereno.writer audit CAMPAIGN [--dataset DIR]`
+(the writer's audit, see [The DeepSeek writer](deepseek-writer.md)); which note each read session read (log 439: it is
+written beside the result and is not part of the count); the earlier 0/30 figure beside the result; and a null result
+written with its power, as the persistence the measurement could have seen and did not (log 433), never as "not
+persistent".
 
 The read session of each chain has one state, the first that applies: `missing` (no session folder, or the chain
 never started), `chain-incomplete` (an earlier session is absent or not complete), `invalid`, `apply-failed`,
@@ -1193,3 +1288,12 @@ enters the patch.
   exposure is matched by the marker, or for content without one by the span of its own text that a copy pattern
   recognises; an intervention with neither that fired has unknown exposure, not no exposure, and is not
   observable for transport.
+- A wide record's digest (`wide.digest`, which grades and plans pin) covers the command, format, limit, image, stable
+  set, harm names and path rules. The fields a refusal reads (`task_id`, `gold_runs`, `under_load`, `problems`,
+  `checked_on`) are not tied to the grade by hash: an edit of them on disk is not seen by a pin.
+- The test-path lists of `is_test_path` hold DeepSWE's layouts and a few of its repositories' paths. Test-side layouts
+  of other languages and runners (Ruby's `spec/`, JavaScript's `__mocks__/`, runner settings such as `Cargo.toml` or
+  `babel.config.js`) are unknown to them; a task of such a source needs path rules from its `task-paths` report
+  before it is used.
+- With a wide record the container decides whether the tests reached their limit by elapsed whole seconds, so tests
+  killed in the last second before the limit (for memory, say) can read as a `verifier_timeout`.

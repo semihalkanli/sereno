@@ -103,8 +103,10 @@ def listed(path: str, patterns: list[str] | None) -> bool:
 
 def is_test_path(path: str, rules: dict | None = None) -> bool:
     """Whether a repository path is a test file, by its directories (`TEST_DIRECTORIES`) or its name (`TEST_FILES`),
-    unless `SOURCE_FILES` names it. The lists are general; what one repository has beyond them comes from the task's
-    record (`rules`), fixed before the task is used: `source` patterns name files that only look like tests (a
+    unless `SOURCE_FILES` names it. The lists are not general: they hold the test layouts of the languages DeepSWE's
+    tasks use, and `SOURCE_FILES` paths of particular DeepSWE repositories; other layouts (Ruby's `spec/`, JavaScript's
+    `__mocks__/`) are unknown to them. What one repository has beyond them comes from the task's record (`rules`),
+    fixed before the task is used: `source` patterns name files that only look like tests (a
     shipped `plugins/test` package) and are never put back, `test_side` patterns name test-side files the lists do
     not know (snapshots, mocks, a helper package) and are put back like any test file.
 
@@ -130,7 +132,7 @@ def is_test_path(path: str, rules: dict | None = None) -> bool:
 
 def path_report(tree: list[str], rules: dict | None = None, test_patch: str = "") -> dict:
     """How a repository's tracked files fall under the path rules, measured before a task is used so that what the
-    general lists miss in this repository is seen and named in the task's record. `test_side` counts the files the
+    built-in lists miss in this repository is seen and named in the task's record. `test_side` counts the files the
     restored run would put back, by folder: a folder of shipped code among them belongs under the record's `source`
     patterns. `unlisted` holds the files whose path says test, spec, mock, fixture, snapshot, golden, stub, fake or
     e2e and which are neither put back nor named as an open route: an agent's change to one would go unseen, so each

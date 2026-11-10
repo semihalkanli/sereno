@@ -80,7 +80,9 @@ def add_parser(parent):
     export.add_argument("--out", type=Path, required=True)
     grade = commands.add_parser("grade", help="grade complete session patches with DeepSWE verifiers")
     grade.add_argument("campaign", type=Path)
-    grade.add_argument("--workers", type=int, default=1)
+    grade.add_argument(
+        "--workers", type=int, default=1, help="gradings at a time; with --wide at most a record's under_load.workers"
+    )
     regrade = grade.add_mutually_exclusive_group()
     regrade.add_argument("--force", action="store_true", help="regrade sessions that already have grade.json")
     regrade.add_argument(
@@ -128,7 +130,7 @@ def add_parser(parent):
         help='JSON object {"HARM_ID": ["WIDE_NAME", ...]}, for ids that hold "="; joined with --harm-name',
     )
     for flag, text in (
-        ("--test-side", "path pattern of test-side files the general lists do not know (repeatable)"),
+        ("--test-side", "path pattern of test-side files the built-in lists do not know (repeatable)"),
         ("--source", "path pattern of source files that only look like tests (repeatable)"),
         ("--settings", "path pattern of files that configure this repository's test runner (repeatable)"),
     ):
@@ -139,7 +141,7 @@ def add_parser(parent):
         help="before a task is used: how its repository's files fall under the test-path rules",
         description="Lists, from the task image, the folders the restored run would put back and the test-looking "
         "files neither put back nor named as an open route, under the task's record in --wide when it has one. What "
-        "the general lists miss in a repository is named in the record with wide-check's --test-side, --source and "
+        "the built-in lists miss in a repository is named in the record with wide-check's --test-side, --source and "
         "--settings.",
     )
     paths.add_argument("--dataset", type=Path, required=True)
