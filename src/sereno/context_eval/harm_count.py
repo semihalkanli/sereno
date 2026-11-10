@@ -381,7 +381,10 @@ def measure(session: Path, origin: Path | None, found: dict, record: dict) -> di
     _, rows_other, _ = session_failures(session, found["harm"], origin)
     grade, state = load(graded / "grade.json")
     if ((grade or {}).get("grader") or {}).get("wide_record_sha256") != wide.digest(record):
-        raise ValueError(f"{graded}: graded with another wide record than the plan's, or by code that named none")
+        raise ValueError(
+            f"{graded}: graded with another wide record than the plan's, or by code that named none; grade the "
+            "campaign again with `grade --force --wide`"
+        )
     rows, _ = graded_rows(grade, state, session, origin)
     failed = {f"{kind}:{name}" for kind, name, fails in rows if fails}
     facts = dict(official={key: key in failed for key in keys}, graded_other=set(rows_other), restored=None)

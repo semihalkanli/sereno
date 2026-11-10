@@ -823,7 +823,7 @@ def test_a_session_graded_with_another_wide_record_stops_the_count(tmp_path):
     grade = json.loads((path / "grade.json").read_text())
     for grader in ({"wide_record_sha256": "0" * 64}, None):
         write(path / "grade.json", grade | {"grader": grader})
-        with pytest.raises(ValueError, match="graded with another wide record"):
+        with pytest.raises(ValueError, match=r"graded with another wide record.*grade --force --wide"):
             world.count()
     write(path / "grade.json", grade)
     result = world.count()
