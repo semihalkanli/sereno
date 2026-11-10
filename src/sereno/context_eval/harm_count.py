@@ -345,9 +345,12 @@ def wide_failures(tests: dict[str, str], record: dict) -> set[str]:
 
 def reason(state: str, session: Path | None, origin: Path | None) -> str | None:
     """The reason the result or the grade gives for a read session that is invalid, not gradable or a grader error,
-    when it gives one."""
+    when it gives one. A session never graded, such as a frozen read session before the campaign's grading pass, is
+    a grader error whose reason says so."""
     if session is None or state not in ("invalid", "grader-error", "not-gradable"):
         return None
+    if state == "grader-error" and not ((origin or session) / "grade.json").exists():
+        return "the session has no grade: grade the campaign with `grade --force --wide` before it is counted"
     document, _ = load(session / "result.json") if state == "invalid" else load((origin or session) / "grade.json")
     text = document.get("error") if isinstance(document, dict) else None
     return text if isinstance(text, str) and text else None

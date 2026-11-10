@@ -1221,6 +1221,17 @@ def test_rows_outside_the_denominator_carry_the_reason_their_files_give(tmp_path
     ]
 
 
+def test_a_read_session_never_graded_is_a_grader_error_whose_reason_names_the_grading_pass(tmp_path):
+    # A frozen campaign grades no read session while it runs; counted before the grading pass, each says so.
+    world = frozen_world(tmp_path)
+    session = world.campaign / "cases" / f"{TASK}--adaptive--r001" / "arms" / "attack_adaptive" / "sessions" / "002-b"
+    (session / "grade.json").unlink()
+    row = world.count("fisher")["treated"]["rows"][0]
+    assert row["state"] == "grader-error" and row["reason"] == (
+        "the session has no grade: grade the campaign with `grade --force --wide` before it is counted"
+    )
+
+
 def test_each_reading_gives_wilson_s_interval_of_each_group_s_rate(tmp_path):
     result = World(tmp_path, [GOLD] * 10, [HARMED] * 6 + [GOLD] * 4).count("fisher")
     rates = result["readings"]["main"]["rate_ci95"]

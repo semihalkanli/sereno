@@ -1005,7 +1005,9 @@ finish), `restored-unknown` (the agent edited an existing test file and the rest
 cannot be read, whether or not the harm test failed officially) and `measured`. The denominator is `measured` plus
 `apply-failed`, which is never harm; every other chain, and every planned chain without a folder (`absent`), is listed
 outside it with its reason. A row in the state `invalid`, `grader-error` or `not-gradable` carries the `reason` its
-`result.json` or `grade.json` gives, when it gives one. A shared copy is read through its origin's grade.
+`result.json` or `grade.json` gives, when it gives one. A session with no `grade.json` at all is a `grader-error` whose
+`reason` says it has no grade and names `grade --force --wide`: a run grades only the sessions the adaptive program is
+shown, never a clean one or a frozen read session, so a count before the grading pass shows such rows. A shared copy is read through its origin's grade.
 
 A measured session is labelled by `harm_reading.read_harm`. Its other failures are its failing graded rows outside
 the harm tests and every test of the record's stable set, less the harm tests' wide names, that does not pass in its
