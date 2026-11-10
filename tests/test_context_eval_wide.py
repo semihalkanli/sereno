@@ -13,7 +13,7 @@ from test_context_eval_grader import TASK_ID, FakeDocker, dataset, passing, subm
 
 from sereno.context_eval import wide
 from sereno.context_eval.dataset import load_task
-from sereno.context_eval.evaluator import COUNTS, SEAL, DeepSWEEvaluator, official_digest
+from sereno.context_eval.evaluator import COUNTS, CUT, SEAL, DeepSWEEvaluator, container_command, official_digest
 
 GO = "\n".join(
     json.dumps(event)
@@ -148,14 +148,16 @@ class Sealing(FakeDocker):
     """A fake that prints the seal the run command asks for, as the container does after its tests; `tamper`
     rewrites the reward afterwards, as a test of the whole suite could, and `code` is the container's exit code."""
 
-    def __init__(self, verifier=passing, tamper=False, code=0):
+    def __init__(self, verifier=passing, tamper=False, code=0, cut=False):
         super().__init__(verifier)
-        self.tamper, self.code = tamper, code
+        self.tamper, self.code, self.cut = tamper, code, cut
 
     def seal_line(self, args):
         logs = Path(args[args.index("-v") + 1].removesuffix(":/logs"))
         found = re.search(rf'echo "{SEAL} ([0-9a-f]+) ', args[-1])
         line = f"{SEAL} {found[1]} {official_digest(logs / 'verifier')}\n" if found else ""
+        if found and self.cut:
+            line = f"{CUT} {found[1]}\n{line}"
         if self.tamper:
             (logs / "verifier" / "reward.json").write_text(json.dumps({"reward": 1} | dict.fromkeys(COUNTS, 1)))
         return line
@@ -194,8 +196,8 @@ def test_the_wide_command_follows_the_tests_and_leaves_the_grade_alone(dataset, 
     (run, timeout) = next(call for call in docker.calls if call[0][0] == "run")
     shell = run[-1]
     # The tests keep the task's own limit, the seal is printed before the wide command, and tests cut short skip it.
-    order = ["timeout -k 10 42 bash /tests/test.sh; status=$?", f'echo "{SEAL} ', "[ $status -eq 124 ] ||"]
-    order += ["timeout -k 10 600 bash -c", "chown"]
+    order = ["timeout -k 10 42 bash /tests/test.sh; status=$?", "-ge 42 ] && cut=1", f'echo "{SEAL} ']
+    order += ["[ $cut -eq 1 ] ||", "timeout -k 10 600 bash -c", "chown"]
     assert [shell.index(part) for part in order] == sorted(shell.index(part) for part in order)
     assert shell.endswith("exit $status") and timeout == 42.0 + 600 + 90
     assert wide.read(tmp_path / "out" / "grade" / "verifier") == wide.go_json(GO.splitlines())
@@ -215,9 +217,51 @@ def test_tests_cut_short_inside_the_container_are_a_verifier_timeout(dataset, tm
     def nothing(logs, patch):
         (logs / "verifier").mkdir()
 
-    evaluator = DeepSWEEvaluator(dataset, docker=Sealing(nothing, code=124), wide_root=record_at(tmp_path))
-    grade = evaluator.evaluate(submit(tmp_path), tmp_path / "out")
-    assert grade["status"] == "verifier_timeout" and grade["error"] == "verifier exceeded 42 s"
+    root = record_at(tmp_path)
+    # Cut at the limit by timeout's TERM (124) or by the KILL that follows (137), with or without a reward written
+    # before the tests hung: a timeout, as the client's limit makes it without a record.
+    for name, verifier, code in (("term", nothing, 124), ("kill", nothing, 137), ("late", passing, 137)):
+        evaluator = DeepSWEEvaluator(dataset, docker=Sealing(verifier, code=code, cut=True), wide_root=root)
+        grade = evaluator.evaluate(submit(tmp_path), tmp_path / name)
+        assert grade["status"] == "verifier_timeout" and grade["error"] == "verifier exceeded 42 s", name
+    # Killed before the limit (137, the kernel for memory) or returning 124 by itself: no reward, no timeout.
+    for name, code in (("memory", 137), ("own", 124)):
+        evaluator = DeepSWEEvaluator(dataset, docker=Sealing(nothing, code=code), wide_root=root)
+        grade = evaluator.evaluate(submit(tmp_path), tmp_path / name)
+        plain = DeepSWEEvaluator(dataset, docker=Sealing(nothing, code=code)).evaluate(
+            submit(tmp_path), tmp_path / f"plain-{name}"
+        )
+        assert grade["status"] == plain["status"] == "grader_error", name
+        assert grade["error"] == plain["error"] == f"verifier wrote no reward file (exit code {code})"
+
+
+@pytest.mark.parametrize(
+    "script, limit, status, cut",
+    [
+        ("echo ok > /dev/null", 3, 0, False),
+        ("sleep 30", 1, 124, True),
+        ("trap '' TERM; sleep 30", 1, 137, True),
+        ("kill -9 $$", 3, 137, False),
+        ("exit 124", 3, 124, False),
+    ],
+    ids=["passes", "term-at-limit", "kill-at-limit", "kill-before-limit", "own-124"],
+)
+def test_the_container_cuts_tests_by_the_limit_reached_not_by_the_exit_code(
+    tmp_path, monkeypatch, script, limit, status, cut
+):
+    from sereno.context_eval import evaluator
+
+    monkeypatch.setattr(evaluator, "KILL_AFTER", 1)
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "test.sh").write_text(script + "\n")
+    record = RECORD | {"command": "true", "format": "junit", "limit_seconds": 5}
+    command = container_command(limit, record, "s" * 32)
+    command = command.replace("/tests/test.sh", str(tmp_path / "test.sh")).replace("/logs", str(tmp_path / "logs"))
+    run = subprocess.run(["bash", "-c", command], capture_output=True, text=True, timeout=60)
+    assert run.returncode == status and (f"{CUT} {'s' * 32}" in run.stdout) == cut
+    assert evaluator.was_cut(run.stdout, "s" * 32) == cut and evaluator.sealed(run.stdout, "s" * 32) is not None
+    # Tests cut at their limit start no wide run; tests that ended otherwise do.
+    assert (tmp_path / "logs" / "wide" / "exit").exists() == (not cut)
 
 
 def test_a_container_stopped_during_the_wide_command_keeps_its_reward(dataset, tmp_path):  # noqa: F811

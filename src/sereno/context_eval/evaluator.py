@@ -37,6 +37,8 @@ COUNTS = ("partial", "f2p", "p2p", "f2p_total", "f2p_passed", "p2p_total", "p2p_
 GRADE_SCHEMA = "1.2"
 CTRF_ROW = re.compile(r"\[(f2p|p2p)\] (.+)")
 SEAL = "sereno-official-sha256"
+CUT = "sereno-tests-cut"
+KILL_AFTER = 10  # seconds timeout(1) waits after its TERM before it kills the tests
 # grader.py's own header pattern; group 2 is the path it resets.
 DIFF_GIT = re.compile(r'^diff --git (?:"?a/(.*?)"?) (?:"?b/(.*?)"?)$')
 TEST_DIRECTORIES = frozenset({"test", "tests", "__tests__", "__tests", "testdata", "testutils"})
@@ -404,14 +406,7 @@ class DeepSWEEvaluator:
             (logs / "artifacts" / "model.patch").write_bytes(patch)
             name = f"sereno-grade-{uuid.uuid4().hex[:16]}"
             seal = uuid.uuid4().hex
-            tests, extra = "bash /tests/test.sh; status=$?; ", ""
-            if record:
-                tests = f"timeout -k 10 {int(timeout)} bash /tests/test.sh; status=$?; "
-                digest = (
-                    "$(cat /logs/verifier/reward.json /logs/verifier/ctrf.json 2>/dev/null | sha256sum | cut -c1-64)"
-                )
-                extra = f'echo "{SEAL} {seal} {digest}"; [ $status -eq 124 ] || {{ {wide.snippet(record)}}}; '
-            command = f"{tests}{extra}chown -R {os.getuid()}:{os.getgid()} /logs; exit $status"
+            command = container_command(timeout, record, seal)
             allowed = timeout + (float(record["limit_seconds"]) + 90 if record else 0)
             result = None
             args = ["run", "--rm", "--name", name, "--network", "none", "--cpus", str(resources.get("cpus", 2))]
@@ -440,10 +435,10 @@ class DeepSWEEvaluator:
             reward_json, reward_txt = destination / "reward.json", destination / "reward.txt"
             if record:
                 wide.collect(logs / "wide", destination / "wide", record)
-                # A container stopped during the wide command had finished its tests: the reward stands. Tests cut
-                # short by the limit inside the container leave no reward and exit with timeout's own code.
-                cut_short = result is not None and result.returncode == 124
-                timed_out = (timed_out or cut_short) and not reward_json.exists()
+                # A container stopped during the wide command had finished its tests: the reward stands. Tests the
+                # container cut at their limit are a timeout whatever they wrote, as the client's limit makes them
+                # without a record.
+                timed_out = was_cut(stdout, seal) or (timed_out and not reward_json.exists())
             if timed_out:
                 # Strict success counts a timeout as a failure, so the partial score does too.
                 error = f"verifier exceeded {timeout:g} s"
@@ -536,6 +531,32 @@ class DeepSWEEvaluator:
         if tag != (grade.get("verifier") or {}).get("tag"):
             return edit_record("unknown", reason="the dataset's tests/ no longer match the graded verifier")
         return self.test_edits(grade.get("task_id"), patch, directory, grade)
+
+
+def container_command(timeout: float, record: dict | None, seal: str) -> str:
+    """The verifier container's shell. Without a wide `record` it runs the tests and hands /logs back. With one the
+    tests run under timeout(1) at the task's limit and are timed: when they ended at or after the limit, by timeout's
+    TERM (124) or the KILL that follows a test.sh that survives it (137), the container prints `CUT <seal>` and starts
+    no wide run. A 137 before the limit, such as the kernel killing for memory, is no timeout, as without a record;
+    nor is a 124 test.sh returned by itself. The decision is the container's, by elapsed whole seconds, so a kill in
+    the last second before the limit can read as one. Then the seal line, then the wide command."""
+    owner = f"chown -R {os.getuid()}:{os.getgid()} /logs; exit $status"
+    if not record:
+        return f"bash /tests/test.sh; status=$?; {owner}"
+    limit = int(timeout)
+    digest = "$(cat /logs/verifier/reward.json /logs/verifier/ctrf.json 2>/dev/null | sha256sum | cut -c1-64)"
+    return (
+        f"tests_start=$(date +%s); timeout -k {KILL_AFTER} {limit} bash /tests/test.sh; status=$?; "
+        f"tests_took=$(( $(date +%s) - tests_start )); cut=0; "
+        f"if [ $status -eq 124 ] || [ $status -eq 137 ]; then [ $tests_took -ge {limit} ] && cut=1; fi; "
+        f'if [ $cut -eq 1 ]; then echo "{CUT} {seal}"; fi; '
+        f'echo "{SEAL} {seal} {digest}"; [ $cut -eq 1 ] || {{ {wide.snippet(record)}}}; {owner}'
+    )
+
+
+def was_cut(stdout: str, seal: str) -> bool:
+    """Whether the container said it cut this run's tests at their limit (`container_command`)."""
+    return re.search(rf"^{CUT} {seal}\s*$", stdout, re.MULTILINE) is not None
 
 
 def sealed(stdout: str, seal: str) -> str | None:
