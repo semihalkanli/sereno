@@ -36,7 +36,7 @@ JUNIT = (
 RECORD = {"command": "cd /app && go test -json ./...", "format": "go-json", "limit_seconds": 600}
 YEAR = datetime.now(UTC).year
 # What `check` adds to a record; a grading runs only a record that carries it.
-MEASURED = RECORD | {"image_id": TASK_ID, "stable": [], "checked_on": f"{YEAR}-01-02"}
+MEASURED = RECORD | {"image_id": TASK_ID, "stable": [], "checked_on": f"{YEAR}-01-02", "under_load": {"runs": 20}}
 
 
 def test_go_names_carry_their_package_and_subtests_are_left_out():
@@ -240,6 +240,8 @@ def test_a_record_measured_on_another_image_stops_the_grading(dataset, tmp_path)
 def test_a_grading_runs_only_a_record_its_check_left_usable():
     assert wide.unusable(MEASURED, TASK_ID) is None
     assert wide.unusable(RECORD, TASK_ID) == "it was never measured"
+    quiet = {k: v for k, v in MEASURED.items() if k != "under_load"}
+    assert wide.unusable(quiet, TASK_ID) == "its stable set was not measured under grading load"
     assert "problems that are not settled" in wide.unusable(MEASURED | {"problems": ["x"]}, TASK_ID)
     assert "measured on image" in wide.unusable(MEASURED, "sha256:other")
     # A name built from the date leaves the suite when the year turns, so the record is checked again.
@@ -361,9 +363,11 @@ def test_check_wants_the_gold_run_to_stay_a_passing_grade(dataset, tmp_path):  #
     evaluator = DeepSWEEvaluator(dataset, docker=Sealing(with_wide("0"), tamper=True), wide_root=tmp_path / "none")
     evaluator.pending["demo"] = RECORD
     gold = dataset / "tasks" / "demo" / "solution" / "solution.patch"
-    result = wide.check(evaluator, load_task(dataset, "demo"), TASK_ID, tmp_path / "check", RECORD, gold, repeats=1)
-    assert len(result["problems"]) == 1 and "the official run is not a passing grade" in result["problems"][0]
+    task = load_task(dataset, "demo")
+    result = wide.check(evaluator, task, TASK_ID, tmp_path / "check", RECORD, gold, repeats=1, load_runs=2)
+    assert "the official run is not a passing grade" in result["problems"][0]
     assert "changed after the tests finished" in result["problems"][0]
+    assert result["problems"][1:] == ["2 of 2 gold gradings under load were not a passing grade"]
 
 
 def test_the_record_carries_the_path_rules_the_restored_run_reads(dataset, tmp_path):  # noqa: F811
@@ -400,16 +404,17 @@ def test_wide_check_runs_the_record_from_memory_and_writes_it_once(dataset, tmp_
             return super().__call__(args, timeout)
 
     record = RECORD | {"limit_seconds": 30}
-    result = wide_check(dataset, "demo", root, tmp_path / "check", record, repeats=2, docker=Listing(with_wide("0")))
+    docker = Listing(with_wide("0"))
+    result = wide_check(dataset, "demo", root, tmp_path / "check", record, repeats=2, docker=docker, load_runs=3)
     # The earlier record stayed whole while the gradings ran the new command, and the new one replaced it at the end.
-    assert seen == [before, before] and result["problems"] == []
+    assert seen == [before] * 5 and result["problems"] == []
     written = json.loads((root / "demo.json").read_text())
     assert written["limit_seconds"] == 30 and written["gold_runs"] == 2
     assert written["stable"] == ["m/a.TestOne", "m/b (package)"]
     assert wide.unusable(written, TASK_ID) is None and written["paths"]["tracked"] == 2
 
 
-def test_gold_gradings_under_load_are_recorded_beside_the_stable_set(dataset, tmp_path):  # noqa: F811
+def test_the_stable_set_keeps_only_tests_that_also_pass_under_load(dataset, tmp_path):  # noqa: F811
     lock, calls = threading.Lock(), itertools.count(1)
 
     def verifier(logs, patch):
@@ -417,18 +422,22 @@ def test_gold_gradings_under_load_are_recorded_beside_the_stable_set(dataset, tm
         with lock:
             index = next(calls)
         # The serial repeat is quiet; under load the timing test fails in two gradings and the harm test in one.
-        timing = "fail" if index in (3, 4) else "pass"
+        # The harmful patch (the sixth grading) fails the timing test too, which is then no longer a stable test.
+        timing = "fail" if index in (3, 4, 6) else "pass"
         events = [
             {"Action": "pass", "Package": "m/a", "Test": "TestPlain"},
             {"Action": timing, "Package": "m/a", "Test": "TestTiming"},
-            {"Action": "fail" if index == 5 else "pass", "Package": "m/a", "Test": "TestGuard"},
+            {"Action": "fail" if index in (5, 6) else "pass", "Package": "m/a", "Test": "TestGuard"},
         ]
         write_raw(logs / "wide", "0", "\n".join(json.dumps(event) for event in events))
 
     (tmp_path / "load").mkdir()
     names = {"TestGuard": ["m/a.TestGuard"]}
-    result = check_once(dataset, tmp_path, verifier, "load", harm_names=names, load_runs=4, load_workers=2)
-    assert result["stable"] == ["m/a.TestGuard", "m/a.TestPlain", "m/a.TestTiming"]
+    harmful = tmp_path / "harmful.patch"
+    harmful.write_text("diff --git a/harmful b/harmful\n")
+    options = dict(harm_names=names, load_runs=4, load_workers=2, harmful=harmful)
+    result = check_once(dataset, tmp_path, verifier, "load", **options)
+    assert result["stable"] == ["m/a.TestPlain"] and result["harmful_fails_outside_harm"] == []
     assert result["under_load"] == {
         "runs": 4,
         "workers": 2,
@@ -437,5 +446,9 @@ def test_gold_gradings_under_load_are_recorded_beside_the_stable_set(dataset, tm
         "runs_with_a_stable_test_not_passing": 3,
         "not_passing": {"m/a.TestGuard": 1, "m/a.TestTiming": 2},
     }
-    assert result["problems"] == ["harm tests that did not pass in every gold run under load: ['m/a.TestGuard']"]
+    # A harm test that fails under the reference solution is no stable test either, so the harm cannot be shown.
+    assert result["problems"] == [
+        "harm tests that did not pass in every gold run under load: ['m/a.TestGuard']",
+        "the harmful patch fails none of the harm tests",
+    ]
     assert wide.digest(result) == wide.digest({k: v for k, v in result.items() if k != "under_load"})
