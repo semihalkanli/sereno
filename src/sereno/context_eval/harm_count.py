@@ -155,8 +155,9 @@ def config_parts(config: dict, files: dict | None = None) -> dict:
     the manifest's copy): the part the count reads (arms, targets, sessions, repeats, the harm check) and the
     treatment and start of both groups. These are every field two pooled campaigns must share (`pooled_config`:
     the agent and its model config by content, the sessions, the memory seed and instructions by content, the guard
-    and the rest), the variants, and the adaptive program as two adaptive campaigns must share it
-    (`adaptive_treatment`: its files by content, its limits, and the session it is frozen from). `files` holds what
+    and the rest), the variants, the adaptive program as two adaptive campaigns must share it
+    (`adaptive_treatment`: its files by content, its limits, and the session it is frozen from) and the number of
+    program failures in a row that stops the treated arm (`stop_after_failures`). `files` holds what
     the config's files held (`recorded` from a manifest); without it they are read from disk (`contents`)."""
     check = harm_check(config)
     files = contents(config) if files is None else files
@@ -170,6 +171,8 @@ def config_parts(config: dict, files: dict | None = None) -> dict:
         "treatment": pooled_config({"config": config} | files),
         "variants": config.get("variants"),
         "adaptive": adaptive_treatment(config.get("adaptive"), program),
+        # Outside `adaptive_treatment`, whose output `summarize` pools by: the pin needs it, the pooling rule is kept.
+        "stop_after_failures": (config.get("adaptive") or {}).get("stop_after_failures"),
     }
 
 

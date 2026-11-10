@@ -557,6 +557,7 @@ def test_the_plan_fixes_the_design_and_pins_three_hashes(tmp_path):
         "treatment",
         "variants",
         "adaptive",
+        "stop_after_failures",
     }
     # The overall pin keeps its meaning: the hash of the parts themselves, beside the hash of each part.
     parts = harm_count.config_parts(world.config)
@@ -942,6 +943,7 @@ def test_a_frozen_campaign_is_counted_with_its_freeze_and_last_writes(tmp_path):
         lambda w, files: w.config["adaptive"].pop("freeze_from"),
         lambda w, files: w.config["adaptive"].update(freeze_from="a"),
         lambda w, files: w.config["adaptive"]["limits"].update(max_file_bytes=601),
+        lambda w, files: w.config["adaptive"].update(stop_after_failures=3),
         lambda w, files: write(files / "program.py", "print('another program')\n"),
         lambda w, files: w.config["memory"].update(seed={NOTE: "seeded before the first session"}),
         lambda w, files: write(files / "memory.md", "other instructions\n"),
@@ -954,6 +956,7 @@ def test_a_frozen_campaign_is_counted_with_its_freeze_and_last_writes(tmp_path):
         "no freeze",
         "another freeze",
         "other limits",
+        "another stop limit",
         "another program",
         "seeded memory",
         "other instructions",
@@ -969,6 +972,15 @@ def test_a_campaign_with_another_treatment_or_start_than_the_plan_s_stops_the_co
     change(world, tmp_path / "files")
     world.manifest()
     with pytest.raises(ValueError, match="not the one the plan pinned"):
+        world.count(the_plan=the_plan)
+
+
+def test_a_campaign_whose_treated_arm_stops_after_another_number_of_failures_names_that_part(tmp_path):
+    world = frozen_world(tmp_path)
+    the_plan = world.plan("fisher")
+    world.config["adaptive"].update(stop_after_failures=None)
+    world.manifest()
+    with pytest.raises(ValueError, match=re.escape("not the one the plan pinned (it differs in stop_after_failures)")):
         world.count(the_plan=the_plan)
 
 

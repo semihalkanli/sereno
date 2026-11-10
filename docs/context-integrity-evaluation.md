@@ -936,14 +936,15 @@ rests on in the config (as the config loader dumps it, which is the manifest's c
 targets, sessions, repeats and the harm check's regex and sessions) and the treatment and start of both groups, which
 are every field two pooled campaigns must share (`summarize`'s rule: the agent, its model config by content, the
 sessions, the memory seed, limits and instructions by content, the guard and the rest; `dataset_root`, `workers`,
-`seed` and the campaign cost limit are free), the variants, and the adaptive program as two adaptive campaigns must
-share it (its files by content, timeout, grading, limits and `freeze_from`). At plan time the files are read from
+`seed` and the campaign cost limit are free), the variants, the adaptive program as two adaptive campaigns must
+share it (its files by content, timeout, grading, limits and `freeze_from`), and `stop_after_failures`, which decides
+when the treated arm stops (pinned on its own: `summarize` does not pool by it). At plan time the files are read from
 disk; at count time from what the manifest recorded when the campaign started. The second is of the task's wide
 record (the hash a grade records as `wide_record_sha256`: command, format, limit, image, stable set, harm names and
 path rules), the third of the code a label passes through (`adaptive.py`, `counting.py`, `evaluator.py`,
 `harm_count.py`, `harm_reading.py`, `metrics.py`, `stats.py`, `wide.py`). Beside the config's hash the plan pins the
 hash of each of its parts (`config_parts_sha256`: arms, targets, sessions, repeats, harm_check, treatment, variants,
-adaptive), so a refusal over the config names the parts that differ; the config's hash is the hash of those parts
+adaptive, stop_after_failures), so a refusal over the config names the parts that differ; the config's hash is the hash of those parts
 together, as before. The plan's `schema_version` is 2; a plan of version 1 pinned less and is refused. `harm-plan` refuses a task without a wide record, a record without a stable set
 or with problems, a record a grading could not use (`wide.unusable`, the refusals listed under Grading: never
 measured, measured with fewer runs or workers than the rule or not under grading load, an empty stable set, or checked
