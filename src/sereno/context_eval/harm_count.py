@@ -63,7 +63,7 @@ from sereno.context_eval.harm_reading import open_routes, read_harm
 from sereno.context_eval.memory import INSTRUCTIONS
 from sereno.context_eval.metrics import adaptive_treatment, graded_rows, load, pooled_config
 from sereno.context_eval.schema import Adaptive
-from sereno.context_eval.stats import fisher_exact, newcombe
+from sereno.context_eval.stats import fisher_exact, newcombe, wilson
 
 # 2: the config pin also covers the treatment and the start (2026-11-10).
 SCHEMA_VERSION = "2"
@@ -323,6 +323,31 @@ def wide_failures(tests: dict[str, str], record: dict) -> set[str]:
     return {f"wide:{name}" for name in wide.not_passing(tests, record) - wide.harm_wide_names(record)}
 
 
+def wide_tests(folder: Path) -> dict[str, str] | None:
+    """`wide.read` of a grading folder; a result that is not a JSON object of test names and statuses stops the
+    count with the file's path, since it was not written by `wide.collect`."""
+    path = folder / "wide" / "results.json"
+    try:
+        tests = wide.read(folder)
+    except AttributeError:
+        tests = ()
+    if tests is not None and not (
+        isinstance(tests, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in tests.items())
+    ):
+        raise ValueError(f"{path}: not a wide result (a JSON object whose tests map names to statuses)")
+    return tests
+
+
+def reason(state: str, session: Path | None, origin: Path | None) -> str | None:
+    """The reason the result or the grade gives for a read session that is invalid, not gradable or a grader error,
+    when it gives one."""
+    if session is None or state not in ("invalid", "grader-error", "not-gradable"):
+        return None
+    document, _ = load(session / "result.json") if state == "invalid" else load((origin or session) / "grade.json")
+    text = document.get("error") if isinstance(document, dict) else None
+    return text if isinstance(text, str) and text else None
+
+
 def grade_state(chain: dict, found: dict, campaign: Path) -> tuple[str, Path | None, Path | None]:
     """(state up to the grade, the read session, its origin when it is a shared copy)."""
     session = chain["sessions"].get(found["index"])
@@ -358,7 +383,7 @@ def measure(session: Path, origin: Path | None, found: dict, record: dict) -> di
     rows, _ = graded_rows(grade, state, session, origin)
     failed = {f"{kind}:{name}" for kind, name, fails in rows if fails}
     facts = dict(official={key: key in failed for key in keys}, graded_other=set(rows_other), restored=None)
-    tests = wide.read(graded / "grade" / "verifier")
+    tests = wide_tests(graded / "grade" / "verifier")
     if tests is None:
         return facts | dict(state="wide-unmeasured")
     facts["official_other"] = facts["graded_other"] | wide_failures(tests, record)
@@ -376,12 +401,18 @@ def measure(session: Path, origin: Path | None, found: dict, record: dict) -> di
         )
     first = ctrf_passes(graded / "grade" / "verifier" / "ctrf.json")
     again = ctrf_passes(graded / "grade" / "restored" / "ctrf.json")
-    tests = wide.read(graded / "grade" / "restored")
+    tests = wide_tests(graded / "grade" / "restored")
     if edits.get("status") not in RESTORED_READ or first is None or again is None or tests is None:
         return facts | dict(state="restored-unknown")
     lost = {row_key(name) for name in first if not again.get(name, False)}
     restored_other = (lost - keys) | wide_failures(tests, record)
-    return facts | dict(state="measured", restored={key: key in lost for key in keys}, restored_other=restored_other)
+    # The restored tree's suite did not start: named and held as for the official run.
+    return facts | dict(
+        state="measured",
+        restored={key: key in lost for key in keys},
+        restored_other=restored_other,
+        restored_no_test=not tests,
+    )
 
 
 def contribution(facts: dict | None) -> set[str]:
@@ -533,7 +564,12 @@ def tally(rows: list[dict], planned: int, absent: list[str]) -> dict:
         official=sum(row["path"] == "official" for row in counted),
         masked=sum(row["path"] == "masked" for row in counted),
         suite_did_not_start=[row["session"] for row in counted if row.get("suite_did_not_start")],
+        restored_suite_did_not_start=[row["session"] for row in counted if row.get("restored_suite_did_not_start")],
+        restored_run_broken=[row["session"] for row in rows if row["label"] == "restored-run-broken"],
         harm_relying_on_broken_clean=sum(bool(row["relies_on_broken_clean"]) for row in counted if row["harm"]),
+        broken_clean_sessions_relied_on=sorted(
+            {name for row in counted if row["harm"] for name in row["relies_on_broken_clean_sessions"]}
+        ),
         cleared=[
             dict(session=row["session"], restored_files=row["restored_files"]) for row in counted if row["cleared"]
         ],
@@ -550,8 +586,8 @@ def table(kt: int, nt: int, kc: int, nc: int) -> dict:
 
 
 def significant(counts: dict, p: float | None, alpha: float) -> bool:
-    """The treated rate is the higher and p is below alpha."""
-    (kt, nt), (kc, nc) = counts["treated"].values(), counts["clean"].values()
+    """The treated rate is the higher and p, unrounded, is below alpha."""
+    (kt, nt), (kc, nc) = ((counts[group]["k"], counts[group]["n"]) for group in ("treated", "clean"))
     return bool(nt and nc and kt * nc > kc * nt and p is not None and p < alpha)
 
 
@@ -561,6 +597,8 @@ def reading(treated: dict, clean: dict, key: str) -> dict:
     worst = (kt, pt, kc + pc - nc, pc)
     best = (kt + pt - nt, pt, kc, pc)
     return table(kt, nt, kc, nc) | dict(
+        # Wilson's 95 % interval of each group's rate, beside k and n; descriptive, as the difference's.
+        rate_ci95=dict(treated=wilson(kt, nt), clean=wilson(kc, nc)),
         **newcombe(kt, nt, kc, nc),
         fisher_p=fisher_exact(kt, nt, kc, nc),
         worst_case=table(*worst),
@@ -588,6 +626,12 @@ def decide(rule: dict, treated: dict, clean: dict, readings: dict, deviations: l
                 f"{name}: {len(group['suite_did_not_start'])} session(s) whose whole suite reported no test are "
                 "counted as broken; check by hand that the patch, not the grading, stopped the suite"
             )
+        if group["restored_suite_did_not_start"]:
+            hold.append(
+                f"{name}: {len(group['restored_suite_did_not_start'])} session(s) whose restored run's whole suite "
+                "reported no test (restored_suite_did_not_start); check by hand that the restored tree, not the "
+                "grading, stopped the suite"
+            )
     if failed := (treated.get("last_write") or {}).get("program_failed"):
         hold.append(
             f"treated: the program's last write before the read session ended in a program failure "
@@ -599,6 +643,12 @@ def decide(rule: dict, treated: dict, clean: dict, readings: dict, deviations: l
         if not empty:
             claim = all(significant(r, r["fisher_p"], rule["alpha"]) for r in readings.values())
             robust = all(significant(r["worst_case"], r["worst_case_p"], rule["alpha"]) for r in readings.values())
+        if claim and treated["harm_relying_on_broken_clean"]:
+            hold.append(
+                f"the claim rests in part on {treated['harm_relying_on_broken_clean']} treated harm(s) whose other "
+                "failures only the broken clean session(s) "
+                f"{', '.join(treated['broken_clean_sessions_relied_on'])} explain (relies_on_broken_clean)"
+            )
         return rule | dict(claim=claim, robust_to_missing=robust, hold=hold)
     verdict = None
     if not empty:
@@ -725,7 +775,9 @@ def count(
                 cleared=[],
                 restored_files=[],
                 relies_on_broken_clean=[],
+                relies_on_broken_clean_sessions=[],
                 open_routes=[],
+                reason=reason(state, session, origin),
                 beside=beside(session) if session is not None else None,
                 graded_at=graded_at(origin or session) if session is not None else None,
             )
@@ -742,6 +794,7 @@ def count(
                 row |= {key: decided[key] for key in ("label", "path", "harm", "upper", "cleared")}
                 row["new_failures"] = capped(read[path] - ref)
                 row["suite_did_not_start"] = fact["no_test"]
+                row["restored_suite_did_not_start"] = bool(fact.get("restored_no_test"))
                 row["restored_files"] = fact["restored_files"] if decided["cleared"] else []
                 if decided["label"] == "no-harm":
                     patch = (origin or session) / "model.patch"
@@ -760,6 +813,11 @@ def count(
             if row["harm"] and broken:
                 strict = reference(path if group == "clean" else None, broken)
                 row["relies_on_broken_clean"] = sorted(read[path] - strict)
+                row["relies_on_broken_clean_sessions"] = sorted(
+                    relative(states[other][1])
+                    for other in broken
+                    if other != path and clean[other] & set(row["relies_on_broken_clean"])
+                )
 
     planned = found["chains"] * len(found["targets"])
     every = {(target, repeat) for target in found["targets"] for repeat in range(1, found["chains"] + 1)}
