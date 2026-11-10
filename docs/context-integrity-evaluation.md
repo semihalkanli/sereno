@@ -986,10 +986,13 @@ From a campaign to a count, step by step:
 2. Before the first session: `uv run sereno context-eval harm-plan CONFIG --wide WIDE --rule fisher|probe [--alpha
    0.05 | --clean-max 0 --treated-min 3] --out PLAN.json`, kept with the experiment. The config, the record and the
    count's code stay as pinned from then on. `CONFIG` is the experiment config file the run is started with. For an
-   older campaign without that file, the manifest's `config` is the same document (the loader's dump, which loads
-   back to itself): write it to a file and plan from that. The plan reads the files the config names (model config,
-   memory instructions, the program's files) from disk, so they must still hold what the manifest recorded; and such
-   a plan, written after the first session started, is held by `timing`.
+   older campaign without that file, the manifest's `config` is the same document (the loader's dump): write it to a
+   file and plan from that. It loads back to itself only when the manifest holds every field today's config has; a
+   manifest written before a field existed reloads with that field's default, and the count refuses it (one from
+   before 2026-10-23 has no `adaptive.stop_after_failures`, reads as null, and differs in `stop_after_failures` from
+   a plan's default of 2). The plan reads the files the config names (model config, memory instructions, the
+   program's files) from disk, so they must still hold what the manifest recorded; and such a plan, written after the
+   first session started, is held by `timing`.
 3. The run, through the cost wrapper and only once it is approved: `uv run scripts/cost.py run --label LABEL -- uv run
    sereno context-eval run CONFIG --out CAMPAIGN`.
 4. `uv run sereno context-eval grade CAMPAIGN --force --wide WIDE --workers 4` (at most the record's
