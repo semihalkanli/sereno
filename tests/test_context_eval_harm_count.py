@@ -2,6 +2,7 @@
 filter, the leave-one-out reference, shared copies, three-session chains, the layout checks, the rules and their
 holds, the missing-data pair and the CLI."""
 
+import ast
 import json
 import re
 import shutil
@@ -1019,6 +1020,72 @@ def test_a_last_write_the_program_failed_is_held_and_the_writer_s_own_outcomes_a
     writer_only = [([GOLD, HARMED], {"001": status, "002": "frozen"}) for status in ("rejected", "no_change")]
     result = frozen_world(tmp_path / "writer", writer_only).count("fisher")
     assert result["treated"]["last_write"]["program_failed"] == [] and result["rule"]["hold"] == []
+
+
+def test_a_last_write_moved_under_stopped_is_read_from_its_latest_stop_unless_one_is_in_place(tmp_path):
+    treated = [
+        ("empty", {"stopped/run-1/001": "writer_failed"}),
+        ("empty", {"stopped/run-1/001": "writer_failed", "stopped/run-2/001": "timeout"}),
+        ([GOLD, HARMED], {"stopped/run-1/001": "writer_failed", "001": "applied", "002": "frozen"}),
+    ]
+    result = frozen_world(tmp_path, treated, [[GOLD, GOLD]] * 3).count("fisher")
+    chain = f"cases/{TASK}--adaptive--r{{:03d}}/arms/attack_adaptive".format
+    assert result["treated"]["last_write"] == {
+        "step": "001",
+        "statuses": {"applied": 1, "timeout": 1, "writer_failed": 1},
+        "chains": {"timeout": [chain(2)], "writer_failed": [chain(1)]},
+        "program_failed": [chain(1), chain(2)],
+    }
+
+
+def test_the_count_reads_the_config_s_files_as_the_manifest_recorded_them_not_from_disk(tmp_path):
+    world = frozen_world(tmp_path)
+    the_plan = world.plan("fisher")
+    before = world.count(the_plan=the_plan)
+    # Files edited after the campaign started neither stop the count nor change it.
+    for name in ("program.py", "model.yaml", "memory.md"):
+        write(tmp_path / "files" / name, "edited after the campaign started\n")
+    assert world.count(the_plan=the_plan) == before
+    # A manifest that recorded other contents than the plan's stops it, whatever the files on disk hold now.
+    recorded = json.loads((world.campaign / "manifest.json").read_text())
+    write(world.campaign / "manifest.json", recorded | {"model_config": "model_name: another\n"})
+    with pytest.raises(ValueError, match=re.escape("not the one the plan pinned (it differs in treatment)")):
+        world.count(the_plan=the_plan)
+
+
+# Modules the count imports that no label or rule result passes through. Each reaches the count only through the
+# config pin, which refuses a campaign when it changes what the pin holds: `config` (`fingerprint` hashes the memory
+# instructions and `load_config` dumps the config the plan pins), `memory` (`INSTRUCTIONS`, the default text whose
+# fingerprint the pin holds) and `schema` (`Adaptive` validates the adaptive section the pin holds); `engine`
+# (`MEMORY_READ`) only counts the memory reads written beside the result.
+OUTSIDE_CODE = {"config", "engine", "memory", "schema"}
+
+
+def test_every_module_the_count_imports_is_in_the_code_pin_or_named_outside_it():
+    imported = set()
+    for node in ast.walk(ast.parse(Path(harm_count.__file__).read_text())):
+        if isinstance(node, ast.ImportFrom) and node.module == "sereno.context_eval":
+            imported |= {alias.name for alias in node.names}
+        elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith("sereno.context_eval."):
+            imported.add(node.module.rsplit(".", 1)[1])
+        elif isinstance(node, ast.Import):
+            imported |= {a.name.rsplit(".", 1)[1] for a in node.names if a.name.startswith("sereno.context_eval.")}
+    pinned = {name.removesuffix(".py") for name in harm_count.CODE}
+    assert imported - OUTSIDE_CODE <= pinned
+    assert OUTSIDE_CODE <= imported and not OUTSIDE_CODE & pinned
+
+
+def test_changing_any_pinned_module_changes_the_code_pin(tmp_path, monkeypatch):
+    for name in harm_count.CODE:
+        shutil.copy(harm_count.HERE / name, tmp_path / name)
+    pinned = harm_count.code_sha256()
+    monkeypatch.setattr(harm_count, "HERE", tmp_path)
+    assert harm_count.code_sha256() == pinned
+    for name in harm_count.CODE:
+        original = (tmp_path / name).read_bytes()
+        (tmp_path / name).write_bytes(original + b"\n")
+        assert harm_count.code_sha256() != pinned, name
+        (tmp_path / name).write_bytes(original)
 
 
 # ---- the wide record a plan may pin ---------------------------------------------------------------------------------
