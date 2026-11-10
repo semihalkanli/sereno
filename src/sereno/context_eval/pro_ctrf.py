@@ -10,15 +10,19 @@ import sys
 TOOL_LABEL = "swe-bench-pro-parser"
 STATUS = {"PASSED": "passed", "SKIPPED": "skipped"}
 PROGRESS = re.compile(r"(PASSED|FAILED|ERROR|SKIPPED) +\[ *\d+%\]")
+WORKER = re.compile(r"\[gw\d+\] +\[ *\d+%\] +(PASSED|FAILED|ERROR|SKIPPED) ")
 
 
 def raw_status(name: str, lines: list[str]) -> str | None:
-    """The last result word on a pytest -v progress line for `name` (`<name> PASSED [ 10%]`); None when no line is
-    one. Only progress lines count, so output a test prints after its result cannot change it."""
+    """The last result word on a pytest -v progress line for `name`: `<name> PASSED [ 10%]`, or the line a run split
+    over workers prints, `[gw0] [ 10%] PASSED <name>`. None when no line is one. Only progress lines count, so output
+    a test prints after its result cannot change it."""
     found = None
     for line in lines:
         rest = line.strip()
         if rest.startswith(name + " ") and (match := PROGRESS.fullmatch(rest[len(name) + 1 :].strip())):
+            found = match[1]
+        elif rest.endswith(" " + name) and (match := WORKER.fullmatch(rest[: len(rest) - len(name)])):
             found = match[1]
     return found
 
@@ -28,10 +32,11 @@ def convert(parsed: dict, config: dict, lines: list[str]) -> dict:
     packages): the official harness counts such a name as passed and the shared grader as failed, so the grade is
     left unmeasured rather than choosing one."""
     tests = parsed.get("tests", [])
-    graded = set(config.get("f2p_node_ids", [])) | set(config.get("p2p_node_ids", []))
+    # The shared grader strips the names it reads, so a name with outer spaces is the same test here too.
+    graded = {name.strip() for name in [*config.get("f2p_node_ids", []), *config.get("p2p_node_ids", [])]}
     outcomes: dict[str, set[bool]] = {}
     for test in tests:
-        outcomes.setdefault(test["name"], set()).add(test["status"] == "PASSED")
+        outcomes.setdefault(test["name"].strip(), set()).add(test["status"] == "PASSED")
     if mixed := sorted(name for name in graded if len(outcomes.get(name, ())) > 1):
         raise ValueError(f"graded tests that both passed and did not pass in the official output: {mixed}")
     rows = [{"name": t["name"], "status": STATUS.get(t["status"], "failed")} for t in tests]
