@@ -1,5 +1,6 @@
 """DeepSWE grading with a fake Docker runner: status mapping, image integrity and campaign bookkeeping."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -111,6 +112,14 @@ def test_graded_runs_verifier_offline_and_records_artifacts(dataset, tmp_path):
         "bash /tests/test.sh; status=$?; chown -R"
     )
     assert docker.patches == ["diff --git a/x b/x\n"]
+    solution = (dataset / "tasks" / "demo" / "solution" / "solution.patch").read_bytes()
+    assert grade["grader"]["solution_sha256"] == hashlib.sha256(solution).hexdigest()
+    # A caller that does not say how many gradings it runs at a time (the adaptive arm's in-run grader) records none.
+    assert grade["grader"]["workers"] is None
+    grade_campaign_workers = DeepSWEEvaluator(dataset, docker=docker, workers=3).evaluate(
+        submit(tmp_path), tmp_path / "w"
+    )
+    assert grade_campaign_workers["grader"]["workers"] == 3
 
 
 def test_apply_failed_is_reward_zero(dataset, tmp_path):
@@ -310,6 +319,42 @@ def test_gradings_are_spread_over_the_arms_in_a_fixed_order():
     assert sorted(order) == sorted(treated + clean) and order == grading_order(treated + clean)
     first = order[:20]
     assert 5 <= sum(path in treated for path in first) <= 15, "a block of one arm would be graded under its own load"
+
+
+def test_the_campaign_is_graded_in_the_shuffled_order(campaign, monkeypatch):
+    for n in range(2, 13):
+        session(campaign, f"cases/demo--v1--r{n:03d}/arms/attack_carry/sessions/001-exposure")
+    graded = []
+    monkeypatch.setattr(
+        evaluator, "grade_session", lambda grader, directory, force: graded.append(directory) or ("kept", None)
+    )
+    grade_campaign(campaign, docker=FakeDocker())
+    origins = set(graded)
+    assert len(graded) == len(origins) == 15 and graded == grading_order(origins) != sorted(origins)
+
+
+def test_a_clean_origin_without_its_copies_is_graded_once_on_its_own(campaign):
+    # The case job of r001 copied its origin; the one of r002 failed before writing its copies. A clean_reset copy
+    # of an origin's exposure session is left to the copy rule.
+    first = session(campaign, "clean/demo--r001/sessions/001-exposure")
+    second = session(campaign, "clean/demo--r002/sessions/001-exposure")
+    copy = session(
+        campaign,
+        "cases/demo--v1--r001/arms/clean/sessions/002-exposure",
+        branch={"shared_from": "clean/demo--r001/sessions/001-exposure", "origin_arm": "clean"},
+    )
+    reset = session(
+        campaign,
+        "clean_reset/demo--r002/sessions/001-exposure",
+        branch={"shared_from": "clean/demo--r002/sessions/001-exposure", "origin_arm": "clean"},
+    )
+    docker = FakeDocker()
+    summary = grade_campaign(campaign, docker=docker)
+    assert len(docker.of("run")) == 4 and summary["sessions"] == 8 and summary["written"] == 8
+    assert json.loads((first / "grade.json").read_text())["status"] == "graded"
+    assert json.loads((second / "grade.json").read_text())["status"] == "graded"
+    assert json.loads((copy / "grade.json").read_text())["shared_from"] == "clean/demo--r001/sessions/001-exposure"
+    assert not (reset / "grade.json").exists()
 
 
 def test_existing_grades_are_kept_unless_forced(campaign):

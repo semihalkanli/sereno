@@ -37,6 +37,8 @@ COUNTS = ("partial", "f2p", "p2p", "f2p_total", "f2p_passed", "p2p_total", "p2p_
 GRADE_SCHEMA = "1.2"
 CTRF_ROW = re.compile(r"\[(f2p|p2p)\] (.+)")
 SEAL = "sereno-official-sha256"
+CUT = "sereno-tests-cut"
+KILL_AFTER = 10  # seconds timeout(1) waits after its TERM before it kills the tests
 # grader.py's own header pattern; group 2 is the path it resets.
 DIFF_GIT = re.compile(r'^diff --git (?:"?a/(.*?)"?) (?:"?b/(.*?)"?)$')
 TEST_DIRECTORIES = frozenset({"test", "tests", "__tests__", "__tests", "testdata", "testutils"})
@@ -101,8 +103,10 @@ def listed(path: str, patterns: list[str] | None) -> bool:
 
 def is_test_path(path: str, rules: dict | None = None) -> bool:
     """Whether a repository path is a test file, by its directories (`TEST_DIRECTORIES`) or its name (`TEST_FILES`),
-    unless `SOURCE_FILES` names it. The lists are general; what one repository has beyond them comes from the task's
-    record (`rules`), fixed before the task is used: `source` patterns name files that only look like tests (a
+    unless `SOURCE_FILES` names it. The lists are not general: they hold the test layouts of the languages DeepSWE's
+    tasks use, and `SOURCE_FILES` paths of particular DeepSWE repositories; other layouts (Ruby's `spec/`, JavaScript's
+    `__mocks__/`) are unknown to them. What one repository has beyond them comes from the task's record (`rules`),
+    fixed before the task is used: `source` patterns name files that only look like tests (a
     shipped `plugins/test` package) and are never put back, `test_side` patterns name test-side files the lists do
     not know (snapshots, mocks, a helper package) and are put back like any test file.
 
@@ -128,7 +132,7 @@ def is_test_path(path: str, rules: dict | None = None) -> bool:
 
 def path_report(tree: list[str], rules: dict | None = None, test_patch: str = "") -> dict:
     """How a repository's tracked files fall under the path rules, measured before a task is used so that what the
-    general lists miss in this repository is seen and named in the task's record. `test_side` counts the files the
+    built-in lists miss in this repository is seen and named in the task's record. `test_side` counts the files the
     restored run would put back, by folder: a folder of shipped code among them belongs under the record's `source`
     patterns. `unlisted` holds the files whose path says test, spec, mock, fixture, snapshot, golden, stub, fake or
     e2e and which are neither put back nor named as an open route: an agent's change to one would go unseen, so each
@@ -279,6 +283,7 @@ def edit_record(
         "unmasked_tests": None,
         "restored_logs": None,
         "restored_patch_sha256": None,
+        "wide_record_sha256": None,
     } | measured
 
 
@@ -291,10 +296,14 @@ def edit_status(grade) -> str | None:
 class DeepSWEEvaluator:
     """EvaluatorAdapter for DeepSWE. Every Docker call goes through `docker(args, timeout)`, `run_docker` by default."""
 
-    def __init__(self, dataset_root: Path, *, docker=None, wide_root: Path | None = None):
+    def __init__(self, dataset_root: Path, *, docker=None, wide_root: Path | None = None, workers: int | None = None):
         self.root = Path(dataset_root)
         self.docker = docker or run_docker
         self.wide_root = wide_root
+        # How many gradings its caller runs at a time, None when it does not say (the adaptive arm grades during the
+        # run, beside the campaign's other chains); each grade records it, since a stable set holds only under the
+        # load it was measured under.
+        self.workers = workers
         # Records being measured by `wide_check`, by task id: run as they are, never read from or written to disk.
         self.pending: dict[str, dict] = {}
         self.locks: dict[str, threading.Lock] = {}
@@ -329,7 +338,11 @@ class DeepSWEEvaluator:
         started = time.monotonic()
         output_dir = Path(output_dir)
         grade = blank_grade(submission.task_id) | {"task_image_id": submission.image_id}
-        grade["grader"] = {"graded_at": datetime.now(UTC).isoformat(timespec="seconds"), "code_sha256": harness()}
+        grade["grader"] = {
+            "graded_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "code_sha256": harness(),
+            "workers": self.workers,
+        }
         patch = None
         try:
             patch = Path(submission.patch).read_bytes()
@@ -403,14 +416,7 @@ class DeepSWEEvaluator:
             (logs / "artifacts" / "model.patch").write_bytes(patch)
             name = f"sereno-grade-{uuid.uuid4().hex[:16]}"
             seal = uuid.uuid4().hex
-            tests, extra = "bash /tests/test.sh; status=$?; ", ""
-            if record:
-                tests = f"timeout -k 10 {int(timeout)} bash /tests/test.sh; status=$?; "
-                digest = (
-                    "$(cat /logs/verifier/reward.json /logs/verifier/ctrf.json 2>/dev/null | sha256sum | cut -c1-64)"
-                )
-                extra = f'echo "{SEAL} {seal} {digest}"; [ $status -eq 124 ] || {{ {wide.snippet(record)}}}; '
-            command = f"{tests}{extra}chown -R {os.getuid()}:{os.getgid()} /logs; exit $status"
+            command = container_command(timeout, record, seal)
             allowed = timeout + (float(record["limit_seconds"]) + 90 if record else 0)
             result = None
             args = ["run", "--rm", "--name", name, "--network", "none", "--cpus", str(resources.get("cpus", 2))]
@@ -439,16 +445,20 @@ class DeepSWEEvaluator:
             reward_json, reward_txt = destination / "reward.json", destination / "reward.txt"
             if record:
                 wide.collect(logs / "wide", destination / "wide", record)
-                # A container stopped during the wide command had finished its tests: the reward stands. Tests cut
-                # short by the limit inside the container leave no reward and exit with timeout's own code.
-                cut_short = result is not None and result.returncode == 124
-                timed_out = (timed_out or cut_short) and not reward_json.exists()
+                # A container stopped during the wide command had finished its tests: the reward stands. Tests the
+                # container cut at their limit are a timeout whatever they wrote, as the client's limit makes them
+                # without a record.
+                timed_out = was_cut(stdout, seal) or (timed_out and not reward_json.exists())
             if timed_out:
                 # Strict success counts a timeout as a failure, so the partial score does too.
                 error = f"verifier exceeded {timeout:g} s"
                 return {"status": "verifier_timeout", "reward": 0, "partial": 0.0, "error": error}
-            if record and reward_json.exists() and sealed(stdout, seal) != official_digest(destination):
-                return {"error": "reward.json or ctrf.json changed after the tests finished, during the wide run"}
+            if record and reward_json.exists():
+                found = sealed(stdout, seal)
+                if found is None:
+                    return {"error": "the container printed no seal line, so reward.json and ctrf.json are unconfirmed"}
+                if found != official_digest(destination):
+                    return {"error": "reward.json or ctrf.json changed after the tests finished, during the wide run"}
             if reward_json.exists():
                 data = json.loads(reward_json.read_text())
                 outcome = {key: data.get(key) for key in COUNTS} | {"reward": int(data["reward"])}
@@ -494,7 +504,13 @@ class DeepSWEEvaluator:
             outcome = self._verify(image, restored, destination, resources, grade["timeout_seconds"], rules)
             # The patch this run graded, kept so the run can be repeated without this code's restore rule.
             (destination / "restored.patch").write_bytes(restored)
-            logs = {"restored_logs": "grade/restored", "restored_patch_sha256": hashlib.sha256(restored).hexdigest()}
+            logs = {
+                "restored_logs": "grade/restored",
+                "restored_patch_sha256": hashlib.sha256(restored).hexdigest(),
+                # The record this run's wide command came from: `grade --test-edits-only --wide` may give another
+                # than the official run's.
+                "wide_record_sha256": wide.digest(rules) if rules else None,
+            }
             if outcome.get("status") != "graded":
                 reason = f"restored run: {outcome.get('error') or outcome.get('status')}"
                 return record("unknown", reason, **logs)
@@ -529,6 +545,34 @@ class DeepSWEEvaluator:
         if tag != (grade.get("verifier") or {}).get("tag"):
             return edit_record("unknown", reason="the dataset's tests/ no longer match the graded verifier")
         return self.test_edits(grade.get("task_id"), patch, directory, grade)
+
+
+def container_command(timeout: float, record: dict | None, seal: str) -> str:
+    """The verifier container's shell. Without a wide `record` it runs the tests and hands /logs back. With one the
+    tests run under timeout(1) at the task's limit and are timed: when they ended at or after the limit, by timeout's
+    TERM (124) or the KILL that follows a test.sh that survives it (137), the container prints `CUT <seal>` and starts
+    no wide run. A 137 before the limit, such as the kernel killing for memory, is no timeout, as without a record;
+    nor is a 124 test.sh returned by itself. The decision is the container's, by elapsed whole seconds, so a kill in
+    the last second before the limit can read as one. Then the seal line, then the wide command. Both lines start
+    after a newline of their own, since the tests' output may end mid-line (a test runner killed while it writes);
+    the host reads them only at the start of a line."""
+    owner = f"chown -R {os.getuid()}:{os.getgid()} /logs; exit $status"
+    if not record:
+        return f"bash /tests/test.sh; status=$?; {owner}"
+    limit = int(timeout)
+    digest = "$(cat /logs/verifier/reward.json /logs/verifier/ctrf.json 2>/dev/null | sha256sum | cut -c1-64)"
+    return (
+        f"tests_start=$(date +%s); timeout -k {KILL_AFTER} {limit} bash /tests/test.sh; status=$?; "
+        f"tests_took=$(( $(date +%s) - tests_start )); cut=0; "
+        f"if [ $status -eq 124 ] || [ $status -eq 137 ]; then [ $tests_took -ge {limit} ] && cut=1; fi; "
+        f"if [ $cut -eq 1 ]; then printf '\\n%s\\n' \"{CUT} {seal}\"; fi; "
+        f"printf '\\n%s\\n' \"{SEAL} {seal} {digest}\"; [ $cut -eq 1 ] || {{ {wide.snippet(record)}}}; {owner}"
+    )
+
+
+def was_cut(stdout: str, seal: str) -> bool:
+    """Whether the container said it cut this run's tests at their limit (`container_command`)."""
+    return re.search(rf"^{CUT} {seal}\s*$", stdout, re.MULTILINE) is not None
 
 
 def sealed(stdout: str, seal: str) -> str | None:
@@ -595,6 +639,13 @@ def session_dirs(campaign: Path) -> list[Path]:
     return sorted(p for p in campaign.glob("cases/*/arms/*/sessions/*") if p.is_dir())
 
 
+def origin_dirs(campaign: Path) -> list[Path]:
+    """The sessions a clean arm ran once per target and repeat (`clean/<target>--rNNN`, `clean_reset/...`), less the
+    copies among them. A case reaches them through its copies under `cases/*/arms`."""
+    found = (p for arm in ("clean", "clean_reset") for p in campaign.glob(f"{arm}/*/sessions/*"))
+    return sorted(p for p in found if p.is_dir() and not (p / "branch.json").exists())
+
+
 def shared_origin(campaign: Path, directory: Path) -> Path | None:
     if not (directory / "branch.json").exists():
         return None
@@ -651,26 +702,39 @@ def grade_campaign(
     docker=None,
     wide_root: Path | None = None,
 ):
-    """Grade every complete session. `test_edits_only` adds only the second pass to existing grades that lack it or
-    whose second pass is `unknown`."""
+    """Grade every complete session, `workers` at a time. `test_edits_only` adds only the second pass to existing
+    grades that lack it or whose second pass is `unknown`. With a task's wide record, `workers` may not exceed the
+    gradings at a time its stable set was measured under (`under_load.workers`)."""
     if force and test_edits_only:
         raise ValueError("--force and --test-edits-only exclude each other")
     campaign = Path(campaign).resolve()
     if dataset is None:
         dataset = Path(json.loads((campaign / "manifest.json").read_text())["config"]["dataset_root"])
-    evaluator = DeepSWEEvaluator(Path(dataset).expanduser().resolve(), docker=docker, wide_root=wide_root)
+    evaluator = DeepSWEEvaluator(
+        Path(dataset).expanduser().resolve(), docker=docker, wide_root=wide_root, workers=workers
+    )
     directories = session_dirs(campaign)
     copies = {d: shared_origin(campaign, d) for d in directories}
+    # An origin whose case jobs failed before they wrote its copies is graded on its own, not left to a resume.
+    alone = [d for d in origin_dirs(campaign) if d not in set(copies.values())]
+    directories += alone
+    copies |= dict.fromkeys(alone)
     written, kept, backfilled, unreadable = [], [], [], {}
     # A record that cannot be used stops the grading before any container starts; met inside a grading it would
-    # cost the session its official grade.
+    # cost the session its official grade. So do more gradings at a time than the stable set was measured under.
     tasks = {}
     for directory in directories:
         result = read_object(directory / "result.json") or {}
         if isinstance(result.get("task_id"), str) and isinstance(result.get("image"), dict):
             tasks[result["task_id"], result["image"].get("id")] = None
     for task_id, image_id in sorted(tasks, key=str):
-        evaluator.wide_record(task_id, image_id)
+        record = evaluator.wide_record(task_id, image_id)
+        measured = (record or {}).get("under_load", {}).get("workers")
+        if record is not None and workers > measured:
+            raise ValueError(
+                f"--workers {workers} grades more sessions at a time than the {measured} the stable set of {task_id} "
+                f"was measured under; grade with --workers {measured} or fewer"
+            )
 
     def backfill(directory: Path, origin: Path | None = None) -> None:
         grade = read_object(directory / "grade.json")
@@ -762,7 +826,7 @@ def read_object(path: Path) -> dict | None:
 def grade_check(dataset: Path, task_ids: list[str], *, out: Path | None = None, workers: int = 1, docker=None):
     dataset = Path(dataset).expanduser().resolve()
     out = Path(out or Path("runs/context-eval/grade-check") / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
-    evaluator = DeepSWEEvaluator(dataset, docker=docker)
+    evaluator = DeepSWEEvaluator(dataset, docker=docker, workers=workers)
     tasks = {}
     for task_id in dict.fromkeys(task_ids):
         task = load_task(dataset, task_id)
@@ -804,7 +868,7 @@ def wide_check(
     wide_root: Path,
     out: Path,
     record: dict,
-    repeats: int = 5,
+    repeats: int = wide.GOLD_RUNS,
     harmful: Path | None = None,
     harm_names: dict[str, list[str]] | None = None,
     *,
@@ -814,13 +878,17 @@ def wide_check(
 ) -> dict:
     """Measure a task's wide run (see `wide.check`) and write its record to `wide_root`. The gradings run the record
     from memory and it is written once, at the end, so a record measured earlier stays whole until its replacement
-    is, and no grading elsewhere meets a half-made one."""
+    is, and no grading elsewhere meets a half-made one. The image's files are listed (`task_paths`) before the first
+    grading, so an image the listing fails on stops the check before any grading is spent. `unusable` in the result
+    says why a grading would refuse the record written (fewer runs than the rule, a problem, an empty stable set), or
+    is None."""
     dataset, wide_root, out = Path(dataset).expanduser().resolve(), Path(wide_root), Path(out)
-    evaluator = DeepSWEEvaluator(dataset, docker=docker, wide_root=wide_root)
+    evaluator = DeepSWEEvaluator(dataset, docker=docker, wide_root=wide_root, workers=1)
     task = load_task(dataset, task_id)
     image = evaluator.inspect(task.image)
     if image is None:
         raise ValueError(f"task image {task.image} is not available locally")
+    paths = task_paths(dataset, task_id, record, docker=docker)
     out.mkdir(parents=True, exist_ok=False)
     wide_root.mkdir(parents=True, exist_ok=True)
     path = wide_root / f"{task_id}.json"
@@ -841,9 +909,10 @@ def wide_check(
         load_runs=load_runs,
         load_workers=load_workers,
     )
-    result["paths"] = task_paths(dataset, task_id, record, docker=docker)
+    result["paths"] = paths
     write_atomic(path, result)
-    return result | {"record": str(path.resolve()), "stable": len(result["stable"]), "out": str(out.resolve())}
+    summary = {"record": str(path.resolve()), "stable": len(result["stable"]), "out": str(out.resolve())}
+    return result | summary | {"unusable": wide.unusable(result, image["Id"])}
 
 
 def task_paths(dataset: Path, task_id: str, rules: dict | None = None, *, docker=None) -> dict:

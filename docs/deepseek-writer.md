@@ -130,6 +130,5 @@ instructions, markers and role addresses is not part of this package.
 
 ## Not covered
 
-A freeze campaign needs `last_write` in the request, which only the unmerged freeze branch of the hook sends. The memory
-limits (`max_files`, `max_bytes`) are not in the request, so the writer leaves them to the hook, which records a breach
-as `rejected`.
+The memory limits (`max_files`, `max_bytes`) are not in the request, so the writer leaves them to the hook, which
+records a breach as `rejected`.

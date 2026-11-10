@@ -246,6 +246,7 @@ def test_consistent_edit_records_the_restored_run(dataset, tmp_path):
         "unmasked_tests": [],
         "restored_logs": "grade/restored",
         "restored_patch_sha256": hashlib.sha256(SOURCE.encode()).hexdigest(),
+        "wide_record_sha256": None,
     }
     assert docker.patches == [SOURCE + EDITED, SOURCE]
     first, second = docker.of("run")
@@ -378,6 +379,7 @@ def test_an_ungraded_official_run_is_not_applicable(dataset, tmp_path):
         "unmasked_tests": None,
         "restored_logs": None,
         "restored_patch_sha256": None,
+        "wide_record_sha256": None,
     }
 
 

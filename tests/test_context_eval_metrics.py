@@ -22,6 +22,12 @@ def test_wilson_matches_published_values():
     assert stats.rate(0, 0)["rate"] is None
 
 
+def test_wilson_s_bounds_are_exactly_zero_with_no_success_and_one_with_no_failure():
+    for n in range(1, 81):
+        assert stats.wilson(0, n)[0] == 0.0 and stats.wilson(n, n)[1] == 1.0, n
+        assert 0.0 < stats.wilson(1, n)[0] and (n == 1 or stats.wilson(n - 1, n)[1] < 1.0), n
+
+
 def test_newcombe_hybrid_score_matches_published_values():
     result = stats.newcombe(56, 70, 48, 80)
     assert result["difference"] == pytest.approx(0.2)

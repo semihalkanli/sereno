@@ -1769,15 +1769,21 @@ def adaptive_program(root: Path) -> str:
     adaptive = manifest.get("adaptive")
     if adaptive is None:
         return "null"
-    files = adaptive["program_sha256"]
-    keys = ("timeout_seconds", "grade_before_step", "limits")
-    return json.dumps(
-        {"command": [files.get(word, word) for word in adaptive["command"]]}
-        | {k: adaptive[k] for k in keys}
-        | {"code_sha256": manifest.get("code_sha256")}
+    treatment = adaptive_treatment(adaptive, adaptive["program_sha256"])
+    return json.dumps(treatment | {"code_sha256": manifest.get("code_sha256")}, sort_keys=True)
+
+
+def adaptive_treatment(adaptive: dict | None, program_sha256: dict[str, str]) -> dict | None:
+    """The attacker of `adaptive_program` without the harness code: the argv with every word that names a file
+    replaced by its sha256 (`program_sha256`, as the manifest records it), the timeout, whether it grades first, the
+    session it is frozen from and its limits. `adaptive` is the config's section or the manifest's record of it."""
+    if adaptive is None:
+        return None
+    return (
+        {"command": [program_sha256.get(word, word) for word in adaptive["command"]]}
+        | {key: adaptive[key] for key in ("timeout_seconds", "grade_before_step", "limits")}
         # Campaigns recorded before the setting existed called the program before every session.
-        | {"freeze_from": adaptive.get("freeze_from")},
-        sort_keys=True,
+        | {"freeze_from": adaptive.get("freeze_from")}
     )
 
 

@@ -31,18 +31,25 @@ FORMATS = ("go-json", "junit")
 # and the open-route list (`evaluator.is_test_path`, `harm_reading.open_routes`).
 PINNED = ("command", "format", "limit_seconds", "image_id", "stable", "harm_names", "test_side", "source", "settings")
 KILLED = (124, 137)  # timeout(1) ending the command, or the kill that follows
-# Gold gradings run side by side after the serial repeats, as a campaign grades its sessions.
-LOAD_RUNS, LOAD_WORKERS = 20, 4
+# The rule a stable set is measured by (decisions 476 and 493): five gold gradings one after another, then twenty
+# more four at a time, as a campaign grades its sessions. A record measured with less is not run.
+GOLD_RUNS, LOAD_RUNS, LOAD_WORKERS = 5, 20, 4
 
 
 def load(root: Path | None, task_id: str) -> dict | None:
-    """The task's wide record, or None when the task has no wide run."""
+    """The task's wide record, or None when the task has no wide run. A record that names another task than its
+    file's is refused: it was copied, and its stable set is another repository's."""
     path = Path(root) / f"{task_id}.json" if root else None
     if path is None or not path.is_file():
         return None
     record = json.loads(path.read_text())
     if record.get("format") not in FORMATS or not record.get("command") or not record.get("limit_seconds"):
         raise ValueError(f"{path}: a wide record needs a command, a limit and a format of {FORMATS}")
+    if "task_id" in record and record["task_id"] != task_id:
+        raise ValueError(
+            f"{path}: the record was measured for {record['task_id']}, not {task_id}; measure this task with "
+            "`context-eval wide-check`"
+        )
     for key in ("test_side", "source", "settings"):
         patterns = record.get(key, [])
         if not isinstance(patterns, list) or not all(isinstance(pattern, str) and pattern for pattern in patterns):
@@ -51,16 +58,27 @@ def load(root: Path | None, task_id: str) -> dict | None:
 
 
 def unusable(record: dict, image_id: str | None, year: int | None = None) -> str | None:
-    """Why a grading must not run this record, or None. A record is used only as `check` left it: measured, also
-    under grading load, on the image being graded, with no problem listed, and in the calendar year it was checked
-    in, since a test name built from the date (`[2026-True]`) is in the stable set only until the date moves on and
-    would then read as a test that stopped passing."""
-    if "stable" not in record or not record.get("image_id"):
+    """Why a grading must not run this record, or None. A record is used only as `check` left it: measured for a
+    task, by the rule (`GOLD_RUNS` serial gold runs, then `LOAD_RUNS` under grading load `LOAD_WORKERS` at a
+    time), with a stable set, on the image being graded, with no problem listed, and in the calendar year it was
+    checked in, since a test name built from the date (`[2026-True]`) is in the stable set only until the date moves
+    on and would then read as a test that stopped passing."""
+    if "stable" not in record or not record.get("image_id") or not record.get("task_id"):
         return "it was never measured"
-    if not (record.get("under_load") or {}).get("runs"):
+    load = record.get("under_load") or {}
+    if not load.get("runs"):
         return "its stable set was not measured under grading load"
+    for measured, rule, what in (
+        (record.get("gold_runs"), GOLD_RUNS, "serial gold runs"),
+        (load.get("runs"), LOAD_RUNS, "gold gradings under load"),
+        (load.get("workers"), LOAD_WORKERS, "gradings at a time under load"),
+    ):
+        if not isinstance(measured, int) or measured < rule:
+            return f"it was measured with {measured} {what}, fewer than the rule's {rule}"
     if record.get("problems"):
         return f"its check listed problems that are not settled: {record['problems'][:3]}"
+    if not record["stable"]:
+        return "its stable set is empty"
     if record["image_id"] != image_id:
         return f"it was measured on image {record['image_id']}, not {image_id}"
     year = year or datetime.now(UTC).year
@@ -173,13 +191,21 @@ def collect(raw: Path, destination: Path, record: dict) -> None:
 
 def read(grade_folder: Path) -> dict[str, str] | None:
     """Each test's status in the wide run of one grading (`grade/verifier` or `grade/restored`); None when the run
-    is missing or did not finish."""
+    is missing, cannot be parsed or did not finish. A result of another shape was not written by `collect` and raises
+    ValueError with the file's path."""
     path = Path(grade_folder) / "wide" / "results.json"
     try:
         result = json.loads(path.read_text())
     except (OSError, ValueError):
         return None
-    return result["tests"] if result.get("complete") else None
+    if not isinstance(result, dict):
+        raise ValueError(f"{path}: not a wide result (a JSON object whose tests map names to statuses)")
+    if not result.get("complete"):
+        return None
+    tests = result.get("tests")
+    if not isinstance(tests, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in tests.items()):
+        raise ValueError(f"{path}: not a wide result (a JSON object whose tests map names to statuses)")
+    return tests
 
 
 def not_passing(tests: dict[str, str], record: dict) -> set[str]:
@@ -222,15 +248,18 @@ def check(
     it fails are recorded as `harmful_fails_harm`), and stable tests outside the harm names that the harmful patch
     fails (a decided harm set is never widened without the user). `always_fail` names the tests that failed in every
     gold run: they never enter the filter, and a long list means the wide command lacks something the suite needs.
-    `dated` names the tests that passed every time but hold the year of the check in their name: they are left out
-    of the stable set, since a name built from the date does not exist on another day.
+    `dated` names the tests that passed every time but hold the year of the check, the year before or the year after
+    as a number of their own (`dated`): they are left out of the stable set, since a name built from the date does
+    not exist on another day.
 
     The repeats run one after another, and a campaign is graded several sessions at a time; a test that depends on
     timing can pass every quiet run and fail under that load. So the gold patch is graded `load_runs` more times,
     `load_workers` at a time, and the stable set keeps only the tests that passed in those too: a test that fails
     under the reference solution cannot show that a session broke anything. `under_load` records how often each
     test left out this way did not pass. A harm test among them, a gold grading under load that is not a passing
-    grade, and a wide run that did not finish under load are problems."""
+    grade, and a wide run under load that did not finish or reported no test are problems; a run that reported no
+    test takes no test out of the stable set. The rule's numbers are `GOLD_RUNS`, `LOAD_RUNS` and `LOAD_WORKERS`;
+    a record measured with fewer is written but `unusable`."""
     from sereno.context_eval.contracts import Submission
 
     harm_names = harm_names or {}
@@ -276,16 +305,23 @@ def check(
             grade = evaluator.evaluate(Submission(task.id, image_id, task.base_commit, gold), folder)
             return grade.get("status") == "graded" and grade.get("reward") == 1, read(folder / "grade" / "verifier")
 
-        with ThreadPoolExecutor(max_workers=load_workers) as pool:
-            loaded = list(pool.map(under_load, range(1, load_runs + 1)))
-        failed = Counter(name for _, tests in loaded if tests is not None for name in not_passing(tests, record))
+        # Each of these grades records the load it ran under (`grader.workers`).
+        serial, evaluator.workers = evaluator.workers, load_workers
+        try:
+            with ThreadPoolExecutor(max_workers=load_workers) as pool:
+                loaded = list(pool.map(under_load, range(1, load_runs + 1)))
+        finally:
+            evaluator.workers = serial
+        # A wide run that reported no test is a problem, as in the serial runs, and removes no test from the set.
+        failed = Counter(name for _, tests in loaded if tests for name in not_passing(tests, record))
         record["under_load"] = {
             "runs": load_runs,
             "workers": load_workers,
             "not_passing_grades": sum(not passed for passed, _ in loaded),
             "unfinished": sum(tests is None for _, tests in loaded),
+            "no_test": sum(tests == {} for _, tests in loaded),
             "runs_with_a_stable_test_not_passing": sum(
-                bool(tests is not None and not_passing(tests, record)) for _, tests in loaded
+                bool(tests and not_passing(tests, record)) for _, tests in loaded
             ),
             "not_passing": dict(sorted(failed.items())),
         }
@@ -295,6 +331,7 @@ def check(
         for key, what in (
             ("not_passing_grades", "were not a passing grade"),
             ("unfinished", "did not finish their wide run"),
+            ("no_test", "reported no test in their wide run"),
         ):
             if record["under_load"][key]:
                 problems.append(f"{record['under_load'][key]} of {load_runs} gold gradings under load {what}")
