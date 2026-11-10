@@ -296,11 +296,12 @@ def edit_status(grade) -> str | None:
 class DeepSWEEvaluator:
     """EvaluatorAdapter for DeepSWE. Every Docker call goes through `docker(args, timeout)`, `run_docker` by default."""
 
-    def __init__(self, dataset_root: Path, *, docker=None, wide_root: Path | None = None, workers: int = 1):
+    def __init__(self, dataset_root: Path, *, docker=None, wide_root: Path | None = None, workers: int | None = None):
         self.root = Path(dataset_root)
         self.docker = docker or run_docker
         self.wide_root = wide_root
-        # How many gradings its caller runs at a time; each grade records it, since a stable set holds only under the
+        # How many gradings its caller runs at a time, None when it does not say (the adaptive arm grades during the
+        # run, beside the campaign's other chains); each grade records it, since a stable set holds only under the
         # load it was measured under.
         self.workers = workers
         # Records being measured by `wide_check`, by task id: run as they are, never read from or written to disk.
@@ -880,7 +881,7 @@ def wide_check(
     says why a grading would refuse the record written (fewer runs than the rule, a problem, an empty stable set), or
     is None."""
     dataset, wide_root, out = Path(dataset).expanduser().resolve(), Path(wide_root), Path(out)
-    evaluator = DeepSWEEvaluator(dataset, docker=docker, wide_root=wide_root)
+    evaluator = DeepSWEEvaluator(dataset, docker=docker, wide_root=wide_root, workers=1)
     task = load_task(dataset, task_id)
     image = evaluator.inspect(task.image)
     if image is None:

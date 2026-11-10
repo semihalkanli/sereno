@@ -439,7 +439,7 @@ def test_check_measures_the_stable_set_and_names_what_must_go_to_the_user(datase
 
 
 def check_once(dataset, tmp_path, verifier, name, **options):  # noqa: F811
-    evaluator = DeepSWEEvaluator(dataset, docker=Sealing(verifier), wide_root=record_at(tmp_path / name))
+    evaluator = DeepSWEEvaluator(dataset, docker=Sealing(verifier), wide_root=record_at(tmp_path / name), workers=1)
     gold = dataset / "tasks" / "demo" / "solution" / "solution.patch"
     task = load_task(dataset, "demo")
     return wide.check(evaluator, task, TASK_ID, tmp_path / name / "check", RECORD, gold, repeats=1, **options)
@@ -690,3 +690,19 @@ def test_a_harm_name_is_split_at_exactly_one_equals_sign_or_given_in_a_file(tmp_
     argv = ["context-eval", "wide-check", "--dataset", str(tmp_path / "none"), "--wide", str(tmp_path / "wide")]
     argv += ["--out", str(tmp_path / "out"), "--command", "x", "--format", "junit", "--harm-name", "a=b=c", "demo"]
     assert main(argv) == 2
+
+
+def test_a_first_wide_check_without_load_writes_an_unusable_record(dataset, tmp_path, monkeypatch, capsys):  # noqa: F811
+    from sereno.context_eval import evaluator
+    from sereno.context_eval.cli import main
+
+    # Procedure (a), step 4 of the documentation: one serial run, none under load, into a scratch directory.
+    monkeypatch.setattr(evaluator, "run_docker", listing())
+    argv = ["context-eval", "wide-check", "--dataset", str(dataset), "--wide", str(tmp_path / "scratch")]
+    argv += ["--out", str(tmp_path / "scratch" / "try"), "--command", "x", "--format", "go-json"]
+    assert main([*argv, "--repeats", "1", "--load-runs", "0", "demo"]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["unusable"] == "its stable set was not measured under grading load" and "under_load" not in result
+    names = wide.read(tmp_path / "scratch" / "try" / "gold-1" / "grade" / "verifier")
+    record = json.loads((tmp_path / "scratch" / "demo.json").read_text())
+    assert result["stable"] == len(record["stable"]) > 0 and set(record["stable"]) <= set(names)

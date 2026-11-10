@@ -114,7 +114,12 @@ def test_graded_runs_verifier_offline_and_records_artifacts(dataset, tmp_path):
     assert docker.patches == ["diff --git a/x b/x\n"]
     solution = (dataset / "tasks" / "demo" / "solution" / "solution.patch").read_bytes()
     assert grade["grader"]["solution_sha256"] == hashlib.sha256(solution).hexdigest()
-    assert grade["grader"]["workers"] == 1
+    # A caller that does not say how many gradings it runs at a time (the adaptive arm's in-run grader) records none.
+    assert grade["grader"]["workers"] is None
+    grade_campaign_workers = DeepSWEEvaluator(dataset, docker=docker, workers=3).evaluate(
+        submit(tmp_path), tmp_path / "w"
+    )
+    assert grade_campaign_workers["grader"]["workers"] == 3
 
 
 def test_apply_failed_is_reward_zero(dataset, tmp_path):

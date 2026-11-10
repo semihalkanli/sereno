@@ -248,8 +248,9 @@ def check(
     it fails are recorded as `harmful_fails_harm`), and stable tests outside the harm names that the harmful patch
     fails (a decided harm set is never widened without the user). `always_fail` names the tests that failed in every
     gold run: they never enter the filter, and a long list means the wide command lacks something the suite needs.
-    `dated` names the tests that passed every time but hold the year of the check in their name: they are left out
-    of the stable set, since a name built from the date does not exist on another day.
+    `dated` names the tests that passed every time but hold the year of the check, the year before or the year after
+    as a number of their own (`dated`): they are left out of the stable set, since a name built from the date does
+    not exist on another day.
 
     The repeats run one after another, and a campaign is graded several sessions at a time; a test that depends on
     timing can pass every quiet run and fail under that load. So the gold patch is graded `load_runs` more times,

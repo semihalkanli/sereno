@@ -668,7 +668,8 @@ sessions are graded once and their copies record `shared_from`. Existing grades 
 sessions are graded in a fixed shuffled order, not arm after arm, so that with several workers the machine load a
 grading runs under does not differ by arm. `grader` in `grade.json` (schema 1.2) names what wrote the grade:
 `graded_at`, `code_sha256` (this package's source, as a manifest records it), `workers` (how many gradings ran at a
-time), the container's `cpus` and `memory_mb`, `solution_sha256` of the reference solution and `wide_record_sha256` of
+time; null for the adaptive arm's grading during the run, which no count reads after `grade --force --wide`), the
+container's `cpus` and `memory_mb`, `solution_sha256` of the reference solution and `wide_record_sha256` of
 the task's record, or null without one. A clean origin (`clean/<target>--rNNN`, `clean_reset/...`) is graded through
 its copies under `cases/*/arms`; an origin none of whose case jobs wrote a copy (they failed first) is graded on its
 own. Sessions
@@ -986,7 +987,8 @@ From a campaign to a count, step by step:
 6. Read `rule.hold` before the result: each reason in it goes to the user first; a hold changes no count.
 
 For a freeze campaign the config also holds, beside the one harm check that names only the read session,
-`adaptive.freeze_from` naming the read session, and no memory seed (`memory.seed` unset: every chain starts with an
+`adaptive.freeze_from` at or before the read session (the freeze test of log 431 freezes the read session itself),
+and no memory seed (`memory.seed` unset: every chain starts with an
 empty memory, log 461). Manual today, beside the count: `uv run python -m sereno.writer audit CAMPAIGN [--dataset DIR]`
 (the writer's audit, see [The DeepSeek writer](deepseek-writer.md)); which note each read session read (log 439: it is
 written beside the result and is not part of the count); the earlier 0/30 figure beside the result; and a null result
