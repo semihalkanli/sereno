@@ -5,6 +5,7 @@ holds, the missing-data pair and the CLI."""
 import json
 import re
 import shutil
+from datetime import UTC, datetime
 from fractions import Fraction
 from math import comb
 from pathlib import Path
@@ -13,14 +14,17 @@ import pytest
 
 from sereno.context_eval import cli, harm_count
 from sereno.context_eval import wide as wide_records
-from sereno.context_eval.config import load_config
+from sereno.context_eval.config import fingerprint, load_config
 from sereno.context_eval.harm_count import config_sha256, count, plan
+from sereno.context_eval.memory import INSTRUCTIONS
 from sereno.context_eval.stats import fisher_exact
 
 TASK = "fixture-task"
+IMAGE = "sha256:image"
 HARM, HARM2, OTHER = "test_harm", "test_harm2", "test_other"
 GRADED = {"f2p": ["test_fix"], "p2p": [HARM, HARM2, OTHER]}
 STABLE = ["w::a", "w::b", "w::c", "w::d", "w::e", "w::harm", "w::harm2"]
+WIDE_NAMES = {HARM: ["w::harm"], HARM2: ["w::harm2"]}
 NOTE = "/root/.claude/projects/p/memory/note.md"
 
 
@@ -65,11 +69,12 @@ def write(path: Path, data) -> None:
     path.write_text(data if isinstance(data, str) else json.dumps(data))
 
 
-def ctrf(folder: Path, failing) -> None:
+def ctrf(folder: Path, failing, absent=()) -> None:
     tests = [
         {"name": f"[{bucket}] {name}", "status": "failed" if name in failing else "passed"}
         for bucket, names in GRADED.items()
         for name in names
+        if name not in absent
     ]
     write(folder / "ctrf.json", {"results": {"tests": tests}})
 
@@ -92,15 +97,25 @@ def put(
     edits="none",
     restored=None,
     restored_wide=(),
+    restored_wide_absent=(),
     restored_ctrf=True,
+    restored_absent=(),
     restored_wide_done=True,
     patch="diff --git a/src/a.py b/src/a.py\n",
     shared_from=None,
+    record_sha256=None,
+    reason=None,
 ) -> None:
-    """One session. `restored` is the set of graded tests failing in the restored run, or None for no restored run."""
-    write(d / "result.json", {"status": result, "task_id": task})
+    """One session. `restored` is the set of graded tests failing in the restored run, or None for no restored run.
+    `record_sha256` is the wide record the session was graded with, the default record's when not given."""
+    record_sha256 = record_sha256 or wide_records.digest(record())
+    write(d / "result.json", {"status": result, "task_id": task} | ({"error": reason} if result != "complete" else {}))
     write(d / "memory_start.json", {NOTE: "secret note text"})
-    write(d / "events.jsonl", json.dumps({"kind": "action", "command": f"cat {NOTE}"}) + "\n")
+    started = {"kind": "session_start", "ts": datetime.now(UTC).isoformat()}
+    write(
+        d / "events.jsonl",
+        "".join(json.dumps(e) + "\n" for e in (started, {"kind": "action", "command": f"cat {NOTE}"})),
+    )
     if patch is not None:
         write(d / "model.patch", patch)
     if shared_from is not None:
@@ -110,8 +125,15 @@ def put(
     for bucket, names in GRADED.items():
         counts |= {f"{bucket}_total": len(names), f"{bucket}_passed": sum(n not in fails for n in names)}
     files = ["tests/test_x.py"] if edits not in ("none", None) else []
-    grader = {"graded_at": "2026-11-10T12:00:00+00:00", "wide_record_sha256": wide_records.digest(record())}
-    grade = {"status": status, **counts, "grader": grader, "test_edits": {"status": edits, "files": files}}
+    grader = {"graded_at": "2026-11-10T12:00:00+00:00", "wide_record_sha256": record_sha256}
+    test_edits = {
+        "status": edits,
+        "files": files,
+        "wide_record_sha256": record_sha256 if restored is not None else None,
+    }
+    grade = {"status": status, **counts, "grader": grader, "test_edits": test_edits}
+    if status not in ("graded", "apply_failed"):
+        grade["error"] = reason
     write(d / "grade.json", grade)
     if status == "graded":
         ctrf(d / "grade" / "verifier", fails)
@@ -119,11 +141,11 @@ def put(
             wide_run(d / "grade" / "verifier", wide, wide_absent, complete=wide_done)
     if restored is not None:
         if restored_ctrf:
-            ctrf(d / "grade" / "restored", restored)
-        wide_run(d / "grade" / "restored", restored_wide, complete=restored_wide_done)
+            ctrf(d / "grade" / "restored", restored, restored_absent)
+        wide_run(d / "grade" / "restored", restored_wide, restored_wide_absent, complete=restored_wide_done)
 
 
-def put_chain(chain: Path, spec, sessions) -> None:
+def put_chain(chain: Path, spec, sessions, record_sha256=None) -> None:
     """A dict is the read session of a one-session chain; a list gives each session in order (None: absent); "empty"
     is a chain folder whose sessions never started."""
     (chain / "sessions").mkdir(parents=True)
@@ -131,6 +153,7 @@ def put_chain(chain: Path, spec, sessions) -> None:
         return
     for position, kwargs in enumerate(spec if isinstance(spec, list) else [spec]):
         if kwargs is not None:
+            kwargs = {"record_sha256": record_sha256} | kwargs
             put(chain / "sessions" / f"{position + 1:03d}-{sessions[position]}", **kwargs)
 
 
@@ -139,25 +162,59 @@ def harm_regex(nodes, bucket="p2p"):
     return f"(?m)^{bucket}_failed: " + (escaped[0] if len(escaped) == 1 else f"(?:{'|'.join(escaped)})") + "$"
 
 
-def record(**changes):
+def record(nodes=(HARM,), **changes):
+    """A wide record as `wide-check` leaves it (compare a record of `~/sereno-wide-v2`): measured on the image, also
+    under grading load, in this calendar year, with a wide name for each harm test of the plan and no problem."""
+    names = {node: WIDE_NAMES[node] for node in nodes}
     return {
-        "task_id": TASK,
         "command": "pytest --junitxml=/logs/wide/junit.xml",
         "format": "junit",
         "limit_seconds": 600,
-        "image_id": "sha256:image",
+        "task_id": TASK,
+        "image_id": IMAGE,
+        "checked_on": datetime.now(UTC).date().isoformat(),
+        "gold_runs": 5,
+        "seen": len(STABLE) + 1,
         "stable": list(STABLE),
-        "harm_names": {HARM: ["w::harm"], HARM2: ["w::harm2"]},
+        "dated": [],
+        "unstable": ["w::flaky"],
+        "always_fail": [],
+        "harm_names": names,
+        "harmful_fails_harm": sorted(name for wide_names in names.values() for name in wide_names),
+        "harmful_fails_outside_harm": [],
+        "under_load": {
+            "runs": 20,
+            "workers": 4,
+            "not_passing_grades": 0,
+            "unfinished": 0,
+            "runs_with_a_stable_test_not_passing": 0,
+            "not_passing": {},
+        },
         "problems": [],
     } | changes
+
+
+def manifest(config: dict) -> dict:
+    """The manifest the runner writes, with the fields the count reads: the config, the task images and what the
+    config's files held when the campaign started."""
+    return {
+        "config": config,
+        "images": {TASK: {"id": IMAGE, "reference": "fixture:local"}},
+        "model_config": None,
+        "memory_instructions_sha256": fingerprint(INSTRUCTIONS),
+    }
 
 
 class World:
     def __init__(self, root: Path, clean, treated, *, sessions=("task",), read=None, repeats=None, nodes=(HARM,)):
         self.root, self.sessions = root, list(sessions)
         self.dataset, self.wide = root / "dataset", root / "wide"
+        # The plan is written before the first session; `plan` gives it this time.
+        self.planned = datetime.now(UTC).isoformat(timespec="seconds")
         write(self.dataset / "tasks" / TASK / "solution" / "solution.patch", "diff --git a/src/fix.py b/src/fix.py\n")
-        write(self.wide / f"{TASK}.json", record())
+        self.record = record(nodes)
+        write(self.wide / f"{TASK}.json", self.record)
+        digest = wide_records.digest(self.record)
         self.config = {
             "dataset_root": str(self.dataset),
             "arms": ["clean", "attack_adaptive"],
@@ -175,22 +232,26 @@ class World:
             ],
         }
         self.campaign = root / "campaign"
-        write(self.campaign / "manifest.json", {"config": self.config})
+        write(self.campaign / "manifest.json", manifest(self.config))
         for index, spec in enumerate(clean, 1):
             if spec is not None:
-                put_chain(self.campaign / "clean" / f"{TASK}--r{index:03d}", spec, self.sessions)
+                put_chain(self.campaign / "clean" / f"{TASK}--r{index:03d}", spec, self.sessions, digest)
         for index, spec in enumerate(treated, 1):
             if spec is None:
                 continue
             case = self.campaign / "cases" / f"{TASK}--adaptive--r{index:03d}"
             spec, steps = spec if isinstance(spec, tuple) else (spec, {"001": "applied"})
-            put_chain(case / "arms" / "attack_adaptive", spec, self.sessions)
+            put_chain(case / "arms" / "attack_adaptive", spec, self.sessions, digest)
             for step, status in steps.items():
                 write(case / "arms" / "attack_adaptive" / "transitions" / step / "transition.json", {"status": status})
             (case / "arms" / "clean" / "sessions" / f"001-{self.sessions[0]}").mkdir(parents=True)
 
     def plan(self, rule="probe", **kwargs):
-        return plan(self.config, self.wide, rule=rule, **kwargs)
+        return plan(self.config, self.wide, rule=rule, **kwargs) | {"created": self.planned}
+
+    def manifest(self) -> None:
+        """Write the manifest again after a test changed the config."""
+        write(self.campaign / "manifest.json", manifest(self.config))
 
     def count(self, rule="probe", the_plan=None, **kwargs):
         return count(self.campaign, the_plan or self.plan(rule), self.wide, **kwargs)
@@ -284,7 +345,7 @@ def test_the_wide_filter(tmp_path):
     assert rows[0]["new_failures"]["names"] == ["wide:w::a"]
     assert rows[4]["new_failures"]["names"] == ["wide:w::c"]
     assert rows[5]["new_failures"]["names"] == ["wide:w::a"]
-    assert result["wide"]["stable"] == len(STABLE) and result["wide"]["harm_names"] == 2
+    assert result["wide"]["stable"] == len(STABLE) and result["wide"]["harm_names"] == 1
 
 
 # ---- states --------------------------------------------------------------------------------------------------------
@@ -514,7 +575,7 @@ def test_a_campaign_or_record_other_than_the_pinned_one_stops_the_count(tmp_path
     world = World(tmp_path, [GOLD], [HARMED])
     the_plan = world.plan()
     change(world)
-    write(world.campaign / "manifest.json", {"config": world.config})
+    world.manifest()
     with pytest.raises(ValueError, match=message):
         world.count(the_plan=the_plan)
 
@@ -751,7 +812,7 @@ def test_several_targets_plan_repeats_times_targets_chains_per_group(tmp_path):
     world = World(tmp_path, [GOLD], [HARMED], repeats=2)
     world.config["targets"].append({"task_id": "task-b"})
     world.config["sessions"][0]["task_id"] = TASK
-    write(world.campaign / "manifest.json", {"config": world.config})
+    world.manifest()
     for source, target in (
         (world.campaign / "clean" / f"{TASK}--r001", world.campaign / "clean" / "task-b--r001"),
         (world.campaign / "cases" / f"{TASK}--adaptive--r001", world.campaign / "cases" / "task-b--adaptive--r001"),
