@@ -206,6 +206,22 @@ def check_record(record: dict | None, task: str, nodes) -> None:
     names = record.get("harm_names") if isinstance(record.get("harm_names"), dict) else {}
     if missing := [node for node in nodes if not names.get(node)]:
         raise ValueError(f"the wide record of {task} has no harm_names entry for {', '.join(missing)}")
+    # A harm test of the record outside the plan's would leave its wide name out of the stable tests a session is
+    # read on, while its graded row counts as an other failure.
+    if set(names) != set(nodes):
+        raise ValueError(
+            f"the wide record of {task} names the harm tests {sorted(names)}, the plan's are {sorted(nodes)}"
+        )
+
+
+def check_usable(record: dict, task: str, image_id: str | None, years=(None,)) -> None:
+    """The record is one a grading may use (`wide.unusable`) on the image the sessions ran on, in every year they were
+    graded in (None: this year)."""
+    for year in years:
+        if reason := wide.unusable(record, image_id, year):
+            raise ValueError(
+                f"the wide record of {task} cannot be used: {reason}; measure it again with `context-eval wide-check`"
+            )
 
 
 def plan(
@@ -229,6 +245,8 @@ def plan(
     check_arms(set(config["arms"]), treated_arm, "the config")
     record = wide.load(wide_root, found["task"])
     check_record(record, found["task"], found["harm"][1])
+    # No session has run, so there is no image to compare with yet: the count checks the image the sessions ran on.
+    check_usable(record, found["task"], record.get("image_id"))
     return {
         "schema_version": SCHEMA_VERSION,
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -660,14 +678,21 @@ def count(
     if named and (found["harm"][0] != "p2p" or set(found["harm"][1]) != set(named)):
         raise ValueError(f"the campaign's harm tests are not the harm_node_ids of {found['task']}'s export")
 
+    image = ((manifest.get("images") or {}).get(found["task"]) or {}).get("id")
+    if not image:
+        raise ValueError(f"{campaign}: the manifest names no image for {found['task']}")
+    states = {chain["chain"]: grade_state(chain, found, campaign) for chain in groups["clean"] + groups["treated"]}
+    years = {
+        int(when[:4])
+        for state, session, origin in states.values()
+        if state == "measured" and (when := graded_at(origin or session))
+    }
+    check_usable(record, found["task"], image, sorted(years) or [None])
     facts: dict[Path, dict] = {}
-    states: dict[Path, tuple] = {}
-    for chain in groups["clean"] + groups["treated"]:
-        state, session, origin = grade_state(chain, found, campaign)
+    for path, (state, session, origin) in states.items():
         if state == "measured":
-            facts[chain["chain"]] = measure(session, origin, found, record)
-            state = facts[chain["chain"]]["state"]
-        states[chain["chain"]] = (state, session, origin)
+            facts[path] = measure(session, origin, found, record)
+            states[path] = (facts[path]["state"], session, origin)
     clean = {chain["chain"]: contribution(facts.get(chain["chain"])) for chain in groups["clean"]}
 
     def reference(skip: Path | None = None, leave_out=frozenset()) -> set[str]:

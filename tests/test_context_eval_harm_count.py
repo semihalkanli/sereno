@@ -29,6 +29,8 @@ GRADED = {"f2p": ["test_fix"], "p2p": [HARM, HARM2, OTHER]}
 STABLE = ["w::a", "w::b", "w::c", "w::d", "w::e", "w::harm", "w::harm2"]
 WIDE_NAMES = {HARM: ["w::harm"], HARM2: ["w::harm2"]}
 NOTE = "/root/.claude/projects/p/memory/note.md"
+# Sessions are graded in the year their wide record was checked in, as a grading requires.
+GRADED_AT = f"{datetime.now(UTC).date().isoformat()}T12:00:00+00:00"
 
 
 # ---- Fisher --------------------------------------------------------------------------------------------------------
@@ -108,6 +110,7 @@ def put(
     shared_from=None,
     record_sha256=None,
     reason=None,
+    graded_at=GRADED_AT,
 ) -> None:
     """One session. `restored` is the set of graded tests failing in the restored run, or None for no restored run.
     `record_sha256` is the wide record the session was graded with, the default record's when not given."""
@@ -128,7 +131,7 @@ def put(
     for bucket, names in GRADED.items():
         counts |= {f"{bucket}_total": len(names), f"{bucket}_passed": sum(n not in fails for n in names)}
     files = ["tests/test_x.py"] if edits not in ("none", None) else []
-    grader = {"graded_at": "2026-11-10T12:00:00+00:00", "wide_record_sha256": record_sha256}
+    grader = {"graded_at": graded_at, "wide_record_sha256": record_sha256}
     test_edits = {
         "status": edits,
         "files": files,
@@ -797,7 +800,7 @@ def test_a_session_graded_with_another_wide_record_stops_the_count(tmp_path):
             world.count()
     write(path / "grade.json", grade)
     result = world.count()
-    assert result["treated"]["graded"] == {"first": "2026-11-10T12:00:00+00:00", "last": "2026-11-10T12:00:00+00:00"}
+    assert result["treated"]["graded"] == {"first": GRADED_AT, "last": GRADED_AT}
 
 
 def test_the_record_s_path_rules_reach_the_open_routes(tmp_path):
@@ -987,3 +990,53 @@ def test_a_last_write_the_program_failed_is_held_and_the_writer_s_own_outcomes_a
     writer_only = [([GOLD, HARMED], {"001": status, "002": "frozen"}) for status in ("rejected", "no_change")]
     result = frozen_world(tmp_path / "writer", writer_only).count("fisher")
     assert result["treated"]["last_write"]["program_failed"] == [] and result["rule"]["hold"] == []
+
+
+# ---- the wide record a plan may pin ---------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "changes, message",
+    [
+        ({"under_load": None}, "not measured under grading load; measure it again with `context-eval wide-check`"),
+        ({"checked_on": "2020-01-01"}, "checked on 2020-01-01, not in"),
+        ({"image_id": None}, "never measured"),
+    ],
+)
+def test_the_plan_refuses_a_record_a_grading_could_not_use(tmp_path, changes, message):
+    world = World(tmp_path, [GOLD], [HARMED])
+    write(world.wide / f"{TASK}.json", world.record | changes)
+    with pytest.raises(ValueError, match=re.escape(message)):
+        world.plan()
+
+
+def test_the_count_refuses_a_record_unusable_on_the_campaign_s_image_or_in_its_grading_year(tmp_path):
+    world = World(tmp_path, [GOLD], [HARMED])
+    the_plan = world.plan()
+    # Not in the record's hash, so the pin still matches; the count checks it again.
+    write(world.wide / f"{TASK}.json", world.record | {"under_load": {}})
+    with pytest.raises(ValueError, match="not measured under grading load"):
+        world.count(the_plan=the_plan)
+    write(world.wide / f"{TASK}.json", world.record)
+    write(world.campaign / "manifest.json", manifest(world.config) | {"images": {TASK: {"id": "sha256:other"}}})
+    with pytest.raises(ValueError, match="measured on image sha256:image, not sha256:other"):
+        world.count(the_plan=the_plan)
+    write(world.campaign / "manifest.json", manifest(world.config) | {"images": {}})
+    with pytest.raises(ValueError, match="the manifest names no image for fixture-task"):
+        world.count(the_plan=the_plan)
+    world.manifest()
+    grade_path = world.campaign / "clean" / f"{TASK}--r001" / "sessions" / "001-task" / "grade.json"
+    grade = json.loads(grade_path.read_text())
+    write(grade_path, grade | {"grader": grade["grader"] | {"graded_at": "2020-06-01T12:00:00+00:00"}})
+    with pytest.raises(ValueError, match="not in 2020"):
+        world.count(the_plan=the_plan)
+
+
+def test_a_record_naming_harm_tests_outside_the_plan_s_is_refused(tmp_path):
+    world = World(tmp_path, [GOLD], [HARMED])
+    write(world.wide / f"{TASK}.json", record((HARM, HARM2)))
+    message = "names the harm tests ['test_harm', 'test_harm2'], the plan's are ['test_harm']"
+    with pytest.raises(ValueError, match=re.escape(message)):
+        world.plan()
+    the_plan = World(tmp_path / "two", [GOLD], [HARMED], nodes=(HARM, HARM2)).plan()
+    assert the_plan["harm"]["nodes"] == [HARM, HARM2]
