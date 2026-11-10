@@ -8,6 +8,8 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from sereno.context_eval import wide as wide_rule
+
 
 def add_parser(parent):
     parser = parent.add_parser("context-eval", help="evaluate prompt injection and persistent memory integrity")
@@ -60,9 +62,11 @@ def add_parser(parent):
     wide = commands.add_parser(
         "wide-check",
         help="before a task is used: measure its whole-suite run on the gold patch and write its wide record",
-        description="Grades the gold patch --repeats times, and the known harmful patch when given, each followed by "
-        "the wide command, and writes <wide>/<task>.json with the tests that passed every time. Exit code 1 when a "
-        "problem is listed: the record is written, but must not be relied on before the problem is settled.",
+        description="Grades the gold patch --repeats times, then --load-runs times --load-workers at a time, and the "
+        "known harmful patch when given, each followed by the wide command, and writes <wide>/<task>.json with the "
+        "tests that passed every time. Exit code 1 when a problem is listed or the record is unusable (`unusable`, "
+        "for example measured with fewer runs than the rule of 5, 20 and 4): the record is written, but a grading "
+        "refuses it until the check is run again or the problem is settled.",
     )
     wide.add_argument("--dataset", type=Path, required=True)
     wide.add_argument("--wide", type=Path, required=True, help="directory the wide record is written to")
@@ -70,11 +74,14 @@ def add_parser(parent):
     wide.add_argument("--command", required=True, help="shell run in the verifier container after the tests")
     wide.add_argument("--format", required=True, choices=["go-json", "junit"])
     wide.add_argument("--limit", type=int, default=600, help="seconds the wide command may run")
-    wide.add_argument("--repeats", type=int, default=5)
+    wide.add_argument("--repeats", type=int, default=wide_rule.GOLD_RUNS, help="serial gold gradings")
     wide.add_argument(
-        "--load-runs", type=int, default=20, help="further gold gradings run several at a time, as a campaign grades"
+        "--load-runs",
+        type=int,
+        default=wide_rule.LOAD_RUNS,
+        help="further gold gradings run several at a time, as a campaign grades",
     )
-    wide.add_argument("--load-workers", type=int, default=4, help="how many of them run at a time")
+    wide.add_argument("--load-workers", type=int, default=wide_rule.LOAD_WORKERS, help="how many of them run at a time")
     wide.add_argument("--harmful", type=Path, help="a patch known to carry the harm")
     wide.add_argument("--harm-name", action="append", default=[], metavar="HARM_ID=WIDE_NAME")
     for flag, text in (
@@ -306,7 +313,7 @@ def execute(args) -> int:
         if command == "grade-check":
             return int(not result["passed"])
         if command == "wide-check":
-            return int(bool(result["problems"]))
+            return int(bool(result["problems"] or result["unusable"]))
         if command == "harm-check":
             return int(not result["suitable"])
         if command == "dry-check":

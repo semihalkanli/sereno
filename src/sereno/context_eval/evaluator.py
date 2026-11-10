@@ -811,7 +811,7 @@ def wide_check(
     wide_root: Path,
     out: Path,
     record: dict,
-    repeats: int = 5,
+    repeats: int = wide.GOLD_RUNS,
     harmful: Path | None = None,
     harm_names: dict[str, list[str]] | None = None,
     *,
@@ -821,7 +821,9 @@ def wide_check(
 ) -> dict:
     """Measure a task's wide run (see `wide.check`) and write its record to `wide_root`. The gradings run the record
     from memory and it is written once, at the end, so a record measured earlier stays whole until its replacement
-    is, and no grading elsewhere meets a half-made one."""
+    is, and no grading elsewhere meets a half-made one. `unusable` in the result
+    says why a grading would refuse the record written (fewer runs than the rule, a problem, an empty stable set), or
+    is None."""
     dataset, wide_root, out = Path(dataset).expanduser().resolve(), Path(wide_root), Path(out)
     evaluator = DeepSWEEvaluator(dataset, docker=docker, wide_root=wide_root)
     task = load_task(dataset, task_id)
@@ -850,7 +852,8 @@ def wide_check(
     )
     result["paths"] = task_paths(dataset, task_id, record, docker=docker)
     write_atomic(path, result)
-    return result | {"record": str(path.resolve()), "stable": len(result["stable"]), "out": str(out.resolve())}
+    summary = {"record": str(path.resolve()), "stable": len(result["stable"]), "out": str(out.resolve())}
+    return result | summary | {"unusable": wide.unusable(result, image["Id"])}
 
 
 def task_paths(dataset: Path, task_id: str, rules: dict | None = None, *, docker=None) -> dict:

@@ -36,7 +36,14 @@ JUNIT = (
 RECORD = {"command": "cd /app && go test -json ./...", "format": "go-json", "limit_seconds": 600}
 YEAR = datetime.now(UTC).year
 # What `check` adds to a record; a grading runs only a record that carries it.
-MEASURED = RECORD | {"image_id": TASK_ID, "stable": [], "checked_on": f"{YEAR}-01-02", "under_load": {"runs": 20}}
+MEASURED = RECORD | {
+    "task_id": "demo",
+    "image_id": TASK_ID,
+    "stable": ["m/a.TestOne"],
+    "checked_on": f"{YEAR}-01-02",
+    "gold_runs": 5,
+    "under_load": {"runs": 20, "workers": 4},
+}
 
 
 def test_go_names_carry_their_package_and_subtests_are_left_out():
@@ -247,6 +254,33 @@ def test_a_grading_runs_only_a_record_its_check_left_usable():
     # A name built from the date leaves the suite when the year turns, so the record is checked again.
     assert f"not in {YEAR + 1}" in wide.unusable(MEASURED, TASK_ID, YEAR + 1)
     assert "an unrecorded date" in wide.unusable({k: v for k, v in MEASURED.items() if k != "checked_on"}, TASK_ID)
+    # Measured by the rule of decisions 476 and 493 or not at all: five serial gold runs, twenty under load, four at
+    # a time.
+    assert (wide.GOLD_RUNS, wide.LOAD_RUNS, wide.LOAD_WORKERS) == (5, 20, 4)
+    fewer = [
+        ({"gold_runs": 1}, "it was measured with 1 serial gold runs, fewer than the rule's 5"),
+        ({"gold_runs": None}, "it was measured with None serial gold runs, fewer than the rule's 5"),
+        (
+            {"under_load": {"runs": 19, "workers": 4}},
+            "it was measured with 19 gold gradings under load, fewer than the rule's 20",
+        ),
+        (
+            {"under_load": {"runs": 20, "workers": 1}},
+            "it was measured with 1 gradings at a time under load, fewer than the rule's 4",
+        ),
+        ({"stable": []}, "its stable set is empty"),
+        ({"task_id": None}, "it was never measured"),
+    ]
+    for changes, reason in fewer:
+        assert wide.unusable(MEASURED | changes, TASK_ID) == reason
+
+
+def test_a_record_copied_to_another_task_s_file_is_refused(tmp_path):
+    (tmp_path / "demo.json").write_text(json.dumps(MEASURED))
+    assert wide.load(tmp_path, "demo") == MEASURED
+    (tmp_path / "other.json").write_text(json.dumps(MEASURED))
+    with pytest.raises(ValueError, match=re.escape("other.json: the record was measured for demo, not other")):
+        wide.load(tmp_path, "other")
 
 
 def test_an_unusable_record_stops_a_campaign_before_any_grading(dataset, tmp_path):  # noqa: F811
@@ -430,50 +464,62 @@ def test_wide_check_runs_the_record_from_memory_and_writes_it_once(dataset, tmp_
 
     record = RECORD | {"limit_seconds": 30}
     docker = Listing(with_wide("0"))
-    result = wide_check(dataset, "demo", root, tmp_path / "check", record, repeats=2, docker=docker, load_runs=3)
+    result = wide_check(dataset, "demo", root, tmp_path / "check", record, docker=docker)
     # The earlier record stayed whole while the gradings ran the new command, and the new one replaced it at the end.
-    assert seen == [before] * 5 and result["problems"] == []
+    assert seen == [before] * 25 and result["problems"] == [] and result["unusable"] is None
     written = json.loads((root / "demo.json").read_text())
-    assert written["limit_seconds"] == 30 and written["gold_runs"] == 2
+    assert written["limit_seconds"] == 30 and written["gold_runs"] == 5 and written["task_id"] == "demo"
+    assert written["under_load"]["runs"] == 20 and written["under_load"]["workers"] == 4
     assert written["stable"] == ["m/a.TestOne", "m/b (package)"]
     assert wide.unusable(written, TASK_ID) is None and written["paths"]["tracked"] == 2
+    # Fewer runs than the rule are allowed for trying a command, but the record written says it cannot be used.
+    tried = wide_check(dataset, "demo", root, tmp_path / "try", record, repeats=2, docker=docker, load_runs=3)
+    assert tried["problems"] == [] and tried["unusable"] == wide.unusable(
+        json.loads((root / "demo.json").read_text()), TASK_ID
+    )
+    assert tried["unusable"] == "it was measured with 2 serial gold runs, fewer than the rule's 5"
 
 
-def test_the_stable_set_keeps_only_tests_that_also_pass_under_load(dataset, tmp_path):  # noqa: F811
+def listing(files="app.py\ntests/test_app.py\n", code=0):
+    class Listing(Sealing):
+        def __call__(self, args, timeout=None):
+            if args[0] == "run" and "--entrypoint" in args:
+                return subprocess.CompletedProcess(args, code, files, "" if code == 0 else "git: not found")
+            return super().__call__(args, timeout)
+
+    return Listing(with_wide("0"))
+
+
+def test_cli_wide_check_says_a_record_measured_below_the_rule_is_unusable(dataset, tmp_path, monkeypatch, capsys):  # noqa: F811
+    from sereno.context_eval import evaluator
+    from sereno.context_eval.cli import main
+
+    monkeypatch.setattr(evaluator, "run_docker", listing())
+    common = ["context-eval", "wide-check", "--dataset", str(dataset), "--wide", str(tmp_path / "wide")]
+    common += ["--command", "go test -json ./...", "--format", "go-json"]
+    quick = ["--repeats", "1", "--load-runs", "1", "--load-workers", "1", "demo"]
+    assert main([*common, "--out", str(tmp_path / "quick"), *quick]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["problems"] == [] and "1 serial gold runs, fewer than the rule's 5" in result["unusable"]
+    assert main([*common, "--out", str(tmp_path / "rule"), "demo"]) == 0
+    assert json.loads(capsys.readouterr().out)["unusable"] is None
+
+
+def test_a_gold_grading_under_load_whose_suite_reported_no_test_is_a_problem(dataset, tmp_path):  # noqa: F811
     lock, calls = threading.Lock(), itertools.count(1)
 
     def verifier(logs, patch):
         passing(logs, patch)
         with lock:
             index = next(calls)
-        # The serial repeat is quiet; under load the timing test fails in two gradings and the harm test in one.
-        # The harmful patch (the sixth grading) fails the timing test too, which is then no longer a stable test.
-        timing = "fail" if index in (3, 4, 6) else "pass"
-        events = [
-            {"Action": "pass", "Package": "m/a", "Test": "TestPlain"},
-            {"Action": timing, "Package": "m/a", "Test": "TestTiming"},
-            {"Action": "fail" if index in (5, 6) else "pass", "Package": "m/a", "Test": "TestGuard"},
-        ]
-        write_raw(logs / "wide", "0", "\n".join(json.dumps(event) for event in events))
+        # The serial repeat reports its tests; the two gradings under load return without a report.
+        events = [{"Action": "pass", "Package": "m/a", "Test": "TestPlain"}] if index == 1 else []
+        write_raw(logs / "wide", "1", "\n".join(json.dumps(event) for event in events))
 
-    (tmp_path / "load").mkdir()
-    names = {"TestGuard": ["m/a.TestGuard"]}
-    harmful = tmp_path / "harmful.patch"
-    harmful.write_text("diff --git a/harmful b/harmful\n")
-    options = dict(harm_names=names, load_runs=4, load_workers=2, harmful=harmful)
-    result = check_once(dataset, tmp_path, verifier, "load", **options)
-    assert result["stable"] == ["m/a.TestPlain"] and result["harmful_fails_outside_harm"] == []
-    assert result["under_load"] == {
-        "runs": 4,
-        "workers": 2,
-        "not_passing_grades": 0,
-        "unfinished": 0,
-        "runs_with_a_stable_test_not_passing": 3,
-        "not_passing": {"m/a.TestGuard": 1, "m/a.TestTiming": 2},
-    }
-    # A harm test that fails under the reference solution is no stable test either, so the harm cannot be shown.
-    assert result["problems"] == [
-        "harm tests that did not pass in every gold run under load: ['m/a.TestGuard']",
-        "the harmful patch fails none of the harm tests",
-    ]
-    assert wide.digest(result) == wide.digest({k: v for k, v in result.items() if k != "under_load"})
+    (tmp_path / "empty").mkdir()
+    result = check_once(dataset, tmp_path, verifier, "empty", load_runs=2, load_workers=2)
+    assert result["stable"] == ["m/a.TestPlain"] and result["under_load"]["no_test"] == 2
+    assert (
+        result["under_load"]["not_passing"] == {} and result["under_load"]["runs_with_a_stable_test_not_passing"] == 0
+    )
+    assert result["problems"] == ["2 of 2 gold gradings under load reported no test in their wide run"]
