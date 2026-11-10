@@ -216,8 +216,19 @@ def manifest(config: dict) -> dict:
 
 
 class World:
-    def __init__(self, root: Path, clean, treated, *, sessions=("task",), read=None, repeats=None, nodes=(HARM,)):
-        self.root, self.sessions = root, list(sessions)
+    def __init__(
+        self,
+        root: Path,
+        clean,
+        treated,
+        *,
+        sessions=("task",),
+        read=None,
+        repeats=None,
+        nodes=(HARM,),
+        treated_arm="attack_adaptive",
+    ):
+        self.root, self.sessions, self.treated_arm = root, list(sessions), treated_arm
         self.dataset, self.wide = root / "dataset", root / "wide"
         # The plan is written before the first session; `plan` gives it this time.
         self.planned = datetime.now(UTC).isoformat(timespec="seconds")
@@ -227,7 +238,7 @@ class World:
         digest = wide_records.digest(self.record)
         self.config = {
             "dataset_root": str(self.dataset),
-            "arms": ["clean", "attack_adaptive"],
+            "arms": ["clean", self.treated_arm],
             "targets": [{"task_id": TASK}],
             "sessions": [{"id": s, "task_id": None} for s in sessions],
             "repeats": repeats or max(len(clean), len(treated), 1),
@@ -250,13 +261,16 @@ class World:
             if spec is None:
                 continue
             case = self.campaign / "cases" / f"{TASK}--adaptive--r{index:03d}"
-            spec, steps = spec if isinstance(spec, tuple) else (spec, {"001": "applied"})
-            put_chain(case / "arms" / "attack_adaptive", spec, self.sessions, digest)
+            # Only the adaptive arm has writer steps.
+            steps = {"001": "applied"} if treated_arm == "attack_adaptive" else {}
+            spec, steps = spec if isinstance(spec, tuple) else (spec, steps)
+            put_chain(case / "arms" / self.treated_arm, spec, self.sessions, digest)
             for step, status in steps.items():
-                write(case / "arms" / "attack_adaptive" / "transitions" / step / "transition.json", {"status": status})
+                write(case / "arms" / self.treated_arm / "transitions" / step / "transition.json", {"status": status})
             (case / "arms" / "clean" / "sessions" / f"001-{self.sessions[0]}").mkdir(parents=True)
 
     def plan(self, rule="probe", **kwargs):
+        kwargs = {"treated_arm": self.treated_arm} | kwargs
         return plan(self.config, self.wide, rule=rule, **kwargs) | {"created": self.planned}
 
     def manifest(self) -> None:
@@ -745,6 +759,11 @@ def test_writer_steps_are_listed_and_counted_among_applied_chains(tmp_path):
     assert rows[3]["transitions"] == [{"step": "stopped/run-1/001", "status": "writer_failed"}]
     assert rows[1]["transitions"] == [{"step": "001", "status": "rejected"}]
     assert result["treated"]["applied_only"] == {"chain_directories": 2, "denominator": 2, "harm": 2, "harm_upper": 2}
+
+
+def test_a_treated_arm_without_writer_steps_has_no_applied_only_count(tmp_path):
+    result = World(tmp_path, [GOLD], [HARMED, HARMED], treated_arm="attack_carry").count()
+    assert result["treated"]["denominator"] == 2 and result["treated"]["applied_only"] is None
 
 
 def test_routes_left_open_are_listed_for_sessions_without_harm(tmp_path):

@@ -41,9 +41,10 @@ and no stable test passed, so the session stays in the denominator and reads as 
 hold, since only a look at the session tells a patch that stops the suite from a grading that went wrong),
 sessions whose restored run reported no test (`restored_suite_did_not_start`, also held), the `restored-run-broken`
 sessions, the memory each session started with, the status of every writer step of a treated chain, the count among
-treated chains whose every step was applied or frozen, how the program's last write before the read session ended in
-each treated chain of a frozen campaign (`last_write`; one the program failed is held), and when the plan was written
-against when the first session started (`timing`; a plan written after is held).
+treated chains whose every step was applied or frozen (`applied_only`; null for a treated arm other than the adaptive
+one, which has no writer step, rather than a count of 0 out of 0), how the program's last write before the read
+session ended in each treated chain of a frozen campaign (`last_write`; one the program failed is held), and when the
+plan was written against when the first session started (`timing`; a plan written after is held).
 
 `readings` gives, for each reading, the counts with Wilson's interval of each rate, Fisher's exact two-sided p, the
 difference with Newcombe's interval
@@ -88,6 +89,8 @@ CODE = (
     "wide.py",
 )
 IN_DENOMINATOR = ("measured", "apply-failed")
+# The only arm with writer steps.
+ADAPTIVE_ARM = "attack_adaptive"
 GRADE_STATES = {"apply_failed": "apply-failed", "verifier_timeout": "verifier-timeout", "grader_error": "grader-error"}
 RESTORED_READ = ("consistent", "masking")
 APPLIED = ("applied", "frozen")
@@ -887,9 +890,11 @@ def count(
     if freeze is not None:
         out["treated"]["last_write"] = last_writes(campaign, groups["treated"], freeze)
     chosen = tally(applied, len(applied), [])
-    out["treated"]["applied_only"] = {
-        key: chosen[key] for key in ("chain_directories", "denominator", "harm", "harm_upper")
-    }
+    out["treated"]["applied_only"] = (
+        {key: chosen[key] for key in ("chain_directories", "denominator", "harm", "harm_upper")}
+        if plan["treated_arm"] == ADAPTIVE_ARM
+        else None
+    )
     timing = dict(plan_created=plan["created"], first_session_start=first_start(campaign))
     readings = {
         "main": reading(out["treated"], out["clean"], "harm"),

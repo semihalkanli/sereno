@@ -1026,7 +1026,8 @@ reporting any test (`restored_suite_did_not_start`, labels unchanged, each a rea
 `broken_clean_sessions_relied_on`; a clean session is broken when its own other failures are not all found in the
 other clean sessions), the memory file names each session started with and its memory reads, the status of every
 writer step of a treated chain (those under `stopped/` included), and the count among treated chains whose every step
-was `applied` or `frozen`. For a campaign with a freeze, `freeze` gives the session it starts at, whether the read
+was `applied` or `frozen` (`applied_only`; null for a treated arm other than `attack_adaptive`, which has no writer
+step). For a campaign with a freeze, `freeze` gives the session it starts at, whether the read
 session is frozen and the step folders of the read session and of the program's last write before it (the step before
 the first frozen step, which is the step of the last session before the freeze, or the read session's own step when
 the freeze comes after it), and the treated group's `last_write` gives how that step ended in each chain: counts by
