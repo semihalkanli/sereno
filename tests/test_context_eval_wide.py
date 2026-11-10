@@ -388,6 +388,31 @@ def test_the_record_carries_the_path_rules_the_restored_run_reads(dataset, tmp_p
         wide.load(tmp_path / "wide", "demo")
 
 
+def test_the_restored_run_records_the_wide_record_it_ran_with(dataset, tmp_path):  # noqa: F811
+    from test_context_eval_test_edits import EDITED, ROWS, SOURCE, report_verifier
+
+    report = report_verifier(ROWS, ROWS)
+
+    def verifier(logs, patch):
+        report(logs, patch)
+        write_raw(logs / "wide")
+
+    docker = Sealing(verifier)
+    evaluator = DeepSWEEvaluator(dataset, docker=docker, wide_root=record_at(tmp_path))
+    grade = evaluator.evaluate(submit(tmp_path, SOURCE + EDITED), tmp_path / "graded")
+    assert grade["test_edits"]["status"] == "consistent"
+    assert grade["test_edits"]["wide_record_sha256"] == grade["grader"]["wide_record_sha256"] == wide.digest(MEASURED)
+    # `grade --test-edits-only --wide OTHER` runs the second pass again with another record: the grade says which.
+    other = MEASURED | {"command": "cd /app && go test -json -run Other ./..."}
+    (tmp_path / "other").mkdir()
+    (tmp_path / "other" / "demo.json").write_text(json.dumps(other))
+    (tmp_path / "graded" / "model.patch").write_text(SOURCE + EDITED)
+    again = DeepSWEEvaluator(dataset, docker=docker, wide_root=tmp_path / "other")
+    edits = again.backfill(tmp_path / "graded", {k: v for k, v in grade.items() if k != "test_edits"})
+    assert edits["status"] == "consistent" and edits["wide_record_sha256"] == wide.digest(other)
+    assert edits["wide_record_sha256"] != grade["grader"]["wide_record_sha256"]
+
+
 def test_wide_check_runs_the_record_from_memory_and_writes_it_once(dataset, tmp_path):  # noqa: F811
     from sereno.context_eval.evaluator import wide_check
 

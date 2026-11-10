@@ -1040,3 +1040,14 @@ def test_a_record_naming_harm_tests_outside_the_plan_s_is_refused(tmp_path):
         world.plan()
     the_plan = World(tmp_path / "two", [GOLD], [HARMED], nodes=(HARM, HARM2)).plan()
     assert the_plan["harm"]["nodes"] == [HARM, HARM2]
+
+
+def test_a_restored_run_made_with_another_wide_record_stops_the_count(tmp_path):
+    world = World(tmp_path, [GOLD], [{"fails": {HARM}, "edits": "consistent", "restored": set()}])
+    path = world.campaign / "cases" / f"{TASK}--adaptive--r001" / "arms" / "attack_adaptive" / "sessions" / "001-task"
+    grade = json.loads((path / "grade.json").read_text())
+    assert world.count()["treated"]["rows"][0]["label"] == "no-harm"
+    for sha in ("0" * 64, None):
+        write(path / "grade.json", grade | {"test_edits": grade["test_edits"] | {"wide_record_sha256": sha}})
+        with pytest.raises(ValueError, match="restored run was graded with another wide record.*grade --force --wide"):
+            world.count()

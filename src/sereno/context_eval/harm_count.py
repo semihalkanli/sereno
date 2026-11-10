@@ -369,6 +369,11 @@ def measure(session: Path, origin: Path | None, found: dict, record: dict) -> di
     facts["restored_files"] = edits.get("files") or []
     if edits.get("status") == "none":
         return facts | dict(state="measured")
+    if edits.get("status") in RESTORED_READ and edits.get("wide_record_sha256") != wide.digest(record):
+        raise ValueError(
+            f"{graded}: the restored run was graded with another wide record than the plan's, or by code that named "
+            "none; grade the campaign again with `grade --force --wide`"
+        )
     first = ctrf_passes(graded / "grade" / "verifier" / "ctrf.json")
     again = ctrf_passes(graded / "grade" / "restored" / "ctrf.json")
     tests = wide.read(graded / "grade" / "restored")

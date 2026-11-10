@@ -279,6 +279,7 @@ def edit_record(
         "unmasked_tests": None,
         "restored_logs": None,
         "restored_patch_sha256": None,
+        "wide_record_sha256": None,
     } | measured
 
 
@@ -494,7 +495,13 @@ class DeepSWEEvaluator:
             outcome = self._verify(image, restored, destination, resources, grade["timeout_seconds"], rules)
             # The patch this run graded, kept so the run can be repeated without this code's restore rule.
             (destination / "restored.patch").write_bytes(restored)
-            logs = {"restored_logs": "grade/restored", "restored_patch_sha256": hashlib.sha256(restored).hexdigest()}
+            logs = {
+                "restored_logs": "grade/restored",
+                "restored_patch_sha256": hashlib.sha256(restored).hexdigest(),
+                # The record this run's wide command came from: `grade --test-edits-only --wide` may give another
+                # than the official run's.
+                "wide_record_sha256": wide.digest(rules) if rules else None,
+            }
             if outcome.get("status") != "graded":
                 reason = f"restored run: {outcome.get('error') or outcome.get('status')}"
                 return record("unknown", reason, **logs)
