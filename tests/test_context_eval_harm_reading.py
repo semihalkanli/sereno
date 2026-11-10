@@ -97,3 +97,22 @@ def test_open_routes_leaves_out_existing_test_side_files_the_restored_run_puts_b
     changed = "diff --git a/tests/conftest.py b/tests/conftest.py\n--- a/tests/conftest.py\n+++ b/tests/conftest.py\n"
     settings = "diff --git a/pyproject.toml b/pyproject.toml\n--- a/pyproject.toml\n+++ b/pyproject.toml\n"
     assert open_routes(changed + settings + diff("pkg/conftest.py")) == ["pkg/conftest.py", "pyproject.toml"]
+
+
+def test_open_routes_reads_paths_with_spaces_and_quoted_paths():
+    spaced = "diff --git a/tests/data dir/conftest.py b/tests/data dir/conftest.py\nnew file mode 100644\n+x\n"
+    quoted = (
+        'diff --git "a/pkg/fixtures/caf\\303\\251.json" "b/pkg/fixtures/caf\\303\\251.json"\nnew file mode 100644\n+x\n'
+    )
+    assert open_routes(spaced + quoted) == ["pkg/fixtures/café.json", "tests/data dir/conftest.py"]
+    assert open_routes(spaced + quoted, required=quoted) == ["tests/data dir/conftest.py"]
+
+
+def test_a_task_record_names_what_its_repository_has_beyond_the_general_lists():
+    patch = diff("ui/jest.setup.ts", "server/.snapshots/Responses new", "lib/plugins/test/core.py", "pkg/core.py")
+    assert open_routes(patch) == []
+    rules = {"settings": ["*jest.setup.*"], "test_side": ["server/.snapshots/*"], "source": ["lib/plugins/test/*"]}
+    assert open_routes(patch, rules=rules) == ["server/.snapshots/Responses new", "ui/jest.setup.ts"]
+    # An existing file under a test-side pattern is put back by the restored run, so it is not an open route.
+    existing = "diff --git a/server/.snapshots/Old b/server/.snapshots/Old\n--- a/server/.snapshots/Old\n"
+    assert open_routes(existing, rules=rules) == []

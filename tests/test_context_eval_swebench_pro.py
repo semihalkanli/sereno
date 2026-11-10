@@ -55,6 +55,9 @@ def test_title_is_the_first_line_without_heading_marks_or_a_title_label(sources)
         title(row(problem_statement="\n## Title: CSRF needs a secure option\n\nBody")) == "CSRF needs a secure option"
     )
     assert title(row(problem_statement="# Title Clarify the import surface")) == "Clarify the import surface"
+    assert (
+        title(row(problem_statement="## Title:\n\nAdd a retry to the fetcher\n\nBody")) == "Add a retry to the fetcher"
+    )
     hyphen = "non\u2011ISBN"
     assert title(row(problem_statement=f"# Identification of {hyphen} codes.")) == f"Identification of {hyphen} codes."
     with pytest.raises(ValueError, match="no title line"):
@@ -177,3 +180,22 @@ def test_harm_commands_run_after_the_official_script_into_the_same_logs(sources)
     for bad in ("", "go test ./a\ngo test ./b", 3):
         with pytest.raises(ValueError, match="one non-empty line"):
             export_task(row(), official, grader, out, {"commands": [bad], "node_ids": ["Test_CUE"]})
+
+
+def test_ctrf_reads_a_harm_id_from_a_run_split_over_workers():
+    harm = ["t.py::test_harm[b c]", "t.py::test_harm[d e]", "t.py::test_gone"]
+    config = {"f2p_node_ids": [], "p2p_node_ids": harm, "harm_node_ids": harm}
+    lines = [
+        "[gw0] [ 10%] PASSED t.py::test_harm[b c]",
+        "[gw12] [100%] FAILED t.py::test_harm[d e]",
+        "[gw1] PASSED t.py::test_gone",
+        "noise [gw1] [ 10%] PASSED t.py::test_gone",
+    ]
+    rows = {t["name"]: t["status"] for t in pro_ctrf.convert({"tests": []}, config, lines)["results"]["tests"]}
+    assert rows == {"t.py::test_harm[b c]": "passed", "t.py::test_harm[d e]": "failed"}
+
+
+def test_ctrf_reads_a_graded_name_with_outer_spaces_as_the_grader_does():
+    parsed = {"tests": [{"name": " suite | case ", "status": "PASSED"}, {"name": "suite | case", "status": "FAILED"}]}
+    with pytest.raises(ValueError, match="both passed and did not pass"):
+        pro_ctrf.convert(parsed, {"f2p_node_ids": [" suite | case "], "p2p_node_ids": []}, [])

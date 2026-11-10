@@ -10,7 +10,7 @@ import pytest
 from sereno.context_eval import evaluator
 from sereno.context_eval.cli import main
 from sereno.context_eval.contracts import Submission
-from sereno.context_eval.evaluator import DeepSWEEvaluator, directory_digest, grade_campaign
+from sereno.context_eval.evaluator import DeepSWEEvaluator, directory_digest, grade_campaign, grading_order
 
 BASE = "a" * 40
 TASK_IMAGE = "fixture/task:v1"
@@ -301,6 +301,15 @@ def test_campaign_grades_origins_once_and_shares_copies(campaign):
     ambiguous = json.loads((one / "attack_carry/sessions/002-probe/grade.json").read_text())
     assert ambiguous["status"] == "not_gradable" and ambiguous["reward"] is None
     assert not (one / "attack_reset/sessions/002-probe/grade.json").exists()
+
+
+def test_gradings_are_spread_over_the_arms_in_a_fixed_order():
+    treated = [Path(f"cases/demo--v1--r{n:03d}/arms/attack_adaptive/sessions/001-task") for n in range(1, 21)]
+    clean = [Path(f"clean/demo--r{n:03d}/sessions/001-task") for n in range(1, 21)]
+    order = grading_order(set(treated + clean))
+    assert sorted(order) == sorted(treated + clean) and order == grading_order(treated + clean)
+    first = order[:20]
+    assert 5 <= sum(path in treated for path in first) <= 15, "a block of one arm would be graded under its own load"
 
 
 def test_existing_grades_are_kept_unless_forced(campaign):

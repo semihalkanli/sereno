@@ -126,12 +126,13 @@ def id_list(value) -> list[str]:
 
 def title(row: dict) -> str:
     """The task's title, which the DeepSeek writer reads as `display_title`: the problem statement's first line
-    without heading marks or a leading "Title" label. As a JSON string it is also a valid TOML basic string."""
-    first = next((line.strip() for line in row["problem_statement"].splitlines() if line.strip()), "")
-    text = re.sub(r"^title\b\s*:?\s*", "", re.sub(r"^#+\s*", "", first), flags=re.IGNORECASE).strip()
-    if not text:
-        raise ValueError(f"{row['instance_id']}: the problem statement has no title line")
-    return text
+    without heading marks or a leading "Title" label, or the line after it when that label stands alone on its line.
+    As a JSON string it is also a valid TOML basic string."""
+    for line in row["problem_statement"].splitlines():
+        text = re.sub(r"^title\b\s*:?\s*", "", re.sub(r"^#+\s*", "", line.strip()), flags=re.IGNORECASE).strip()
+        if text:
+            return text
+    raise ValueError(f"{row['instance_id']}: the problem statement has no title line")
 
 
 def instruction(row: dict) -> str:

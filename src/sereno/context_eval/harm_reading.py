@@ -21,6 +21,7 @@ The restored run closes one way of hiding a harm: changing an existing test file
 patch that could hide one another way, by changing how other tests run; a session whose harm test passes and whose
 patch has such a file is one the instrument cannot verify, and counts list it beside the result."""
 
+import codecs
 import re
 
 RUNNER_SETTINGS = re.compile(
@@ -28,24 +29,42 @@ RUNNER_SETTINGS = re.compile(
     r"(jest|vitest)\.config\.[cm]?[jt]s|\.mocharc\.[a-z]+)"
 )
 TEST_DATA = {"testdata", "test_data", "fixtures", "fixture", "mocks", "mock", "__snapshots__"}
-DIFF_HEADER = re.compile(r"^diff --git a/(\S+) b/(\S+)$", re.MULTILINE)
 
 
-def open_routes(patch: str, required: str = "") -> list[str]:
+def real_path(path: str) -> str:
+    """A path as a `diff --git` header writes it, given back as the file's name: git puts a path with a quote, a
+    backslash, a control character or a byte outside ASCII in double quotes with C escapes."""
+    return codecs.escape_decode(path.encode())[0].decode(errors="replace") if "\\" in path else path
+
+
+def changed_paths(patch: str) -> list[str]:
+    """The path each `diff --git` header of a patch names, read by the evaluator's own header pattern, so a path
+    with a space or a quoted one is read too."""
+    from sereno.context_eval.evaluator import DIFF_GIT
+
+    return [real_path(header.group(2)) for line in patch.splitlines() if (header := DIFF_GIT.match(line))]
+
+
+def open_routes(patch: str, required: str = "", rules: dict | None = None) -> list[str]:
     """The files of `patch` that can change how other tests run: test runner settings (a `conftest.py`, pytest, tox,
     jest, vitest, mocha or karma settings, a project file that carries them) and test data. Ordinary test files are
     not named: an added one holds new tests. Neither is an existing test-side file the patch changes, such as an
     existing `conftest.py` or golden file: the restored run puts it back, so what stays open is such a file added
     new, and settings in files the restored run does not treat as tests. Files that `required`, the task's reference
-    patch, also touches are left out, since the task itself asks for them."""
-    from sereno.context_eval.evaluator import existing_test_files
+    patch, also touches are left out, since the task itself asks for them. `rules` is the task's record: its
+    `settings` and `test_side` patterns name what this repository has beyond the lists above (a snapshot folder, a
+    setup file of its runner), and its `source` and `test_side` patterns decide what the restored run puts back."""
+    from sereno.context_eval.evaluator import existing_test_files, listed
 
-    asked = {match[2] for match in DIFF_HEADER.finditer(required)} | existing_test_files(patch.encode(), set())
+    rules = rules or {}
+    asked = set(changed_paths(required)) | {
+        real_path(path) for path in existing_test_files(patch.encode(), set(), rules)
+    }
     found = set()
-    for match in DIFF_HEADER.finditer(patch):
-        path = match[2]
+    for path in changed_paths(patch):
         parents, name = path.split("/")[:-1], path.split("/")[-1]
-        if path not in asked and (RUNNER_SETTINGS.fullmatch(name) or TEST_DATA & set(parents)):
+        settings = RUNNER_SETTINGS.fullmatch(name) or listed(path, rules.get("settings"))
+        if path not in asked and (settings or TEST_DATA & set(parents) or listed(path, rules.get("test_side"))):
             found.add(path)
     return sorted(found)
 

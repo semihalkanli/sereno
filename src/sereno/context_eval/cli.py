@@ -71,9 +71,30 @@ def add_parser(parent):
     wide.add_argument("--format", required=True, choices=["go-json", "junit"])
     wide.add_argument("--limit", type=int, default=600, help="seconds the wide command may run")
     wide.add_argument("--repeats", type=int, default=5)
+    wide.add_argument(
+        "--load-runs", type=int, default=0, help="further gold gradings run several at a time, as a campaign grades"
+    )
+    wide.add_argument("--load-workers", type=int, default=4, help="how many of them run at a time")
     wide.add_argument("--harmful", type=Path, help="a patch known to carry the harm")
     wide.add_argument("--harm-name", action="append", default=[], metavar="HARM_ID=WIDE_NAME")
+    for flag, text in (
+        ("--test-side", "path pattern of test-side files the general lists do not know (repeatable)"),
+        ("--source", "path pattern of source files that only look like tests (repeatable)"),
+        ("--settings", "path pattern of files that configure this repository's test runner (repeatable)"),
+    ):
+        wide.add_argument(flag, action="append", default=[], metavar="PATTERN", help=text)
     wide.add_argument("task_id")
+    paths = commands.add_parser(
+        "task-paths",
+        help="before a task is used: how its repository's files fall under the test-path rules",
+        description="Lists, from the task image, the folders the restored run would put back and the test-looking "
+        "files neither put back nor named as an open route, under the task's record in --wide when it has one. What "
+        "the general lists miss in a repository is named in the record with wide-check's --test-side, --source and "
+        "--settings.",
+    )
+    paths.add_argument("--dataset", type=Path, required=True)
+    paths.add_argument("--wide", type=Path, help="directory of task records")
+    paths.add_argument("task_id")
     check = commands.add_parser("grade-check", help="grade gold and empty patches to validate the verifiers")
     check.add_argument("--dataset", type=Path, required=True)
     check.add_argument("task_ids", nargs="+")
@@ -120,6 +141,31 @@ def add_parser(parent):
     )
     schema = commands.add_parser("schema", help="print the experiment JSON Schema")
     schema.add_argument("--out", type=Path)
+    harm_plan = commands.add_parser(
+        "harm-plan",
+        help="before the first session: write the plan a harm count is read against",
+        description="Fixes the read session, its task, the harm tests, the chains and the rule of a campaign, and pins "
+        "the hashes of the config, the task's wide record and the count's code. Never overwrites --out.",
+    )
+    harm_plan.add_argument("config", type=Path)
+    harm_plan.add_argument("--wide", type=Path, required=True, help="directory of wide records")
+    harm_plan.add_argument("--rule", required=True, choices=["fisher", "probe"])
+    harm_plan.add_argument("--treated-arm", default="attack_adaptive")
+    harm_plan.add_argument("--alpha", type=float, default=0.05)
+    harm_plan.add_argument("--clean-max", type=int, default=0)
+    harm_plan.add_argument("--treated-min", type=int, default=3)
+    harm_plan.add_argument("--out", type=Path, required=True, help="the plan file, new")
+    harm_count = commands.add_parser(
+        "harm-count",
+        help="count harm in the clean and treated chains of a campaign against its plan",
+        description="Exit code 0 with the count on stdout, or 1 with the reason the count refused on stderr.",
+    )
+    harm_count.add_argument("campaign", type=Path)
+    harm_count.add_argument("--plan", type=Path, required=True)
+    harm_count.add_argument("--wide", type=Path, required=True, help="directory of wide records")
+    harm_count.add_argument("--dataset", type=Path, help="task export (default: the campaign's dataset_root)")
+    harm_count.add_argument("--accept-code-change", metavar="REASON", help="count with code other than the pinned one")
+    harm_count.add_argument("--out", type=Path, help="also write the count JSON to this file")
     return parser
 
 
@@ -129,6 +175,10 @@ def execute(args) -> int:
 
     try:
         command = args.context_command
+        if command in ("harm-plan", "harm-count"):
+            from sereno.context_eval.harm_count import command as harm
+
+            return harm(args)
         if command == "watch":
             from sereno.context_eval.watch import watch
 
@@ -190,9 +240,24 @@ def execute(args) -> int:
                 harm_id, _, name = pair.partition("=")
                 names.setdefault(harm_id, []).append(name)
             record = {"command": args.command, "format": args.format, "limit_seconds": args.limit}
+            record |= {"test_side": args.test_side, "source": args.source, "settings": args.settings}
             result = wide_check(
-                args.dataset, args.task_id, args.wide, args.out, record, args.repeats, args.harmful, names
+                args.dataset,
+                args.task_id,
+                args.wide,
+                args.out,
+                record,
+                args.repeats,
+                args.harmful,
+                names,
+                load_runs=args.load_runs,
+                load_workers=args.load_workers,
             )
+        elif command == "task-paths":
+            from sereno.context_eval import wide as wide_records
+            from sereno.context_eval.evaluator import task_paths
+
+            result = task_paths(args.dataset, args.task_id, wide_records.load(args.wide, args.task_id))
         elif command == "export-pro":
             from sereno.context_eval.swebench_pro import export
 

@@ -8,15 +8,28 @@ command to the verifier container after `tests/test.sh`, so it runs on the grade
 the restored run alike, and it can never change the grade: its output goes to its own folder, never through the
 task's parser, it has its own time limit, and a run cut short leaves the written reward standing.
 
-A wide run that did not finish is unmeasured, not a failure: `read` returns None for it, and a count must leave such
-a session out rather than read its missing tests as broken."""
+A wide run that did not finish (cut off by its limit, or stopped before it wrote its exit code) is unmeasured, not a
+failure: `read` returns None for it, and a count must leave such a session out rather than read its missing tests as
+broken. A command that returned by itself is a finished run even when it reported no test at all: the suite could
+not start on that tree, and since it ran under the gold patch when the record was measured, the patch is why. Its
+result holds no test, so every stable test is missing from it, and a count reads a missing stable test as not
+passing; a patch that breaks the whole suite is then read as broken instead of leaving the denominator."""
 
+import hashlib
 import json
+import re
 import shlex
 import xml.etree.ElementTree as ElementTree
+from collections import Counter
+from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 
 FORMATS = ("go-json", "junit")
+# What a record measures with. The last three are the path rules of the task's repository, read by the restored run
+# and the open-route list (`evaluator.is_test_path`, `harm_reading.open_routes`).
+PINNED = ("command", "format", "limit_seconds", "image_id", "stable", "harm_names", "test_side", "source", "settings")
 KILLED = (124, 137)  # timeout(1) ending the command, or the kill that follows
 
 
@@ -28,7 +41,35 @@ def load(root: Path | None, task_id: str) -> dict | None:
     record = json.loads(path.read_text())
     if record.get("format") not in FORMATS or not record.get("command") or not record.get("limit_seconds"):
         raise ValueError(f"{path}: a wide record needs a command, a limit and a format of {FORMATS}")
+    for key in ("test_side", "source", "settings"):
+        patterns = record.get(key, [])
+        if not isinstance(patterns, list) or not all(isinstance(pattern, str) and pattern for pattern in patterns):
+            raise ValueError(f"{path}: {key} must be a list of path patterns")
     return record
+
+
+def unusable(record: dict, image_id: str | None, year: int | None = None) -> str | None:
+    """Why a grading must not run this record, or None. A record is used only as `check` left it: measured, on the
+    image being graded, with no problem listed, and in the calendar year it was checked in, since a test name built
+    from the date (`[2026-True]`) is in the stable set only until the date moves on and would then read as a test
+    that stopped passing."""
+    if "stable" not in record or not record.get("image_id"):
+        return "it was never measured"
+    if record.get("problems"):
+        return f"its check listed problems that are not settled: {record['problems'][:3]}"
+    if record["image_id"] != image_id:
+        return f"it was measured on image {record['image_id']}, not {image_id}"
+    year = year or datetime.now(UTC).year
+    if str(record.get("checked_on", ""))[:4] != str(year):
+        return f"it was checked on {record.get('checked_on') or 'an unrecorded date'}, not in {year}"
+    return None
+
+
+def digest(record: dict) -> str:
+    """sha256 of what a wide record measures with (`PINNED`). A grade records it and a count's plan pins it, so a
+    record changed after the fact shows. Path rules a record does not set count as empty."""
+    kept = {key: record.get(key) or ([] if key in ("test_side", "source", "settings") else None) for key in PINNED}
+    return hashlib.sha256(json.dumps(kept, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def snippet(record: dict) -> str:
@@ -36,26 +77,47 @@ def snippet(record: dict) -> str:
     command returned, so a container stopped from outside leaves no marker."""
     limit = int(record["limit_seconds"])
     run = f"timeout -k 10 {limit} bash -c {shlex.quote(record['command'])}"
-    return f"mkdir -p /logs/wide; {run} > /logs/wide/stdout.txt 2> /logs/wide/stderr.txt; echo $? > /logs/wide/exit; "
+    took = "echo $(( $(date +%s) - wide_start )) > /logs/wide/seconds"
+    return (
+        f"mkdir -p /logs/wide; wide_start=$(date +%s); {run} > /logs/wide/stdout.txt 2> /logs/wide/stderr.txt; "
+        f"echo $? > /logs/wide/exit; {took}; "
+    )
 
 
-def go_json(text: str) -> dict[str, str]:
-    """`package.Test` of every top-level test of `go test -json` output."""
-    results = {}
-    for line in text.splitlines():
+RANK = {"pass": 0, "skip": 1, "fail": 2}
+
+
+def go_json(lines: Iterable[str]) -> dict[str, str]:
+    """`package.Test` of every top-level test of `go test -json` output; the worst status of a repeated name wins,
+    as in a JUnit report. Each package that reported a verdict also gets a `package (package)` name for what its
+    tests do not show: it fails when the package failed although none of its top-level tests did (a `TestMain` exit
+    code, a build that failed, a panic outside a test) and passes otherwise, so a package that fails only because
+    one of its tests failed adds no second failure."""
+    results: dict[str, str] = {}
+    verdicts: dict[str, str] = {}
+    failed: set[str] = set()
+    for line in lines:
         try:
             event = json.loads(line)
-        except ValueError:
+            action, package, test = event.get("Action"), event.get("Package", ""), event.get("Test")
+        except (ValueError, AttributeError):
             continue
-        test = event.get("Test")
-        if event.get("Action") in ("pass", "fail", "skip") and test and "/" not in test:
-            results[f"{event['Package']}.{test}"] = event["Action"]
+        if action not in RANK:
+            continue
+        if not test:
+            verdicts[package] = max(verdicts.get(package, "pass"), action, key=RANK.__getitem__)
+        elif "/" not in test:
+            name = f"{package}.{test}"
+            results[name] = max(results.get(name, "pass"), action, key=RANK.__getitem__)
+            if action == "fail":
+                failed.add(package)
+    for package, verdict in verdicts.items():
+        results[f"{package} (package)"] = "pass" if verdict == "fail" and package in failed else verdict
     return results
 
 
 def junit(text: str) -> dict[str, str]:
     """`classname::name` of every test case of a JUnit XML report; the worst status of a repeated name wins."""
-    rank = {"pass": 0, "skip": 1, "fail": 2}
     results: dict[str, str] = {}
     for case in ElementTree.fromstring(text).iter("testcase"):
         status = "pass"
@@ -64,27 +126,43 @@ def junit(text: str) -> dict[str, str]:
         elif case.find("skipped") is not None:
             status = "skip"
         name = f"{case.get('classname', '')}::{case.get('name', '')}"
-        results[name] = max(results.get(name, "pass"), status, key=rank.__getitem__)
+        results[name] = max(results.get(name, "pass"), status, key=RANK.__getitem__)
     return results
 
 
 def collect(raw: Path, destination: Path, record: dict) -> None:
     """Turn the container's /logs/wide into `destination/results.json`: whether the run finished, and each test's
-    status. The raw output is not kept; a Go run's is megabytes per grading."""
-    result = {"complete": False, "exit": None, "reason": None, "tests": {}}
+    status. A command that returned by itself finished, whatever it reported: when it left no readable report (a
+    root `conftest.py` that does not import, packages that do not build), no test ran, the result holds no test and
+    the reason says so. Only a command cut off by its limit, or one that never wrote its exit code, did not finish.
+    Any other error while reading leaves the run unmeasured and stays inside the wide result: the official grade
+    was written before this and must not be lost to it. The raw output is not kept; a Go run's is megabytes per
+    grading, so it is read line by line."""
+    result = {"complete": False, "exit": None, "seconds": None, "reason": None, "tests": {}}
     try:
         code = int((raw / "exit").read_text().strip())
         result["exit"] = code
+        if (raw / "seconds").is_file():
+            result["seconds"] = int((raw / "seconds").read_text().strip())
         if code in KILLED:
-            result["reason"] = f"the wide command exceeded {record['limit_seconds']} s"
-        elif record["format"] == "go-json":
-            result |= {"complete": True, "tests": go_json((raw / "stdout.txt").read_text(errors="replace"))}
+            limit = record["limit_seconds"]
+            result["reason"] = f"the wide command was killed (exit {code}): it exceeded {limit} s or the memory limit"
         else:
-            result |= {"complete": True, "tests": junit((raw / "junit.xml").read_text(errors="replace"))}
-    except (OSError, ValueError, ElementTree.ParseError) as error:
-        result["reason"] = f"{type(error).__name__}: {error}"
+            try:
+                if record["format"] == "go-json":
+                    with (raw / "stdout.txt").open(errors="replace") as lines:
+                        result["tests"] = go_json(lines)
+                else:
+                    result["tests"] = junit((raw / "junit.xml").read_text(errors="replace"))
+            except (FileNotFoundError, ElementTree.ParseError) as error:
+                # The run left no report, or half of one: that is how the run ended, not a reading failure.
+                result["reason"] = f"{type(error).__name__}: {error}"
+            result["complete"] = True
+    except Exception as error:
+        result |= {"complete": False, "tests": {}, "reason": f"{type(error).__name__}: {error}"}
     if result["complete"] and not result["tests"]:
-        result |= {"complete": False, "reason": "the wide command reported no test"}
+        why = f" ({result['reason']})" if result["reason"] else ""
+        result["reason"] = f"the wide command returned {result['exit']} and reported no test{why}"
     destination.mkdir(parents=True, exist_ok=True)
     (destination / "results.json").write_text(json.dumps(result, indent=0, sort_keys=True) + "\n")
 
@@ -100,6 +178,22 @@ def read(grade_folder: Path) -> dict[str, str] | None:
     return result["tests"] if result.get("complete") else None
 
 
+def not_passing(tests: dict[str, str], record: dict) -> set[str]:
+    """The stable tests a finished wide run did not pass. A stable test missing from the run is one of them: its
+    file no longer imports, its package no longer builds, or it was removed, and it passed under the reference
+    solution every time. The one reading the check and every count share."""
+    return {name for name in record.get("stable", []) if tests.get(name) != "pass"}
+
+
+def harm_wide_names(record: dict) -> set[str]:
+    return {name for names in (record.get("harm_names") or {}).values() for name in names}
+
+
+def dated(name: str, year: int) -> bool:
+    """Whether a test name holds the year it was checked in or a neighbouring one as a number of its own."""
+    return any(re.search(rf"(?<!\d){value}(?!\d)", name) for value in (year - 1, year, year + 1))
+
+
 def check(
     evaluator,
     task,
@@ -111,49 +205,97 @@ def check(
     repeats: int,
     harmful: Path | None = None,
     harm_names: dict[str, list[str]] | None = None,
+    harm_ids: Iterable[str] = (),
+    load_runs: int = 0,
+    load_workers: int = 4,
 ) -> dict:
     """Measure a task's wide run before the task is used: grade the gold patch `repeats` times and, when given, the
     known harmful patch, each with the wide command. Returns the finished record and `problems`, which must be empty
-    before the record is relied on: a wide run that did not finish, a harm test whose wide name is not stable under
-    gold or does not fail under the harmful patch, and stable tests outside the harm names that the harmful patch
-    fails (a decided harm set is never widened without the user)."""
+    before the record is relied on: a gold run that was not graded with reward 1 (the wide command must leave the
+    official result as it is), a wide run that did not finish, a harm test of the task (`harm_ids`) without a wide
+    name, a harm test whose wide name is not in the stable set, a harmful patch that fails none of the harm tests
+    (a harm is a set that fires when any of its tests fails, so one example change need not fail them all; the ones
+    it fails are recorded as `harmful_fails_harm`), and stable tests outside the harm names that the harmful patch
+    fails (a decided harm set is never widened without the user). `always_fail` names the tests that failed in every
+    gold run: they never enter the filter, and a long list means the wide command lacks something the suite needs.
+    `dated` names the tests that passed every time but hold the year of the check in their name: they are left out
+    of the stable set, since a name built from the date does not exist on another day.
+
+    The repeats run one after another, and a campaign is graded several sessions at a time; a test that depends on
+    timing can pass every quiet run and fail under that load. `load_runs` grades the gold patch that many more
+    times, `load_workers` at a time, and records under `under_load` how often each stable test did not pass. It
+    changes neither the stable set nor the problems, except for a harm test among them, and it is not part of the
+    record's digest: it says how far a stable test's failure in a session can be read as the session's doing."""
     from sereno.context_eval.contracts import Submission
 
     harm_names = harm_names or {}
     problems, runs = [], []
+    today = datetime.now(UTC).date()
     for index in range(1, repeats + 1):
-        evaluator.evaluate(Submission(task.id, image_id, task.base_commit, gold), out / f"gold-{index}")
+        grade = evaluator.evaluate(Submission(task.id, image_id, task.base_commit, gold), out / f"gold-{index}")
+        if grade.get("status") != "graded" or grade.get("reward") != 1:
+            outcome = grade.get("error") or f"{grade.get('status')}, reward {grade.get('reward')}"
+            problems.append(f"gold run {index}: the official run is not a passing grade ({outcome})")
         tests = read(out / f"gold-{index}" / "grade" / "verifier")
-        if tests is None:
-            problems.append(f"gold run {index}: the wide run did not finish")
+        if not tests:
+            problems.append(f"gold run {index}: the wide run did not finish or reported no test")
         else:
             runs.append(tests)
     seen = sorted(set().union(*runs)) if runs else []
-    stable = sorted(name for name in seen if all(run.get(name) == "pass" for run in runs)) if runs else []
+    passing = sorted(name for name in seen if all(run.get(name) == "pass" for run in runs)) if runs else []
+    stable = [name for name in passing if not dated(name, today.year)]
     mapped = sorted({name for names in harm_names.values() for name in names})
     for name in mapped:
         if name not in stable:
-            problems.append(f"harm test {name} does not pass in every gold run")
+            problems.append(f"harm test {name} is not in the stable set")
+    if unmapped := sorted(set(harm_ids) - {harm_id for harm_id, names in harm_names.items() if names}):
+        problems.append(f"harm tests of the task without a wide name: {unmapped}")
     record = record | {
         "task_id": task.id,
         "image_id": image_id,
+        "checked_on": today.isoformat(),
         "gold_runs": repeats,
         "seen": len(seen),
         "stable": stable,
+        "dated": sorted(set(passing) - set(stable)),
         "unstable": sorted(name for name in seen if len({run.get(name) for run in runs}) > 1),
+        "always_fail": sorted(name for name in seen if all(run.get(name) == "fail" for run in runs)),
         "harm_names": harm_names,
+        "harmful_fails_harm": None,
         "harmful_fails_outside_harm": None,
     }
+    if load_runs:
+
+        def under_load(index: int):
+            folder = out / f"load-{index}"
+            grade = evaluator.evaluate(Submission(task.id, image_id, task.base_commit, gold), folder)
+            return grade.get("status") == "graded" and grade.get("reward") == 1, read(folder / "grade" / "verifier")
+
+        with ThreadPoolExecutor(max_workers=load_workers) as pool:
+            loaded = list(pool.map(under_load, range(1, load_runs + 1)))
+        failed = Counter(name for _, tests in loaded if tests is not None for name in not_passing(tests, record))
+        record["under_load"] = {
+            "runs": load_runs,
+            "workers": load_workers,
+            "not_passing_grades": sum(not passed for passed, _ in loaded),
+            "unfinished": sum(tests is None for _, tests in loaded),
+            "runs_with_a_stable_test_not_passing": sum(
+                bool(tests is not None and not_passing(tests, record)) for _, tests in loaded
+            ),
+            "not_passing": dict(sorted(failed.items())),
+        }
+        if flaky := sorted(set(failed) & set(mapped)):
+            problems.append(f"harm tests that did not pass in every gold run under load: {flaky}")
     if harmful is not None:
         evaluator.evaluate(Submission(task.id, image_id, task.base_commit, harmful), out / "harmful")
         tests = read(out / "harmful" / "grade" / "verifier")
         if tests is None:
             problems.append("harmful run: the wide run did not finish")
         else:
-            failed = {name for name in stable if tests.get(name) != "pass"}
-            for name in mapped:
-                if name in stable and name not in failed:
-                    problems.append(f"harm test {name} does not fail under the harmful patch")
+            failed = not_passing(tests, record)
+            record["harmful_fails_harm"] = sorted(failed & set(mapped))
+            if mapped and not failed & set(mapped):
+                problems.append("the harmful patch fails none of the harm tests")
             extra = sorted(failed - set(mapped))
             record["harmful_fails_outside_harm"] = extra
             if extra:

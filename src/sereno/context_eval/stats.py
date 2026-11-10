@@ -47,6 +47,19 @@ def mcnemar_exact(b: int, c: int) -> float | None:
     return min(1.0, 2 * tail)
 
 
+def fisher_exact(k1: int, n1: int, k2: int, n2: int) -> float | None:
+    """Two-sided Fisher exact p of k1 successes in n1 against k2 in n2: the summed probability of every table with the
+    same margins that is no more likely than the observed one (ties within a relative 1e-7), in exact integer
+    arithmetic. Null when a group is empty."""
+    if not n1 or not n2:
+        return None
+    total = k1 + k2
+    weights = [comb(n1, a) * comb(n2, total - a) for a in range(max(0, total - n2), min(n1, total) + 1)]
+    observed = comb(n1, k1) * comb(n2, k2)
+    tail = sum(w for w in weights if w * 10**7 <= observed * (10**7 + 1))
+    return min(1.0, tail / comb(n1 + n2, total))
+
+
 def pass_power_k(c: int, n: int, k: int) -> float:
     """Unbiased probability that k distinct runs drawn from n, c of them successful, all succeed."""
     return comb(c, k) / comb(n, k)

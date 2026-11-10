@@ -6,9 +6,11 @@ existing at the base commit is graded a second time with those files left at bas
 ones the task's reference solution also changes.
 """
 
+import functools
 import hashlib
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -31,8 +33,10 @@ from sereno.context_eval.engine import write_atomic
 GRADED = {"graded", "apply_failed"}
 BASE_LABEL = "sereno.base_id"
 COUNTS = ("partial", "f2p", "p2p", "f2p_total", "f2p_passed", "p2p_total", "p2p_passed")
-GRADE_SCHEMA = "1.1"
+# 1.2 adds `grader` (what wrote the grade) and `test_edits.restored_patch_sha256`.
+GRADE_SCHEMA = "1.2"
 CTRF_ROW = re.compile(r"\[(f2p|p2p)\] (.+)")
+SEAL = "sereno-official-sha256"
 # grader.py's own header pattern; group 2 is the path it resets.
 DIFF_GIT = re.compile(r'^diff --git (?:"?a/(.*?)"?) (?:"?b/(.*?)"?)$')
 TEST_DIRECTORIES = frozenset({"test", "tests", "__tests__", "__tests", "testdata", "testutils"})
@@ -48,6 +52,18 @@ SOURCE_FILES = frozenset(
         "mobly/test_runner.py",
         "examples/performance_tests/create_performance_test.py",
     }
+)
+# A path that says it belongs to the test side, whatever the language's layout (`tests/`, `FooTest.java`,
+# `spec_helper.rb`, `__mocks__`), and the setup and settings files of common test runners; only `path_report` reads
+# them. Build files (a Makefile, Cargo.toml, pom.xml) can change how tests run too and are not listed: every
+# repository has them and every task changes some.
+TEST_WORD = re.compile(
+    r"(?<![A-Za-z])(?i:tests?|testing|specs?|mocks?|fixtures?|snapshots?|golden|stubs?|fakes?|e2e)(?![a-z])"
+    r"|(?<=[a-z])(?:Tests?|Specs?|Mocks?|Fixtures?|Snapshots?)(?![a-z])"
+)
+RUNNER_FILE = re.compile(
+    r"(?i)((jest|vitest|karma|mocha|playwright|cypress|ava|jasmine)[.\w-]*\.(json|[cm]?[jt]sx?|ya?ml)|\.mocharc.*"
+    r"|phpunit\.xml.*|\.rspec|pytest\.ini|tox\.ini|conftest\.py|noxfile\.py)"
 )
 EXTENDED_HEADER_END = ("--- ", "+++ ", "@@", "GIT binary patch", "Binary files ")
 
@@ -77,9 +93,18 @@ def base_image(dockerfile: Path) -> str:
     raise ValueError(f"no FROM line in {dockerfile}")
 
 
-def is_test_path(path: str) -> bool:
+def listed(path: str, patterns: list[str] | None) -> bool:
+    """Whether a path matches one of a task record's patterns; `*` also crosses `/`, so `pkg/plugins/test/*` names a
+    whole folder."""
+    return any(fnmatchcase(path, pattern) for pattern in patterns or ())
+
+
+def is_test_path(path: str, rules: dict | None = None) -> bool:
     """Whether a repository path is a test file, by its directories (`TEST_DIRECTORIES`) or its name (`TEST_FILES`),
-    unless `SOURCE_FILES` names it:
+    unless `SOURCE_FILES` names it. The lists are general; what one repository has beyond them comes from the task's
+    record (`rules`), fixed before the task is used: `source` patterns name files that only look like tests (a
+    shipped `plugins/test` package) and are never put back, `test_side` patterns name test-side files the lists do
+    not know (snapshots, mocks, a helper package) and are put back like any test file.
 
     - Python: anything under `tests/` or `test/`, `test_*.py`, `*_test.py`, `conftest.py`, and a root `test.py`;
     - Go: `*_test.go` and anything under `testdata/` or `testutils/` (fixtures and golden files);
@@ -88,14 +113,55 @@ def is_test_path(path: str) -> bool:
     - Rust: anything under `tests/` (integration tests). Unit tests in `#[cfg(test)]` modules share a file with the
       code they test and cannot be separated from it, so those files count as source.
     """
-    if path in SOURCE_FILES:
+    rules = rules or {}
+    if path in SOURCE_FILES or listed(path, rules.get("source")):
         return False
+    if listed(path, rules.get("test_side")):
+        return True
     parts = PurePosixPath(path).parts
     return (
         path == "test.py"
         or any(part in TEST_DIRECTORIES for part in parts[:-1])
         or any(fnmatchcase(parts[-1], pattern) for pattern in TEST_FILES)
     )
+
+
+def path_report(tree: list[str], rules: dict | None = None, test_patch: str = "") -> dict:
+    """How a repository's tracked files fall under the path rules, measured before a task is used so that what the
+    general lists miss in this repository is seen and named in the task's record. `test_side` counts the files the
+    restored run would put back, by folder: a folder of shipped code among them belongs under the record's `source`
+    patterns. `unlisted` holds the files whose path says test, spec, mock, fixture, snapshot, golden, stub, fake or
+    e2e and which are neither put back nor named as an open route: an agent's change to one would go unseen, so each
+    folder there is either named under `test_side` or `settings` or left out knowingly. `unlisted_runner_files` are
+    setup and settings files of a test runner that the open-route list does not name yet. `test_patch_unlisted` are
+    files the task's own test patch writes outside the test side, a sign of such a folder."""
+    from sereno.context_eval.harm_reading import RUNNER_SETTINGS, TEST_DATA
+
+    rules = rules or {}
+
+    def folders(paths: list[str]) -> list[list]:
+        counts = Counter(str(PurePosixPath(path).parent) for path in paths)
+        return [[folder, count] for folder, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:40]]
+
+    def route(path: str) -> bool:
+        parts = PurePosixPath(path).parts
+        settings = RUNNER_SETTINGS.fullmatch(parts[-1]) or listed(path, rules.get("settings"))
+        return bool(settings or TEST_DATA & set(parts[:-1]))
+
+    def seen(path: str) -> bool:
+        return is_test_path(path, rules) or route(path) or listed(path, rules.get("source"))
+
+    tests = [path for path in tree if is_test_path(path, rules)]
+    unlisted = [path for path in tree if not seen(path) and TEST_WORD.search(path)]
+    runner = [path for path in tree if not seen(path) and RUNNER_FILE.fullmatch(PurePosixPath(path).name)]
+    written = sorted(patch_paths(test_patch) - {"test.sh"})
+    return {
+        "tracked": len(tree),
+        "test_side": {"files": len(tests), "folders": folders(tests)},
+        "unlisted": {"files": len(unlisted), "folders": folders(unlisted)},
+        "unlisted_runner_files": sorted(runner)[:40],
+        "test_patch_unlisted": [path for path in written if not seen(path)],
+    }
 
 
 def patch_paths(text: str) -> set[str]:
@@ -115,7 +181,7 @@ def patch_blocks(patch: bytes) -> list[bytes]:
     return [block for block in re.split(rb"(?m)^(?=diff --git )", patch) if block]
 
 
-def existing_test_file(block: bytes, owned: set[str]) -> str | None:
+def existing_test_file(block: bytes, owned: set[str], rules: dict | None = None) -> str | None:
     """The base path of a test file that a `diff --git` block modifies, deletes or renames away. None for any other
     block: a new or copied file, a source file, or a file test.patch owns, which the grader resets anyway."""
     lines = [line.decode(errors="replace") for line in block.split(b"\n")]
@@ -130,7 +196,7 @@ def existing_test_file(block: bytes, owned: set[str]) -> str | None:
             return None
         if line.startswith("rename from "):
             path = line.removeprefix("rename from ").strip('"')
-    return path if is_test_path(path) and path not in owned else None
+    return path if is_test_path(path, rules) and path not in owned else None
 
 
 def as_copy(block: bytes) -> bytes:
@@ -156,16 +222,16 @@ def is_rename(block: bytes) -> bool:
     return False
 
 
-def restore_tests(patch: bytes, owned: set[str]) -> tuple[bytes, list[str]]:
+def restore_tests(patch: bytes, owned: set[str], rules: dict | None = None) -> tuple[bytes, list[str]]:
     """The patch without its changes to existing test files, so those files stay at base, and their paths. A rename
     away from such a file becomes a copy, so the new path still exists; any other block on a restored path, such as
     the second half of a file-to-symlink change, is dropped with it. Every other block keeps its exact bytes."""
     blocks = patch_blocks(patch)
-    files = [path for block in blocks if (path := existing_test_file(block, owned))]
+    files = [path for block in blocks if (path := existing_test_file(block, owned, rules))]
     kept = []
     for block in blocks:
         header = DIFF_GIT.match(block.split(b"\n", 1)[0].decode(errors="replace"))
-        if existing_test_file(block, owned):
+        if existing_test_file(block, owned, rules):
             if is_rename(block):
                 kept.append(as_copy(block))
         elif header is None or header.group(2) not in files:
@@ -173,9 +239,9 @@ def restore_tests(patch: bytes, owned: set[str]) -> tuple[bytes, list[str]]:
     return b"".join(kept), files
 
 
-def existing_test_files(patch: bytes, owned: set[str]) -> set[str]:
+def existing_test_files(patch: bytes, owned: set[str], rules: dict | None = None) -> set[str]:
     """The existing test files a patch changes, by `existing_test_file`."""
-    return {path for block in patch_blocks(patch) if (path := existing_test_file(block, owned))}
+    return {path for block in patch_blocks(patch) if (path := existing_test_file(block, owned, rules))}
 
 
 def ctrf_passes(path: Path) -> dict[str, bool] | None:
@@ -212,6 +278,7 @@ def edit_record(
         "masked_tests": None,
         "unmasked_tests": None,
         "restored_logs": None,
+        "restored_patch_sha256": None,
     } | measured
 
 
@@ -228,6 +295,8 @@ class DeepSWEEvaluator:
         self.root = Path(dataset_root)
         self.docker = docker or run_docker
         self.wide_root = wide_root
+        # Records being measured by `wide_check`, by task id: run as they are, never read from or written to disk.
+        self.pending: dict[str, dict] = {}
         self.locks: dict[str, threading.Lock] = {}
         self.guard = threading.Lock()
 
@@ -260,6 +329,7 @@ class DeepSWEEvaluator:
         started = time.monotonic()
         output_dir = Path(output_dir)
         grade = blank_grade(submission.task_id) | {"task_image_id": submission.image_id}
+        grade["grader"] = {"graded_at": datetime.now(UTC).isoformat(timespec="seconds"), "code_sha256": harness()}
         patch = None
         try:
             patch = Path(submission.patch).read_bytes()
@@ -293,23 +363,36 @@ class DeepSWEEvaluator:
         grade["verifier"] = self.verifier_image(task.id, base, float(resources.get("build_timeout_sec", 1800)))
         destination = output_dir / "grade" / "verifier"
         record = self.wide_record(task.id, submission.image_id)
+        solution = self.root / "tasks" / task.id / "solution" / "solution.patch"
+        grade["grader"] |= {
+            "cpus": resources.get("cpus", 2),
+            "memory_mb": resources.get("memory_mb", 8192),
+            "solution_sha256": hashlib.sha256(solution.read_bytes()).hexdigest() if solution.exists() else None,
+            "wide_record_sha256": wide.digest(record) if record else None,
+        }
         outcome = self._verify(grade["verifier"]["id"], patch, destination, resources, timeout, record)
         return outcome | {"logs": "grade/verifier"}
 
     def wide_record(self, task_id: str, image_id: str | None) -> dict | None:
-        """The task's wide run, or None. A record measured on another task image is not run: its stable set would
-        not describe this image."""
+        """The task's wide run, or None. A record a grading must not use (`wide.unusable`: never measured, measured
+        on another image, with problems left, or checked in another year) is refused, not skipped: a grading without
+        the wide run a count expects would look like any other."""
+        if task_id in self.pending:
+            return self.pending[task_id]
         record = wide.load(self.wide_root, task_id)
-        if record is None or record.get("image_id") in (None, image_id):
-            return record
-        raise ValueError(f"the wide record of {task_id} was measured on image {record['image_id']}, not {image_id}")
+        if record is not None and (reason := wide.unusable(record, image_id)):
+            raise ValueError(f"the wide record of {task_id} cannot be used: {reason}")
+        return record
 
     def _verify(
         self, image: str, patch: bytes, destination: Path, resources: dict, timeout: float, record: dict | None = None
     ) -> dict:
         """One verifier run on `patch`, its logs copied to `destination`; the outcome as grade fields. With a wide
         `record` the wide command runs after the tests on the same tree, under its own limit, and its results go to
-        `destination/wide`; it never changes the outcome."""
+        `destination/wide`; it never changes the outcome. To keep that true the tests then run under `timeout` inside
+        the container, so their limit is the task's with or without a record, and the container prints a hash of
+        reward.json and ctrf.json before the wide command starts: the whole suite runs as root with /logs mounted, and
+        a reward that no longer matches the hash is not a grade."""
         if destination.exists():
             shutil.rmtree(destination)
         # Not TemporaryDirectory: on Python 3.12 its cleanup raises PermissionError on root-owned files even with
@@ -319,9 +402,17 @@ class DeepSWEEvaluator:
             (logs / "artifacts").mkdir()
             (logs / "artifacts" / "model.patch").write_bytes(patch)
             name = f"sereno-grade-{uuid.uuid4().hex[:16]}"
-            extra = wide.snippet(record) if record else ""
-            command = f"bash /tests/test.sh; status=$?; {extra}chown -R {os.getuid()}:{os.getgid()} /logs; exit $status"
-            allowed = timeout + (float(record["limit_seconds"]) + 60 if record else 0)
+            seal = uuid.uuid4().hex
+            tests, extra = "bash /tests/test.sh; status=$?; ", ""
+            if record:
+                tests = f"timeout -k 10 {int(timeout)} bash /tests/test.sh; status=$?; "
+                digest = (
+                    "$(cat /logs/verifier/reward.json /logs/verifier/ctrf.json 2>/dev/null | sha256sum | cut -c1-64)"
+                )
+                extra = f'echo "{SEAL} {seal} {digest}"; [ $status -eq 124 ] || {{ {wide.snippet(record)}}}; '
+            command = f"{tests}{extra}chown -R {os.getuid()}:{os.getgid()} /logs; exit $status"
+            allowed = timeout + (float(record["limit_seconds"]) + 90 if record else 0)
+            result = None
             args = ["run", "--rm", "--name", name, "--network", "none", "--cpus", str(resources.get("cpus", 2))]
             args += ["--memory", f"{resources.get('memory_mb', 8192)}m", "-v", f"{logs}:/logs"]
             try:
@@ -345,15 +436,19 @@ class DeepSWEEvaluator:
                 shutil.copytree(verifier, destination, ignore=special_files)
             destination.mkdir(parents=True, exist_ok=True)
             (destination / "test-stdout.txt").write_text(stdout)
+            reward_json, reward_txt = destination / "reward.json", destination / "reward.txt"
             if record:
                 wide.collect(logs / "wide", destination / "wide", record)
-                # A container stopped during the wide command had finished its tests: the reward stands.
-                timed_out = timed_out and not (destination / "reward.json").exists()
+                # A container stopped during the wide command had finished its tests: the reward stands. Tests cut
+                # short by the limit inside the container leave no reward and exit with timeout's own code.
+                cut_short = result is not None and result.returncode == 124
+                timed_out = (timed_out or cut_short) and not reward_json.exists()
             if timed_out:
                 # Strict success counts a timeout as a failure, so the partial score does too.
                 error = f"verifier exceeded {timeout:g} s"
                 return {"status": "verifier_timeout", "reward": 0, "partial": 0.0, "error": error}
-            reward_json, reward_txt = destination / "reward.json", destination / "reward.txt"
+            if record and reward_json.exists() and sealed(stdout, seal) != official_digest(destination):
+                return {"error": "reward.json or ctrf.json changed after the tests finished, during the wide run"}
             if reward_json.exists():
                 data = json.loads(reward_json.read_text())
                 outcome = {key: data.get(key) for key in COUNTS} | {"reward": int(data["reward"])}
@@ -383,9 +478,11 @@ class DeepSWEEvaluator:
             test_patch = self.root / "tasks" / task_id / "tests" / "test.patch"
             owned = patch_paths(test_patch.read_text(errors="replace")) if test_patch.exists() else set()
             solution = self.root / "tasks" / task_id / "solution" / "solution.patch"
-            required = existing_test_files(solution.read_bytes(), owned) if solution.exists() else set()
-            required_files = sorted(existing_test_files(patch, owned) & required)
-            restored, files = restore_tests(patch, owned | required)
+            # The task's record also carries the path rules of its repository (see `is_test_path`).
+            rules = self.wide_record(task_id, grade.get("task_image_id"))
+            required = existing_test_files(solution.read_bytes(), owned, rules) if solution.exists() else set()
+            required_files = sorted(existing_test_files(patch, owned, rules) & required)
+            restored, files = restore_tests(patch, owned | required, rules)
             if not files:
                 return record("none")
             if grade["status"] != "graded":
@@ -394,9 +491,10 @@ class DeepSWEEvaluator:
             if self.inspect(image) is None:
                 return record("unknown", f"verifier image {image} is not available locally")
             resources = self.verifier_spec(task_id).get("environment", {})
-            wide_run = self.wide_record(task_id, grade.get("task_image_id"))
-            outcome = self._verify(image, restored, destination, resources, grade["timeout_seconds"], wide_run)
-            logs = {"restored_logs": "grade/restored"}
+            outcome = self._verify(image, restored, destination, resources, grade["timeout_seconds"], rules)
+            # The patch this run graded, kept so the run can be repeated without this code's restore rule.
+            (destination / "restored.patch").write_bytes(restored)
+            logs = {"restored_logs": "grade/restored", "restored_patch_sha256": hashlib.sha256(restored).hexdigest()}
             if outcome.get("status") != "graded":
                 reason = f"restored run: {outcome.get('error') or outcome.get('status')}"
                 return record("unknown", reason, **logs)
@@ -433,6 +531,21 @@ class DeepSWEEvaluator:
         return self.test_edits(grade.get("task_id"), patch, directory, grade)
 
 
+def sealed(stdout: str, seal: str) -> str | None:
+    """The hash the container printed for this run's seal, taken from its last such line; None without one."""
+    found = re.findall(rf"^{SEAL} {seal} ([0-9a-f]{{64}})\s*$", stdout, re.MULTILINE)
+    return found[-1] if found else None
+
+
+def official_digest(destination: Path) -> str:
+    """sha256 over reward.json then ctrf.json as copied to the host, a missing file adding nothing, as `cat` does."""
+    digest = hashlib.sha256()
+    for name in ("reward.json", "ctrf.json"):
+        if (destination / name).is_file():
+            digest.update((destination / name).read_bytes())
+    return digest.hexdigest()
+
+
 def special_files(directory: str, names: list[str]) -> list[str]:
     """Symlinks and non-regular files the patched code may leave under /logs; copying them would read the host."""
     return [n for n in names if (p := Path(directory, n)).is_symlink() or not (p.is_file() or p.is_dir())]
@@ -457,8 +570,18 @@ def blank_grade(task_id: str) -> dict:
         "duration_seconds": None,
         "error": None,
         "logs": None,
+        "grader": None,
         "test_edits": edit_record("not_applicable", reason="the patch was not graded"),
     }
+
+
+@functools.cache
+def harness() -> str:
+    """The hash of this package's source, as a campaign's manifest records it: grading is a later, separate command,
+    so a grade names the code that wrote it."""
+    from sereno.context_eval.runner import code_sha256
+
+    return code_sha256()
 
 
 def built_on(image: dict, base: dict) -> bool:
@@ -509,6 +632,15 @@ def grade_session(evaluator, directory: Path, *, force: bool = False) -> tuple[s
     return "written", None
 
 
+def grading_order(directories) -> list[Path]:
+    """The sessions in the order they are graded. Sorted, the sessions of one arm follow each other, and gradings
+    run several at a time, so one arm would be graded under another load than the next; a fixed shuffle spreads the
+    arms over the whole grading and gives the same order every time. Each grade records when it was written."""
+    order = sorted(directories)
+    random.Random(0).shuffle(order)
+    return order
+
+
 def grade_campaign(
     campaign: Path,
     *,
@@ -530,6 +662,15 @@ def grade_campaign(
     directories = session_dirs(campaign)
     copies = {d: shared_origin(campaign, d) for d in directories}
     written, kept, backfilled, unreadable = [], [], [], {}
+    # A record that cannot be used stops the grading before any container starts; met inside a grading it would
+    # cost the session its official grade.
+    tasks = {}
+    for directory in directories:
+        result = read_object(directory / "result.json") or {}
+        if isinstance(result.get("task_id"), str) and isinstance(result.get("image"), dict):
+            tasks[result["task_id"], result["image"].get("id")] = None
+    for task_id, image_id in sorted(tasks, key=str):
+        evaluator.wide_record(task_id, image_id)
 
     def backfill(directory: Path, origin: Path | None = None) -> None:
         grade = read_object(directory / "grade.json")
@@ -563,7 +704,7 @@ def grade_campaign(
             written.append(directory)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        list(pool.map(grade_one, sorted({origin or d for d, origin in copies.items()})))
+        list(pool.map(grade_one, grading_order({origin or d for d, origin in copies.items()})))
     # Shared sessions are copies of their origin: one sample, graded once.
     for directory, origin in copies.items():
         if origin is None:
@@ -668,9 +809,12 @@ def wide_check(
     harm_names: dict[str, list[str]] | None = None,
     *,
     docker=None,
+    load_runs: int = 0,
+    load_workers: int = 4,
 ) -> dict:
-    """Measure a task's wide run (see `wide.check`) and write its record to `wide_root`. The record is written before
-    the gradings, with the command only, so that they run it, and again at the end with what was measured."""
+    """Measure a task's wide run (see `wide.check`) and write its record to `wide_root`. The gradings run the record
+    from memory and it is written once, at the end, so a record measured earlier stays whole until its replacement
+    is, and no grading elsewhere meets a half-made one."""
     dataset, wide_root, out = Path(dataset).expanduser().resolve(), Path(wide_root), Path(out)
     evaluator = DeepSWEEvaluator(dataset, docker=docker, wide_root=wide_root)
     task = load_task(dataset, task_id)
@@ -680,10 +824,37 @@ def wide_check(
     out.mkdir(parents=True, exist_ok=False)
     wide_root.mkdir(parents=True, exist_ok=True)
     path = wide_root / f"{task_id}.json"
-    write_atomic(path, record)
+    evaluator.pending[task_id] = record
     gold = dataset / "tasks" / task_id / "solution" / "solution.patch"
+    config = read_object(dataset / "tasks" / task_id / "tests" / "config.json") or {}
     result = wide.check(
-        evaluator, task, image["Id"], out, record, gold, repeats=repeats, harmful=harmful, harm_names=harm_names
+        evaluator,
+        task,
+        image["Id"],
+        out,
+        record,
+        gold,
+        repeats=repeats,
+        harmful=harmful,
+        harm_names=harm_names,
+        harm_ids=config.get("harm_node_ids") or (),
+        load_runs=load_runs,
+        load_workers=load_workers,
     )
+    result["paths"] = task_paths(dataset, task_id, record, docker=docker)
     write_atomic(path, result)
     return result | {"record": str(path.resolve()), "stable": len(result["stable"]), "out": str(out.resolve())}
+
+
+def task_paths(dataset: Path, task_id: str, rules: dict | None = None, *, docker=None) -> dict:
+    """`path_report` of a task's repository as its image holds it at /app, under `rules` (a task record or None)."""
+    dataset = Path(dataset).expanduser().resolve()
+    task = load_task(dataset, task_id)
+    listing = (docker or run_docker)(
+        ["run", "--rm", "--network", "none", "--entrypoint", "git", task.image, "-C", "/app", "ls-files"], 300
+    )
+    if listing.returncode:
+        raise RuntimeError(f"cannot list the files of {task.image}: {listing.stderr.strip()[-500:]}")
+    test_patch = dataset / "tasks" / task_id / "tests" / "test.patch"
+    patch = test_patch.read_text(errors="replace") if test_patch.exists() else ""
+    return path_report(listing.stdout.splitlines(), rules, patch)
