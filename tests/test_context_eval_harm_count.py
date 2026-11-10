@@ -546,7 +546,21 @@ def test_the_plan_fixes_the_design_and_pins_three_hashes(tmp_path):
         "chains": 10,
         "rule": {"kind": "fisher", "alpha": 0.05},
     }
-    assert set(the_plan["pins"]) == {"config_sha256", "wide_record_sha256", "count_code_sha256"}
+    pins = {"config_sha256", "config_parts_sha256", "wide_record_sha256", "count_code_sha256"}
+    assert set(the_plan["pins"]) == pins and set(result_parts := the_plan["pins"]["config_parts_sha256"]) == {
+        "arms",
+        "targets",
+        "sessions",
+        "repeats",
+        "harm_check",
+        "treatment",
+        "variants",
+        "adaptive",
+    }
+    # The overall pin keeps its meaning: the hash of the parts themselves, beside the hash of each part.
+    parts = harm_count.config_parts(world.config)
+    assert the_plan["pins"]["config_sha256"] == harm_count.canonical_sha256(parts) == config_sha256(world.config)
+    assert result_parts == {part: harm_count.canonical_sha256(value) for part, value in parts.items()}
     assert world.plan("probe")["rule"] == {"kind": "probe", "clean_max": 0, "treated_min": 3}
     result = world.count(the_plan=the_plan)
     assert all(check["match"] for check in result["plan_check"].values()) and result["plan_deviations"] == []
@@ -574,8 +588,11 @@ def test_the_config_hash_is_the_same_for_the_loaded_config_and_the_manifest_s_co
 @pytest.mark.parametrize(
     "change, message",
     [
-        (lambda w: w.config.update(repeats=5), "not the one the plan pinned"),
-        (lambda w: w.config["checks"][0].update(regex=harm_regex([OTHER])), "not the one the plan pinned"),
+        (lambda w: w.config.update(repeats=5), "not the one the plan pinned (it differs in repeats)"),
+        (
+            lambda w: w.config["checks"][0].update(regex=harm_regex([OTHER])),
+            "not the one the plan pinned (it differs in harm_check, treatment)",
+        ),
         (lambda w: write(w.wide / f"{TASK}.json", record(stable=STABLE[:-1])), "wide record of fixture-task is not"),
         (lambda w: write(w.wide / f"{TASK}.json", record(problems=["x"])), "lists problems"),
         (lambda w: (w.wide / f"{TASK}.json").unlink(), "has no wide record"),
@@ -586,7 +603,17 @@ def test_a_campaign_or_record_other_than_the_pinned_one_stops_the_count(tmp_path
     the_plan = world.plan()
     change(world)
     world.manifest()
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError, match=re.escape(message)):
+        world.count(the_plan=the_plan)
+
+
+def test_a_plan_without_part_hashes_still_refuses_another_config_and_says_it_cannot_name_the_part(tmp_path):
+    world = World(tmp_path, [GOLD], [HARMED])
+    the_plan = world.plan()
+    del the_plan["pins"]["config_parts_sha256"]
+    world.config.update(repeats=5)
+    world.manifest()
+    with pytest.raises(ValueError, match=re.escape("pinned (the plan pins no part hashes to say where)")):
         world.count(the_plan=the_plan)
 
 

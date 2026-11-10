@@ -7,7 +7,8 @@ arm>`. One session of each chain is read, the one the harm check names, and both
 
 The plan (`plan`) fixes, before any session runs, the read session, its task, the harm tests, the number of chains and
 the rule, records when it was written, and pins three hashes: what the count's meaning rests on in the config (the
-part it reads, and the treatment and start of both groups: `config_sha256`), the task's wide record (`wide.digest`;
+part it reads, and the treatment and start of both groups: `config_sha256`, with each part's hash beside it in
+`config_parts_sha256` so a refusal names the parts that differ), the task's wide record (`wide.digest`;
 a record a grading could not use, or one naming other harm tests, is refused) and the code a label passes through
 (`CODE`). The count (`count`) refuses to read a campaign whose config or wide record differs from the pins, whose code
 differs unless a reason is given (it is written beside the result), whose arms or chain folders fall outside the plan,
@@ -140,7 +141,17 @@ def recorded(manifest: dict) -> dict:
 
 
 def config_sha256(config: dict, files: dict | None = None) -> str:
-    """The hash of what a count's meaning rests on in an experiment config (as the config loader dumps it, which is
+    """`canonical_sha256` of `config_parts`."""
+    return canonical_sha256(config_parts(config, files))
+
+
+def part_hashes(config: dict, files: dict | None = None) -> dict[str, str]:
+    """The hash of each part of `config_parts`, pinned beside `config_sha256` so a refusal can name what differs."""
+    return {part: canonical_sha256(value) for part, value in config_parts(config, files).items()}
+
+
+def config_parts(config: dict, files: dict | None = None) -> dict:
+    """What a count's meaning rests on in an experiment config (as the config loader dumps it, which is
     the manifest's copy): the part the count reads (arms, targets, sessions, repeats, the harm check) and the
     treatment and start of both groups. These are every field two pooled campaigns must share (`pooled_config`:
     the agent and its model config by content, the sessions, the memory seed and instructions by content, the guard
@@ -150,18 +161,16 @@ def config_sha256(config: dict, files: dict | None = None) -> str:
     check = harm_check(config)
     files = contents(config) if files is None else files
     program = (files.get("adaptive") or {}).get("program_sha256") or {}
-    return canonical_sha256(
-        {
-            "arms": list(config["arms"]),
-            "targets": [target["task_id"] for target in config["targets"]],
-            "sessions": [{"id": s["id"], "task_id": s.get("task_id")} for s in config["sessions"]],
-            "repeats": config["repeats"],
-            "harm_check": {"regex": check.get("regex"), "sessions": list(check.get("sessions") or [])},
-            "treatment": pooled_config({"config": config} | files),
-            "variants": config.get("variants"),
-            "adaptive": adaptive_treatment(config.get("adaptive"), program),
-        }
-    )
+    return {
+        "arms": list(config["arms"]),
+        "targets": [target["task_id"] for target in config["targets"]],
+        "sessions": [{"id": s["id"], "task_id": s.get("task_id")} for s in config["sessions"]],
+        "repeats": config["repeats"],
+        "harm_check": {"regex": check.get("regex"), "sessions": list(check.get("sessions") or [])},
+        "treatment": pooled_config({"config": config} | files),
+        "variants": config.get("variants"),
+        "adaptive": adaptive_treatment(config.get("adaptive"), program),
+    }
 
 
 def code_sha256() -> str:
@@ -265,6 +274,7 @@ def plan(
         "rule": rules[rule],
         "pins": {
             "config_sha256": config_sha256(config),
+            "config_parts_sha256": part_hashes(config),
             "wide_record_sha256": wide.digest(record),
             "count_code_sha256": code_sha256(),
         },
@@ -722,7 +732,13 @@ def count(
         key: dict(plan=pins.get(key), found=value, match=pins.get(key) == value) for key, value in hashes.items()
     }
     if not plan_check["config_sha256"]["match"]:
-        raise ValueError(f"{campaign}: the campaign's config is not the one the plan pinned")
+        planned = pins.get("config_parts_sha256") if isinstance(pins.get("config_parts_sha256"), dict) else {}
+        found_parts = part_hashes(config, recorded(manifest))
+        differ = sorted(
+            part for part in found_parts.keys() | planned.keys() if planned.get(part) != found_parts.get(part)
+        )
+        where = f" (it differs in {', '.join(differ)})" if planned else " (the plan pins no part hashes to say where)"
+        raise ValueError(f"{campaign}: the campaign's config is not the one the plan pinned{where}")
     given = dict(
         session=found["session"],
         task_id=found["task"],
