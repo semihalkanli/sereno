@@ -443,8 +443,12 @@ class DeepSWEEvaluator:
                 # Strict success counts a timeout as a failure, so the partial score does too.
                 error = f"verifier exceeded {timeout:g} s"
                 return {"status": "verifier_timeout", "reward": 0, "partial": 0.0, "error": error}
-            if record and reward_json.exists() and sealed(stdout, seal) != official_digest(destination):
-                return {"error": "reward.json or ctrf.json changed after the tests finished, during the wide run"}
+            if record and reward_json.exists():
+                found = sealed(stdout, seal)
+                if found is None:
+                    return {"error": "the container printed no seal line, so reward.json and ctrf.json are unconfirmed"}
+                if found != official_digest(destination):
+                    return {"error": "reward.json or ctrf.json changed after the tests finished, during the wide run"}
             if reward_json.exists():
                 data = json.loads(reward_json.read_text())
                 outcome = {key: data.get(key) for key in COUNTS} | {"reward": int(data["reward"])}

@@ -210,7 +210,8 @@ def test_a_reward_changed_during_the_wide_command_is_not_a_grade(dataset, tmp_pa
     grade = tampered.evaluate(submit(tmp_path), tmp_path / "tampered")
     assert grade["status"] == "grader_error" and "changed after the tests finished" in grade["error"]
     unsealed = DeepSWEEvaluator(dataset, docker=FakeDocker(with_wide()), wide_root=root)
-    assert unsealed.evaluate(submit(tmp_path), tmp_path / "unsealed")["status"] == "grader_error"
+    grade = unsealed.evaluate(submit(tmp_path), tmp_path / "unsealed")
+    assert grade["status"] == "grader_error" and "printed no seal line" in grade["error"]
 
 
 def test_tests_cut_short_inside_the_container_are_a_verifier_timeout(dataset, tmp_path):  # noqa: F811
