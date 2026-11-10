@@ -590,3 +590,26 @@ def test_the_stable_set_keeps_only_tests_that_also_pass_under_load(dataset, tmp_
         "the harmful patch fails none of the harm tests",
     ]
     assert wide.digest(result) == wide.digest({k: v for k, v in result.items() if k != "under_load"})
+
+
+def test_a_harm_name_is_split_at_exactly_one_equals_sign_or_given_in_a_file(tmp_path):
+    from sereno.context_eval.cli import harm_names, main
+
+    assert harm_names(["T=m/a.T", "T=m/b.T"], None) == {"T": ["m/a.T", "m/b.T"]}
+    for pair in ("t.py::test[a=1]=t::test[a=1]", "T", "=m/a.T", "T="):
+        with pytest.raises(ValueError, match="exactly one '='; give an id or name that holds"):
+            harm_names([pair], None)
+    names = tmp_path / "names.json"
+    names.write_text(json.dumps({"t.py::test[a=1]": ["t::test[a=1]"]}))
+    assert harm_names(["T=m/a.T"], names) == {"T": ["m/a.T"], "t.py::test[a=1]": ["t::test[a=1]"]}
+    for bad in ([], {"T": "m/a.T"}, {"T": []}, {"T": [""]}, {"": ["x"]}):
+        names.write_text(json.dumps(bad))
+        with pytest.raises(ValueError, match="--harm-names needs a JSON object"):
+            harm_names([], names)
+    names.write_text("{")
+    with pytest.raises(ValueError, match=re.escape("names.json: not JSON")):
+        harm_names([], names)
+    # Refused before any grading: the command never reaches the dataset.
+    argv = ["context-eval", "wide-check", "--dataset", str(tmp_path / "none"), "--wide", str(tmp_path / "wide")]
+    argv += ["--out", str(tmp_path / "out"), "--command", "x", "--format", "junit", "--harm-name", "a=b=c", "demo"]
+    assert main(argv) == 2

@@ -11,6 +11,37 @@ from pydantic import ValidationError
 from sereno.context_eval import wide as wide_rule
 
 
+def harm_names(pairs: list[str], file: Path | None) -> dict[str, list[str]]:
+    """The wide names of the harm tests, from `--harm-name HARM_ID=WIDE_NAME` and the `--harm-names` JSON file. A pair
+    that does not split at exactly one `=` into two names is refused: a test id may hold `=` itself."""
+    names: dict[str, list[str]] = {}
+    for pair in pairs:
+        harm_id, _, name = pair.partition("=")
+        if pair.count("=") != 1 or not harm_id or not name:
+            raise ValueError(
+                f"--harm-name {pair!r} is not HARM_ID=WIDE_NAME with exactly one '='; give an id or name that holds "
+                '"=" in a --harm-names file {"HARM_ID": ["WIDE_NAME", ...]}'
+            )
+        names.setdefault(harm_id, []).append(name)
+    if file is not None:
+        try:
+            data = json.loads(Path(file).read_text())
+        except ValueError as error:
+            raise ValueError(f"{file}: not JSON ({error})") from error
+        if not isinstance(data, dict) or not all(
+            isinstance(harm_id, str)
+            and harm_id
+            and isinstance(listed, list)
+            and listed
+            and all(isinstance(name, str) and name for name in listed)
+            for harm_id, listed in data.items()
+        ):
+            raise ValueError(f'{file}: --harm-names needs a JSON object {{"HARM_ID": ["WIDE_NAME", ...]}}')
+        for harm_id, listed in data.items():
+            names.setdefault(harm_id, []).extend(listed)
+    return names
+
+
 def add_parser(parent):
     parser = parent.add_parser("context-eval", help="evaluate prompt injection and persistent memory integrity")
     commands = parser.add_subparsers(dest="context_command", required=True)
@@ -83,7 +114,19 @@ def add_parser(parent):
     )
     wide.add_argument("--load-workers", type=int, default=wide_rule.LOAD_WORKERS, help="how many of them run at a time")
     wide.add_argument("--harmful", type=Path, help="a patch known to carry the harm")
-    wide.add_argument("--harm-name", action="append", default=[], metavar="HARM_ID=WIDE_NAME")
+    wide.add_argument(
+        "--harm-name",
+        action="append",
+        default=[],
+        metavar="HARM_ID=WIDE_NAME",
+        help="the wide name of a harm test (repeatable); an argument with more than one '=' is refused",
+    )
+    wide.add_argument(
+        "--harm-names",
+        type=Path,
+        metavar="FILE",
+        help='JSON object {"HARM_ID": ["WIDE_NAME", ...]}, for ids that hold "="; joined with --harm-name',
+    )
     for flag, text in (
         ("--test-side", "path pattern of test-side files the general lists do not know (repeatable)"),
         ("--source", "path pattern of source files that only look like tests (repeatable)"),
@@ -242,10 +285,7 @@ def execute(args) -> int:
         elif command == "wide-check":
             from sereno.context_eval.evaluator import wide_check
 
-            names: dict[str, list[str]] = {}
-            for pair in args.harm_name:
-                harm_id, _, name = pair.partition("=")
-                names.setdefault(harm_id, []).append(name)
+            names = harm_names(args.harm_name, args.harm_names)
             record = {"command": args.command, "format": args.format, "limit_seconds": args.limit}
             record |= {"test_side": args.test_side, "source": args.source, "settings": args.settings}
             result = wide_check(
