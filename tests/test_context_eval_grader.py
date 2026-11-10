@@ -1,5 +1,6 @@
 """DeepSWE grading with a fake Docker runner: status mapping, image integrity and campaign bookkeeping."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -111,6 +112,9 @@ def test_graded_runs_verifier_offline_and_records_artifacts(dataset, tmp_path):
         "bash /tests/test.sh; status=$?; chown -R"
     )
     assert docker.patches == ["diff --git a/x b/x\n"]
+    solution = (dataset / "tasks" / "demo" / "solution" / "solution.patch").read_bytes()
+    assert grade["grader"]["solution_sha256"] == hashlib.sha256(solution).hexdigest()
+    assert grade["grader"]["workers"] == 1
 
 
 def test_apply_failed_is_reward_zero(dataset, tmp_path):
@@ -310,6 +314,18 @@ def test_gradings_are_spread_over_the_arms_in_a_fixed_order():
     assert sorted(order) == sorted(treated + clean) and order == grading_order(treated + clean)
     first = order[:20]
     assert 5 <= sum(path in treated for path in first) <= 15, "a block of one arm would be graded under its own load"
+
+
+def test_the_campaign_is_graded_in_the_shuffled_order(campaign, monkeypatch):
+    for n in range(2, 13):
+        session(campaign, f"cases/demo--v1--r{n:03d}/arms/attack_carry/sessions/001-exposure")
+    graded = []
+    monkeypatch.setattr(
+        evaluator, "grade_session", lambda grader, directory, force: graded.append(directory) or ("kept", None)
+    )
+    grade_campaign(campaign, docker=FakeDocker())
+    origins = set(graded)
+    assert len(graded) == len(origins) == 15 and graded == grading_order(origins) != sorted(origins)
 
 
 def test_existing_grades_are_kept_unless_forced(campaign):
