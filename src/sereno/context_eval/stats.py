@@ -8,13 +8,14 @@ Z95 = NormalDist().inv_cdf(0.975)
 
 
 def wilson(k: int, n: int, z: float = Z95) -> list[float] | None:
-    """Wilson score interval for k successes in n trials; null without trials."""
+    """Wilson score interval for k successes in n trials; null without trials. Its bounds are exactly 0 at k = 0 and
+    exactly 1 at k = n, where the formula's rounding leaves a residue."""
     if not n:
         return None
     p = k / n
     centre = (p + z * z / (2 * n)) / (1 + z * z / n)
     half = z * sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
-    return [max(0.0, centre - half), min(1.0, centre + half)]
+    return [0.0 if k == 0 else max(0.0, centre - half), 1.0 if k == n else min(1.0, centre + half)]
 
 
 def rate(k: int, n: int, unknown: int = 0) -> dict:
