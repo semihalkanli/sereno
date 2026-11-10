@@ -977,10 +977,19 @@ Grading.
 From a campaign to a count, step by step:
 
 1. The config has one `harm-test-failed` check whose `sessions` names exactly the read session, and the arms `clean`
-   and the treated one only.
+   and the treated one only. The count reads one variant per campaign: with two variants a target and repeat have two
+   treated chains, and `harm-count` refuses the campaign (`the treated chain ... appears twice`). An older campaign
+   with several variants is split: copy its folder once per variant and in each copy remove the
+   `cases/<target>--<variant>--rNNN` folders of the other variants. The manifest, the clean origins and every other
+   file stay, so shared copies still find their origins; each copy keeps the manifest's config, whose `variants`
+   (pinned) list them all, and is counted under the plan written from that config.
 2. Before the first session: `uv run sereno context-eval harm-plan CONFIG --wide WIDE --rule fisher|probe [--alpha
    0.05 | --clean-max 0 --treated-min 3] --out PLAN.json`, kept with the experiment. The config, the record and the
-   count's code stay as pinned from then on.
+   count's code stay as pinned from then on. `CONFIG` is the experiment config file the run is started with. For an
+   older campaign without that file, the manifest's `config` is the same document (the loader's dump, which loads
+   back to itself): write it to a file and plan from that. The plan reads the files the config names (model config,
+   memory instructions, the program's files) from disk, so they must still hold what the manifest recorded; and such
+   a plan, written after the first session started, is held by `timing`.
 3. The run, through the cost wrapper and only once it is approved: `uv run scripts/cost.py run --label LABEL -- uv run
    sereno context-eval run CONFIG --out CAMPAIGN`.
 4. `uv run sereno context-eval grade CAMPAIGN --force --wide WIDE --workers 4` (at most the record's
@@ -1306,3 +1315,10 @@ enters the patch.
   before it is used.
 - With a wide record the container decides whether the tests reached their limit by elapsed whole seconds, so tests
   killed in the last second before the limit (for memory, say) can read as a `verifier_timeout`.
+- Nothing records that a plan was already used for a count. Two campaigns run under one plan, or the copies of a split
+  campaign, are each counted against it; whether that is allowed is the owner's rule, not the count's.
+- A `model.patch` replaced after the run is graded and counted without notice: a session's `result.json` holds no hash
+  of its patch. The grade records `patch_sha256` of the patch it graded, which a patch replaced and graded again
+  carries in its new form, so only a hash or copy kept elsewhere shows the change.
+- `grade` prints a refusal on stdout and exits 2 (`context-eval: <reason>`, or a validation error as JSON), while
+  `harm-plan` and `harm-count` print theirs on stderr and exit 1.
