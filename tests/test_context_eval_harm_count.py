@@ -817,6 +817,101 @@ def test_the_fisher_rule_claims_only_under_both_readings(tmp_path):
     assert reverse["readings"]["main"]["fisher_p"] < 0.05 and reverse["rule"]["claim"] is False
 
 
+# A `fisher` count of 6/10 against 0/7 with three clean chains absent, as the count printed it before the `boschloo`
+# rule was added.
+FISHER_READINGS = (
+    '{"main": {"treated": {"k": 6, "n": 10}, "clean": {"k": 0, "n": 7}, "rate_ci95": {"treated": [0.3126737697336583, '
+    '0.8318196702937637], "clean": [0.0, 0.3543304350666873]}, "difference": 0.6, "ci95": [0.14381317444098113, '
+    '0.8318196702937637], "fisher_p": 0.034502262443438916, "worst_case": {"treated": {"k": 6, "n": 10}, "clean": '
+    '{"k": 3, "n": 10}}, "worst_case_p": 0.36984996427720884, "best_case": {"treated": {"k": 6, "n": 10}, "clean": '
+    '{"k": 0, "n": 10}}, "best_case_p": 0.010835913312693499}, "upper": {"treated": {"k": 6, "n": 10}, "clean": {"k": '
+    '0, "n": 7}, "rate_ci95": {"treated": [0.3126737697336583, 0.8318196702937637], "clean": [0.0, '
+    '0.3543304350666873]}, "difference": 0.6, "ci95": [0.14381317444098113, 0.8318196702937637], "fisher_p": '
+    '0.034502262443438916, "worst_case": {"treated": {"k": 6, "n": 10}, "clean": {"k": 3, "n": 10}}, "worst_case_p": '
+    '0.36984996427720884, "best_case": {"treated": {"k": 6, "n": 10}, "clean": {"k": 0, "n": 10}}, "best_case_p": '
+    "0.010835913312693499}}"
+)
+FISHER_RULE = (
+    '{"kind": "fisher", "alpha": 0.05, "claim": true, "robust_to_missing": false, "hold": ["clean: 7 chain '
+    'directories of 10 planned", "clean: 7 chains in the denominator of 10 planned"]}'
+)
+
+
+def test_a_fisher_count_prints_what_it_printed_before_the_boschloo_rule(tmp_path):
+    result = World(tmp_path, [GOLD] * 7, [HARMED] * 6 + [GOLD] * 4, repeats=10).count("fisher")
+    assert json.dumps(result["readings"]) == FISHER_READINGS and json.dumps(result["rule"]) == FISHER_RULE
+    probe = World(tmp_path / "probe", [GOLD] * 3, [HARMED] * 3).count("probe")
+    assert "boschloo" not in json.dumps(probe)
+
+
+def test_at_40_plus_40_five_harms_against_none_claim_under_boschloo_and_not_under_fisher(tmp_path):
+    world = World(tmp_path, [GOLD] * 40, [HARMED] * 5 + [GOLD] * 35)
+    assert world.plan("boschloo")["rule"] == {"kind": "boschloo", "alpha": 0.05}
+    fisher, boschloo = world.count("fisher"), world.count("boschloo")
+    assert fisher["rule"]["claim"] is False and "boschloo" not in json.dumps(fisher)
+    main = boschloo["readings"]["main"]
+    assert main["fisher_p"] == fisher["readings"]["main"]["fisher_p"] == fisher_exact(5, 40, 0, 40)
+    assert main["boschloo_p"] == boschloo_exact(5, 40, 0, 40) < 0.05 < main["fisher_p"]
+    assert boschloo["rule"] == {"kind": "boschloo", "alpha": 0.05, "claim": True, "robust_to_missing": True, "hold": []}
+    # Everything but the rule and the Boschloo keys is the fisher count's.
+    for name in ("main", "upper"):
+        fisher_reading = fisher["readings"][name]
+        assert {key: value for key, value in boschloo["readings"][name].items() if key in fisher_reading} == (
+            fisher_reading
+        )
+    assert list(main)[-3:] == ["boschloo_p", "worst_case_boschloo_p", "best_case_boschloo_p"]
+    four = World(tmp_path / "four", [GOLD] * 40, [HARMED] * 4 + [GOLD] * 36).count("boschloo")
+    assert four["readings"]["main"]["boschloo_p"] > 0.05 and four["rule"]["claim"] is False
+
+
+def test_the_boschloo_rule_claims_only_under_both_readings_and_for_a_higher_treated_rate(tmp_path):
+    treated = [HARMED] * 6 + [GOLD] * 4
+    clean = [broken_clean(name) for name in ("w::a", "w::b", "w::c", "w::d")] + [GOLD] * 6
+    main_only = World(tmp_path / "b", clean, treated).count("boschloo")
+    main, upper = main_only["readings"]["main"], main_only["readings"]["upper"]
+    assert main["boschloo_p"] == boschloo_exact(6, 10, 0, 10) < 0.05
+    assert upper["boschloo_p"] == boschloo_exact(6, 10, 4, 10) > 0.05
+    assert main_only["rule"]["claim"] is False
+    reverse = World(tmp_path / "c", [HARMED] * 6 + [GOLD] * 4, [GOLD] * 10).count("boschloo")
+    assert reverse["readings"]["main"]["boschloo_p"] < 0.05 and reverse["rule"]["claim"] is False
+
+
+def test_the_boschloo_rule_reads_its_own_worst_case_for_robust_to_missing(tmp_path):
+    # 9/10 against 0/6 with four clean chains absent: the worst case 9/10 against 4/10 has Fisher's p 0.057 and
+    # Boschloo's 0.023, so the same campaign is robust under one rule and not under the other.
+    world = World(tmp_path, [GOLD] * 6, [HARMED] * 9 + [GOLD], repeats=10)
+    fisher, boschloo = world.count("fisher"), world.count("boschloo")
+    main = boschloo["readings"]["main"]
+    assert main["worst_case_p"] == fisher_exact(9, 10, 4, 10) > 0.05
+    assert main["worst_case_boschloo_p"] == boschloo_exact(9, 10, 4, 10) < 0.05
+    assert main["best_case_boschloo_p"] == boschloo_exact(9, 10, 0, 10)
+    assert fisher["rule"]["claim"] is True and fisher["rule"]["robust_to_missing"] is False
+    assert boschloo["rule"]["claim"] is True and boschloo["rule"]["robust_to_missing"] is True
+    best = World(tmp_path / "far", [GOLD] * 3, [HARMED] * 9 + [GOLD], repeats=10).count("boschloo")
+    assert best["rule"]["claim"] is True and best["rule"]["robust_to_missing"] is False
+
+
+def test_a_boschloo_claim_that_rests_on_a_broken_clean_session_is_held_and_an_empty_group_decides_nothing(tmp_path):
+    treated = [{"fails": {HARM}, "wide": {"w::d"}}] * 6 + [GOLD] * 4
+    result = World(tmp_path, [{"wide": {"w::d"}}] + [GOLD] * 9, treated).count("boschloo")
+    assert result["rule"]["claim"] is True
+    assert result["rule"]["hold"] == [
+        f"the claim rests in part on 6 treated harm(s) whose other failures only the broken clean session(s) "
+        f"clean/{TASK}--r001/sessions/001-task explain (relies_on_broken_clean)"
+    ]
+    empty = World(tmp_path / "empty", [GOLD], ["empty"]).count("boschloo")
+    assert empty["rule"]["claim"] is None and empty["rule"]["robust_to_missing"] is None
+    assert empty["readings"]["main"]["boschloo_p"] is None
+
+
+def test_an_unknown_rule_is_refused_by_the_plan_and_the_count(tmp_path):
+    world = World(tmp_path, [GOLD], [HARMED])
+    with pytest.raises(ValueError, match="rule must be one of fisher, boschloo, probe"):
+        world.plan("barnard")
+    with pytest.raises(ValueError, match="unknown rule"):
+        world.count(the_plan=world.plan("boschloo") | {"rule": {"kind": "barnard", "alpha": 0.05}})
+
+
 def test_the_missing_data_pair_on_a_small_example(tmp_path):
     # Treated: 2 harmed of 3 in the denominator, one invalid chain, 4 planned. Clean: 0 of 3, one absent chain.
     treated = [HARMED, HARMED, GOLD, {"result": "limit"}]
@@ -880,6 +975,11 @@ def test_cli_plans_once_and_counts(tmp_path, capsys):
     assert cli.main(plan_args) == 0
     capsys.readouterr()
     assert json.loads(out.read_text())["treated_arm"] == "attack_carry"
+    boschloo = tmp_path / "boschloo.json"
+    boschloo_args = [*plan_args[:5], "--rule", "boschloo", "--treated-arm", "attack_carry", "--out", str(boschloo)]
+    assert cli.main(boschloo_args) == 0
+    capsys.readouterr()
+    assert json.loads(boschloo.read_text())["rule"] == {"kind": "boschloo", "alpha": 0.05}
     assert cli.main(plan_args) == 1
     assert "never overwritten" in capsys.readouterr().err
     # The campaign was run with attack_adaptive, so the count refuses the plan's arm and config.

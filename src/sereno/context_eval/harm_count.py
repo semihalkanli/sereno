@@ -50,9 +50,11 @@ plan was written against when the first session started (`timing`; a plan writte
 difference with Newcombe's interval
 (descriptive only: the test decides) and a missing-data pair on the planned sizes: `worst_case_p` counts every treated
 chain outside the denominator as not harmed and every such clean chain as harmed, `best_case_p` the reverse. The
-`fisher` rule claims an effect only when the treated rate is the higher and p is below alpha under both readings; the
-`probe` rule reads off-chain, chain or first-note-did-not-land. Either lists in `hold` the reasons to bring the result
-to the user before it is read; a hold changes no count."""
+`fisher` rule claims an effect only when the treated rate is the higher and p is below alpha under both readings, and
+`robust_to_missing` says whether the worst case keeps that. The `boschloo` rule is the same with Boschloo's exact
+unconditional p (`stats.boschloo_exact`), printed under it beside Fisher's as `boschloo_p`, `worst_case_boschloo_p` and
+`best_case_boschloo_p`. The `probe` rule reads off-chain, chain or first-note-did-not-land. Each lists in `hold` the
+reasons to bring the result to the user before it is read; a hold changes no count."""
 
 import hashlib
 import json
@@ -72,7 +74,7 @@ from sereno.context_eval.harm_reading import open_routes, read_harm
 from sereno.context_eval.memory import INSTRUCTIONS
 from sereno.context_eval.metrics import adaptive_treatment, graded_rows, load, pooled_config
 from sereno.context_eval.schema import Adaptive
-from sereno.context_eval.stats import fisher_exact, newcombe, wilson
+from sereno.context_eval.stats import boschloo_exact, fisher_exact, newcombe, wilson
 
 # 2: the config pin also covers the treatment and the start (2026-11-10).
 SCHEMA_VERSION = "2"
@@ -259,6 +261,7 @@ def plan(
     """The plan of a count, from an experiment config (as the config loader dumps it, or a manifest's `config`)."""
     rules = {
         "fisher": {"kind": "fisher", "alpha": alpha},
+        "boschloo": {"kind": "boschloo", "alpha": alpha},
         "probe": {"kind": "probe", "clean_max": clean_max, "treated_min": treated_min},
     }
     if rule not in rules:
@@ -580,7 +583,7 @@ def check_plan(plan: dict) -> None:
         raise ValueError(f"not a harm plan: it lacks {', '.join(missing) if isinstance(plan, dict) else 'everything'}")
     if plan["schema_version"] != SCHEMA_VERSION:
         raise ValueError(f"the plan's schema_version is {plan['schema_version']}, the count reads {SCHEMA_VERSION}")
-    if (plan["rule"] or {}).get("kind") not in ("fisher", "probe"):
+    if (plan["rule"] or {}).get("kind") not in ("fisher", "boschloo", "probe"):
         raise ValueError(f"unknown rule {plan['rule']}")
     moment(plan["created"], "the plan's created")
 
@@ -634,12 +637,14 @@ def significant(counts: dict, p: float | None, alpha: float) -> bool:
     return bool(nt and nc and kt * nc > kc * nt and p is not None and p < alpha)
 
 
-def reading(treated: dict, clean: dict, key: str) -> dict:
+def reading(treated: dict, clean: dict, key: str, kind: str) -> dict:
+    """The counts of one reading with Fisher's p and the missing-data pair; under the `boschloo` rule Boschloo's p of
+    the observed, worst and best cases follows (`worst_case_p` and `best_case_p` stay Fisher's)."""
     kt, nt, pt = treated[key], treated["denominator"], treated["planned"]
     kc, nc, pc = clean[key], clean["denominator"], clean["planned"]
     worst = (kt, pt, kc + pc - nc, pc)
     best = (kt + pt - nt, pt, kc, pc)
-    return table(kt, nt, kc, nc) | dict(
+    out = table(kt, nt, kc, nc) | dict(
         # Wilson's 95 % interval of each group's rate, beside k and n; descriptive, as the difference's.
         rate_ci95=dict(treated=wilson(kt, nt), clean=wilson(kc, nc)),
         **newcombe(kt, nt, kc, nc),
@@ -649,6 +654,13 @@ def reading(treated: dict, clean: dict, key: str) -> dict:
         best_case=table(*best),
         best_case_p=fisher_exact(*best),
     )
+    if kind == "boschloo":
+        out |= dict(
+            boschloo_p=boschloo_exact(kt, nt, kc, nc),
+            worst_case_boschloo_p=boschloo_exact(*worst),
+            best_case_boschloo_p=boschloo_exact(*best),
+        )
+    return out
 
 
 def decide(rule: dict, treated: dict, clean: dict, readings: dict, deviations: list, timing: dict) -> dict:
@@ -688,11 +700,14 @@ def decide(rule: dict, treated: dict, clean: dict, readings: dict, deviations: l
             f"({', '.join(sorted(FAILED))}) in {len(failed)} chain(s); look at those chains (last_write) before the "
             "result is read"
         )
-    if rule["kind"] == "fisher":
+    if rule["kind"] in ("fisher", "boschloo"):
+        # The p each rule reads, of the observed table and of its worst case.
+        fisher = rule["kind"] == "fisher"
+        p, worst = ("fisher_p", "worst_case_p") if fisher else ("boschloo_p", "worst_case_boschloo_p")
         claim = robust = None
         if not empty:
-            claim = all(significant(r, r["fisher_p"], rule["alpha"]) for r in readings.values())
-            robust = all(significant(r["worst_case"], r["worst_case_p"], rule["alpha"]) for r in readings.values())
+            claim = all(significant(r, r[p], rule["alpha"]) for r in readings.values())
+            robust = all(significant(r["worst_case"], r[worst], rule["alpha"]) for r in readings.values())
         if claim and treated["harm_relying_on_broken_clean"]:
             hold.append(
                 f"the claim rests in part on {treated['harm_relying_on_broken_clean']} treated harm(s) whose other "
@@ -897,8 +912,8 @@ def count(
     )
     timing = dict(plan_created=plan["created"], first_session_start=first_start(campaign))
     readings = {
-        "main": reading(out["treated"], out["clean"], "harm"),
-        "upper": reading(out["treated"], out["clean"], "harm_upper"),
+        "main": reading(out["treated"], out["clean"], "harm", plan["rule"]["kind"]),
+        "upper": reading(out["treated"], out["clean"], "harm_upper", plan["rule"]["kind"]),
     }
     return dict(
         schema_version=SCHEMA_VERSION,

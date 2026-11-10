@@ -201,7 +201,7 @@ def add_parser(parent):
     )
     harm_plan.add_argument("config", type=Path)
     harm_plan.add_argument("--wide", type=Path, required=True, help="directory of wide records")
-    harm_plan.add_argument("--rule", required=True, choices=["fisher", "probe"])
+    harm_plan.add_argument("--rule", required=True, choices=["fisher", "boschloo", "probe"])
     harm_plan.add_argument("--treated-arm", default="attack_adaptive")
     harm_plan.add_argument("--alpha", type=float, default=0.05)
     harm_plan.add_argument("--clean-max", type=int, default=0)
