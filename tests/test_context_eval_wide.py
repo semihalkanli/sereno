@@ -154,7 +154,7 @@ class Sealing(FakeDocker):
 
     def seal_line(self, args):
         logs = Path(args[args.index("-v") + 1].removesuffix(":/logs"))
-        found = re.search(rf'echo "{SEAL} ([0-9a-f]+) ', args[-1])
+        found = re.search(rf'"{SEAL} ([0-9a-f]+) ', args[-1])
         line = f"{SEAL} {found[1]} {official_digest(logs / 'verifier')}\n" if found else ""
         if found and self.cut:
             line = f"{CUT} {found[1]}\n{line}"
@@ -196,7 +196,7 @@ def test_the_wide_command_follows_the_tests_and_leaves_the_grade_alone(dataset, 
     (run, timeout) = next(call for call in docker.calls if call[0][0] == "run")
     shell = run[-1]
     # The tests keep the task's own limit, the seal is printed before the wide command, and tests cut short skip it.
-    order = ["timeout -k 10 42 bash /tests/test.sh; status=$?", "-ge 42 ] && cut=1", f'echo "{SEAL} ']
+    order = ["timeout -k 10 42 bash /tests/test.sh; status=$?", "-ge 42 ] && cut=1", f'"{SEAL} ']
     order += ["[ $cut -eq 1 ] ||", "timeout -k 10 600 bash -c", "chown"]
     assert [shell.index(part) for part in order] == sorted(shell.index(part) for part in order)
     assert shell.endswith("exit $status") and timeout == 42.0 + 600 + 90
@@ -236,6 +236,10 @@ def test_tests_cut_short_inside_the_container_are_a_verifier_timeout(dataset, tm
         assert grade["error"] == plain["error"] == f"verifier wrote no reward file (exit code {code})"
 
 
+PARTIAL = "'tests/test_a.py ..'"
+REWARD = "mkdir -p LOGS/verifier; echo '{\"reward\": 1}' > LOGS/verifier/reward.json"
+
+
 @pytest.mark.parametrize(
     "script, limit, status, cut",
     [
@@ -244,8 +248,22 @@ def test_tests_cut_short_inside_the_container_are_a_verifier_timeout(dataset, tm
         ("trap '' TERM; sleep 30", 1, 137, True),
         ("kill -9 $$", 3, 137, False),
         ("exit 124", 3, 124, False),
+        # A test runner killed while it writes leaves its last line unterminated; a test that prints no newline at
+        # its end does too. The container's lines still start a line of their own.
+        (f"printf {PARTIAL}; sleep 30", 1, 124, True),
+        (f"{REWARD}; printf {PARTIAL}; trap '' TERM; sleep 30", 1, 137, True),
+        (f"{REWARD}; printf {PARTIAL}", 3, 0, False),
     ],
-    ids=["passes", "term-at-limit", "kill-at-limit", "kill-before-limit", "own-124"],
+    ids=[
+        "passes",
+        "term-at-limit",
+        "kill-at-limit",
+        "kill-before-limit",
+        "own-124",
+        "mid-line-at-limit",
+        "mid-line-at-limit-with-a-reward",
+        "mid-line-at-the-end",
+    ],
 )
 def test_the_container_cuts_tests_by_the_limit_reached_not_by_the_exit_code(
     tmp_path, monkeypatch, script, limit, status, cut
@@ -254,13 +272,14 @@ def test_the_container_cuts_tests_by_the_limit_reached_not_by_the_exit_code(
 
     monkeypatch.setattr(evaluator, "KILL_AFTER", 1)
     (tmp_path / "logs").mkdir()
-    (tmp_path / "test.sh").write_text(script + "\n")
+    (tmp_path / "test.sh").write_text(script.replace("LOGS", str(tmp_path / "logs")) + "\n")
     record = RECORD | {"command": "true", "format": "junit", "limit_seconds": 5}
     command = container_command(limit, record, "s" * 32)
     command = command.replace("/tests/test.sh", str(tmp_path / "test.sh")).replace("/logs", str(tmp_path / "logs"))
     run = subprocess.run(["bash", "-c", command], capture_output=True, text=True, timeout=60)
     assert run.returncode == status and (f"{CUT} {'s' * 32}" in run.stdout) == cut
-    assert evaluator.was_cut(run.stdout, "s" * 32) == cut and evaluator.sealed(run.stdout, "s" * 32) is not None
+    assert evaluator.was_cut(run.stdout, "s" * 32) == cut
+    assert evaluator.sealed(run.stdout, "s" * 32) == official_digest(tmp_path / "logs" / "verifier")
     # Tests cut at their limit start no wide run; tests that ended otherwise do.
     assert (tmp_path / "logs" / "wide" / "exit").exists() == (not cut)
 

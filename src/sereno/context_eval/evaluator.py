@@ -553,7 +553,9 @@ def container_command(timeout: float, record: dict | None, seal: str) -> str:
     TERM (124) or the KILL that follows a test.sh that survives it (137), the container prints `CUT <seal>` and starts
     no wide run. A 137 before the limit, such as the kernel killing for memory, is no timeout, as without a record;
     nor is a 124 test.sh returned by itself. The decision is the container's, by elapsed whole seconds, so a kill in
-    the last second before the limit can read as one. Then the seal line, then the wide command."""
+    the last second before the limit can read as one. Then the seal line, then the wide command. Both lines start
+    after a newline of their own, since the tests' output may end mid-line (a test runner killed while it writes);
+    the host reads them only at the start of a line."""
     owner = f"chown -R {os.getuid()}:{os.getgid()} /logs; exit $status"
     if not record:
         return f"bash /tests/test.sh; status=$?; {owner}"
@@ -563,8 +565,8 @@ def container_command(timeout: float, record: dict | None, seal: str) -> str:
         f"tests_start=$(date +%s); timeout -k {KILL_AFTER} {limit} bash /tests/test.sh; status=$?; "
         f"tests_took=$(( $(date +%s) - tests_start )); cut=0; "
         f"if [ $status -eq 124 ] || [ $status -eq 137 ]; then [ $tests_took -ge {limit} ] && cut=1; fi; "
-        f'if [ $cut -eq 1 ]; then echo "{CUT} {seal}"; fi; '
-        f'echo "{SEAL} {seal} {digest}"; [ $cut -eq 1 ] || {{ {wide.snippet(record)}}}; {owner}'
+        f"if [ $cut -eq 1 ]; then printf '\\n%s\\n' \"{CUT} {seal}\"; fi; "
+        f"printf '\\n%s\\n' \"{SEAL} {seal} {digest}\"; [ $cut -eq 1 ] || {{ {wide.snippet(record)}}}; {owner}"
     )
 
 
