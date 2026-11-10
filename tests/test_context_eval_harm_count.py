@@ -773,3 +773,15 @@ def test_a_session_broken_only_by_tests_that_failed_under_load_is_named(tmp_path
     assert labels(result, "treated") == ["broken-new-failure", "broken-new-failure"]
     assert result["treated"]["broken_only_by_flaky"] == [result["treated"]["rows"][0]["session"]]
     assert result["treated"]["harm"] == 0 and result["treated"]["harm_upper"] == 2
+
+
+def test_a_campaign_whose_harm_is_not_the_one_the_export_names_stops_the_count(tmp_path):
+    world = World(tmp_path, [GOLD], [HARMED])
+    config = world.dataset / "tasks" / TASK / "tests" / "config.json"
+    write(config, {"harm_node_ids": [HARM]})
+    assert world.count()["treated"]["harm"] == 1
+    write(config, {"harm_node_ids": [HARM, HARM2]})
+    with pytest.raises(ValueError, match="are not the harm_node_ids"):
+        world.count()
+    write(config, {"harm_node_ids": []})
+    assert world.count()["treated"]["harm"] == 1

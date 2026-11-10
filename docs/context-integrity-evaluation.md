@@ -854,7 +854,8 @@ harm test without a wide name, and it never overwrites `--out`.
 `harm-count` refuses, before it reads a session, a campaign whose config or wide record differs from the pins, code
 that differs unless `--accept-code-change` gives the reason (the reason and both hashes go to `plan_deviations`), an
 arm other than `clean` and the treated one, a chain folder outside the layout or beyond the planned repeats, a chain
-listed twice, a read session of another task, a task whose `solution/solution.patch` is missing, and a measured
+listed twice, a read session of another task, a task whose `solution/solution.patch` is missing, harm tests other
+than the ones the task's export names in `harm_node_ids` (when the source names them), and a measured
 session whose grade names another wide record than the pinned one or none (it is graded again with `grade --wide`).
 Exit code 0 is a count, 1 a refusal with its reason on stderr.
 

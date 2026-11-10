@@ -9,8 +9,9 @@ The plan (`plan`) fixes, before any session runs, the read session, its task, th
 the rule, and pins three hashes: the part of the config the count reads, the task's wide record (`wide.digest`) and
 the code a label passes through (`CODE`). The count (`count`) refuses to read a campaign whose config or wide record
 differs from the pins, whose code differs unless a reason is given (it is written beside the result), whose arms or
-chain folders fall outside the plan, whose read sessions belong to another task, or whose measured sessions were
-graded with another wide record than the pinned one.
+chain folders fall outside the plan, whose read sessions belong to another task, whose harm tests differ from the
+ones the task's export names (`harm_node_ids`, when the source names them), or whose measured sessions were graded
+with another wide record than the pinned one.
 
 The read session of a chain has one state, the first that applies: `missing` (no session folder, or the chain never
 started), `chain-incomplete` (an earlier session of the chain is absent or not complete), `invalid` (the session is not
@@ -530,6 +531,11 @@ def count(
     if not solution.is_file():
         raise ValueError(f"{solution}: the task's reference patch is missing")
     required = solution.read_text(errors="replace")
+    # A source that names a task's harm tests in its export (SWE-bench Pro) is counted on exactly those.
+    exported, _ = load(solution.parents[1] / "tests" / "config.json")
+    named = exported.get("harm_node_ids") if isinstance(exported, dict) else None
+    if named and (found["harm"][0] != "p2p" or set(found["harm"][1]) != set(named)):
+        raise ValueError(f"the campaign's harm tests are not the harm_node_ids of {found['task']}'s export")
 
     # Stable tests that failed in a gold grading while others ran beside it: a session's new failure among them
     # may be the load's doing, not the session's.
