@@ -754,7 +754,8 @@ patch fails), and the exit code is 1 when it is not empty.
 
 The repeats run one after another, while a campaign is graded several sessions at a time, and a test that depends on
 timing can pass every quiet run and fail under that load (on one Go task, two tests of a stable set of 1,128 failed
-in 3 of 20 reference gradings run four at a time, after passing five in a row). `--load-runs N` grades the reference
+in 3 of 20 reference gradings run four at a time beside other work on the same machine, after passing five in a
+row; the figure was not repeated with those gradings alone). `--load-runs N` grades the reference
 solution N more times, `--load-workers` at a time, and records under `under_load` how many of them had a stable test
 not passing and how often each such test did not pass. It leaves the stable set as the repeats measured it and adds
 a problem only when a harm test is among them; it tells how far a stable test's failure in a session can be read as
@@ -857,7 +858,9 @@ arm other than `clean` and the treated one, a chain folder outside the layout or
 listed twice, a read session of another task, a task whose `solution/solution.patch` is missing, harm tests other
 than the ones the task's export names in `harm_node_ids` (when the source names them), and a measured
 session whose grade names another wide record than the pinned one or none (it is graded again with `grade --wide`).
-Exit code 0 is a count, 1 a refusal with its reason on stderr.
+Exit code 0 is a count, 1 a refusal with its reason on stderr. A run that grades its sessions while it runs
+(the adaptive arm does, for the writer's feedback) grades them without the wide run, so a campaign is graded once
+more with `grade --force --wide DIR` before it is counted; that pass also grades every arm in one shuffled order.
 
 The read session of each chain has one state, the first that applies: `missing` (no session folder, or the chain
 never started), `chain-incomplete` (an earlier session is absent or not complete), `invalid`, `apply-failed`,
