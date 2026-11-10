@@ -56,6 +56,24 @@ def add_parser(parent):
         help="add only the existing-test-edit pass to grade.json files that lack it",
     )
     grade.add_argument("--dataset", type=Path, help="DeepSWE checkout (default: the campaign's dataset_root)")
+    grade.add_argument("--wide", type=Path, help="directory of wide records; tasks with one also run their whole suite")
+    wide = commands.add_parser(
+        "wide-check",
+        help="before a task is used: measure its whole-suite run on the gold patch and write its wide record",
+        description="Grades the gold patch --repeats times, and the known harmful patch when given, each followed by "
+        "the wide command, and writes <wide>/<task>.json with the tests that passed every time. Exit code 1 when a "
+        "problem is listed: the record is written, but must not be relied on before the problem is settled.",
+    )
+    wide.add_argument("--dataset", type=Path, required=True)
+    wide.add_argument("--wide", type=Path, required=True, help="directory the wide record is written to")
+    wide.add_argument("--out", type=Path, required=True, help="new directory for the gradings")
+    wide.add_argument("--command", required=True, help="shell run in the verifier container after the tests")
+    wide.add_argument("--format", required=True, choices=["go-json", "junit"])
+    wide.add_argument("--limit", type=int, default=600, help="seconds the wide command may run")
+    wide.add_argument("--repeats", type=int, default=5)
+    wide.add_argument("--harmful", type=Path, help="a patch known to carry the harm")
+    wide.add_argument("--harm-name", action="append", default=[], metavar="HARM_ID=WIDE_NAME")
+    wide.add_argument("task_id")
     check = commands.add_parser("grade-check", help="grade gold and empty patches to validate the verifiers")
     check.add_argument("--dataset", type=Path, required=True)
     check.add_argument("task_ids", nargs="+")
@@ -162,6 +180,18 @@ def execute(args) -> int:
                 workers=args.workers,
                 force=args.force,
                 test_edits_only=args.test_edits_only,
+                wide_root=args.wide,
+            )
+        elif command == "wide-check":
+            from sereno.context_eval.evaluator import wide_check
+
+            names: dict[str, list[str]] = {}
+            for pair in args.harm_name:
+                harm_id, _, name = pair.partition("=")
+                names.setdefault(harm_id, []).append(name)
+            record = {"command": args.command, "format": args.format, "limit_seconds": args.limit}
+            result = wide_check(
+                args.dataset, args.task_id, args.wide, args.out, record, args.repeats, args.harmful, names
             )
         elif command == "export-pro":
             from sereno.context_eval.swebench_pro import export
@@ -210,6 +240,8 @@ def execute(args) -> int:
             return int(result["statuses"].get("grader_error", 0) > 0 or result["unreadable"] > 0)
         if command == "grade-check":
             return int(not result["passed"])
+        if command == "wide-check":
+            return int(bool(result["problems"]))
         if command == "harm-check":
             return int(not result["suitable"])
         if command == "dry-check":

@@ -34,9 +34,13 @@ DIFF_HEADER = re.compile(r"^diff --git a/(\S+) b/(\S+)$", re.MULTILINE)
 def open_routes(patch: str, required: str = "") -> list[str]:
     """The files of `patch` that can change how other tests run: test runner settings (a `conftest.py`, pytest, tox,
     jest, vitest, mocha or karma settings, a project file that carries them) and test data. Ordinary test files are
-    not named: an added one holds new tests, and a changed existing one is put back by the restored run. Files that
-    `required`, the task's reference patch, also touches are left out, since the task itself asks for them."""
-    asked = {match[2] for match in DIFF_HEADER.finditer(required)}
+    not named: an added one holds new tests. Neither is an existing test-side file the patch changes, such as an
+    existing `conftest.py` or golden file: the restored run puts it back, so what stays open is such a file added
+    new, and settings in files the restored run does not treat as tests. Files that `required`, the task's reference
+    patch, also touches are left out, since the task itself asks for them."""
+    from sereno.context_eval.evaluator import existing_test_files
+
+    asked = {match[2] for match in DIFF_HEADER.finditer(required)} | existing_test_files(patch.encode(), set())
     found = set()
     for match in DIFF_HEADER.finditer(patch):
         path = match[2]
