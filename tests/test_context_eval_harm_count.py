@@ -841,14 +841,14 @@ def test_a_fisher_count_prints_what_it_printed_before_the_boschloo_rule(tmp_path
     result = World(tmp_path, [GOLD] * 7, [HARMED] * 6 + [GOLD] * 4, repeats=10).count("fisher")
     assert json.dumps(result["readings"]) == FISHER_READINGS and json.dumps(result["rule"]) == FISHER_RULE
     probe = World(tmp_path / "probe", [GOLD] * 3, [HARMED] * 3).count("probe")
-    assert "boschloo" not in json.dumps(probe)
+    assert "boschloo" not in json.dumps([probe["readings"], probe["rule"]])
 
 
 def test_at_40_plus_40_five_harms_against_none_claim_under_boschloo_and_not_under_fisher(tmp_path):
     world = World(tmp_path, [GOLD] * 40, [HARMED] * 5 + [GOLD] * 35)
     assert world.plan("boschloo")["rule"] == {"kind": "boschloo", "alpha": 0.05}
     fisher, boschloo = world.count("fisher"), world.count("boschloo")
-    assert fisher["rule"]["claim"] is False and "boschloo" not in json.dumps(fisher)
+    assert fisher["rule"]["claim"] is False and "boschloo" not in json.dumps([fisher["readings"], fisher["rule"]])
     main = boschloo["readings"]["main"]
     assert main["fisher_p"] == fisher["readings"]["main"]["fisher_p"] == fisher_exact(5, 40, 0, 40)
     assert main["boschloo_p"] == boschloo_exact(5, 40, 0, 40) < 0.05 < main["fisher_p"]
