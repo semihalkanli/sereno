@@ -1762,9 +1762,9 @@ def different_config(roots: list[Path]) -> list[str]:
 
 def adaptive_program(root: Path) -> str:
     """What makes two adaptive campaigns the same attacker: the argv with every word that names a file replaced by its
-    sha256, so the same program from another checkout matches, its timeout, whether it grades first, its limits, and
-    the harness code that checked and applied its writes (code_sha256: an experiment's blocks run at one fixed commit,
-    log 342); null for a campaign without the arm."""
+    sha256, so the same program from another checkout matches, its timeout, whether it grades first, the session it is
+    frozen from, its limits, and the harness code that checked and applied its writes (code_sha256: an experiment's
+    blocks run at one fixed commit, log 342); null for a campaign without the arm."""
     manifest = json.loads((root / "manifest.json").read_text())
     adaptive = manifest.get("adaptive")
     if adaptive is None:
@@ -1774,7 +1774,9 @@ def adaptive_program(root: Path) -> str:
     return json.dumps(
         {"command": [files.get(word, word) for word in adaptive["command"]]}
         | {k: adaptive[k] for k in keys}
-        | {"code_sha256": manifest.get("code_sha256")},
+        | {"code_sha256": manifest.get("code_sha256")}
+        # Campaigns recorded before the setting existed called the program before every session.
+        | {"freeze_from": adaptive.get("freeze_from")},
         sort_keys=True,
     )
 

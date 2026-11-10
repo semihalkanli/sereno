@@ -30,7 +30,7 @@ from sereno.context_eval.evaluator import GRADED, read_object
 from sereno.context_eval.memory import USER, index_path, is_index, loaded_by, memory_dir, resolve, resolve_files
 from sereno.context_eval.schema import Adaptive, AdaptiveLimits, MemoryConfig, validate_path
 
-STATUSES = ("applied", "no_change", "rejected", "writer_failed", "timeout")
+STATUSES = ("applied", "no_change", "rejected", "writer_failed", "timeout", "frozen")
 # The statuses of a step the program failed; a run of them stops the arm.
 FAILED = frozenset({"writer_failed", "timeout"})
 SCHEMA_VERSION = "1.0"
@@ -451,8 +451,8 @@ def file_sha256(path: Path) -> str:
 
 
 def adaptive_manifest(adaptive: Adaptive) -> dict:
-    """The program as the manifest records it: argv, the sha256 of every word that names an existing file, and the
-    limits."""
+    """The program as the manifest records it: argv, the sha256 of every word that names an existing file, the session
+    it is frozen from, and the limits."""
     files = {word: file_sha256(Path(word)) for word in adaptive.command if os.path.isabs(word) and os.path.isfile(word)}
     return {
         "command": adaptive.command,
@@ -460,6 +460,7 @@ def adaptive_manifest(adaptive: Adaptive) -> dict:
         "timeout_seconds": adaptive.timeout_seconds,
         "grade_before_step": adaptive.grade_before_step,
         "stop_after_failures": adaptive.stop_after_failures,
+        "freeze_from": adaptive.freeze_from,
         "limits": adaptive.limits.model_dump(),
     }
 
@@ -596,11 +597,14 @@ class AdaptiveHook:
         self.streak = streak or FailureStreak(config.adaptive.stop_after_failures)
         # The step this run just decided and left in place, as (number, status), until its session starts or not.
         self.decided: tuple[int, str] | None = None
+        ids = [session.id for session in config.sessions]
+        self.frozen = ids.index(self.adaptive.freeze_from) if self.adaptive.freeze_from else len(ids)
 
     def before(self, number: int, memory: dict[str, str]) -> tuple[dict[str, str], list[tuple[str, dict]]]:
         """The memory session `number` starts from, given the memory the last complete session ended with, and the
         events to log when it starts. A recorded transition is replayed; the program is called only for one that was
-        never recorded or was cut short. Raises AdaptiveStop once the program has failed too many steps in a row."""
+        never recorded or was cut short, and never from the frozen session on. Raises AdaptiveStop once the program
+        has failed too many steps in a row."""
         self.decided = None
         self.streak.check()
         session = self.config.sessions[number]
@@ -613,10 +617,52 @@ class AdaptiveHook:
                 old = self.arm_dir / "transitions" / "superseded" / self.stamp / folder.name
                 old.parent.mkdir(parents=True, exist_ok=True)
                 folder.rename(old)
-            memory, record, applied = self.transit(number, project, memory, folder)
+            if number >= self.frozen:
+                record, applied = self.freeze(number, memory, folder)
+            else:
+                memory, record, applied = self.transit(number, project, memory, folder)
         else:
             memory, applied = self.replay(memory, folder, record)
         return memory, opening_events(record, applied)
+
+    def freeze(self, number: int, memory: dict[str, str], folder: Path) -> tuple[dict, dict]:
+        """The step of a frozen session: nothing is graded, the program is not called and the memory carries on as it
+        is. It is recorded like any step, so the session counts as complete and a resume replays it; it neither counts
+        as a failure of the program nor ends a run of failures."""
+        started = datetime.now(UTC)
+        folder.mkdir(parents=True)
+        reason = f"frozen from session {self.adaptive.freeze_from}"
+        applied = {
+            "schema_version": SCHEMA_VERSION,
+            "status": "frozen",
+            "reason": reason,
+            "note": None,
+            "violations": [],
+            "actions": [],
+            "files": [],
+            "memory_before_sha256": fingerprint(memory),
+            "memory_after_sha256": fingerprint(memory),
+        }
+        write_atomic(folder / "applied.json", applied)
+        record = {
+            "schema_version": SCHEMA_VERSION,
+            "index": number,
+            "kind": "between_sessions",
+            "session_id": self.config.sessions[number].id,
+            "status": "frozen",
+            "reason": reason,
+            "grade_status": "none",
+            "grade_error": None,
+            "files_touched": 0,
+            "writer": dict.fromkeys(("exit_code", "timed_out", "error", "stdout_bytes", "stderr_bytes", "truncated")),
+            "request_sha256": None,
+            "response_sha256": None,
+            "attempt": 1,
+            "started_at": started.isoformat(),
+            "durations": {"grade_seconds": 0.0, "writer_seconds": None, "total_seconds": 0.0},
+        }
+        write_atomic(folder / "transition.json", record)
+        return record, applied
 
     def transit(self, number: int, project: str, memory: dict[str, str], folder: Path):
         started = datetime.now(UTC)
@@ -775,6 +821,8 @@ class AdaptiveHook:
             },
             "limits": self.adaptive.limits.model_dump(),
             "attempt": 1,
+            # Only a frozen campaign marks the program's last step; the requests of any other stay as they were.
+            **({"last_write": number + 1 == self.frozen} if self.adaptive.freeze_from else {}),
         }
 
     def decide(self, outcome: dict, folder: Path, project: str, memory: dict, owned: set[str]) -> Decision:
