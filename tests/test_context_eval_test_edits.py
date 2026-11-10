@@ -1,6 +1,7 @@
 """The existing-test-edit pass: test file rule, patch filtering, the second verifier run and its reporting."""
 
 import csv
+import hashlib
 import json
 import shutil
 import subprocess
@@ -17,9 +18,11 @@ from sereno.context_eval.evaluator import (
     is_test_path,
     patch_blocks,
     patch_paths,
+    path_report,
     restore_tests,
 )
 from sereno.context_eval.metrics import report
+from sereno.context_eval.runner import code_sha256
 
 dataset, campaign = grader.dataset, grader.campaign
 
@@ -107,6 +110,19 @@ def task_test_patch(dataset):
 )
 def test_test_path_rule(path, expected):
     assert is_test_path(path) is expected
+
+
+def test_a_task_record_moves_a_path_across_the_general_rule():
+    rules = {"source": ["lib/plugins/test/*"], "test_side": ["server/.snapshots/*", "packages/testing/*"]}
+    assert is_test_path("lib/plugins/test/core.py") and not is_test_path("lib/plugins/test/core.py", rules)
+    assert not is_test_path("server/.snapshots/Responses AlbumList") and is_test_path(
+        "server/.snapshots/Responses AlbumList", rules
+    )
+    assert is_test_path("tests/test_app.py", rules) and not is_test_path("pkg/core.py", rules)
+    source = b"diff --git a/lib/plugins/test/core.py b/lib/plugins/test/core.py\n--- a/lib/plugins/test/core.py\n"
+    helper = b"diff --git a/packages/testing/lib.ts b/packages/testing/lib.ts\n--- a/packages/testing/lib.ts\n"
+    assert restore_tests(source + helper, set()) == (helper, ["lib/plugins/test/core.py"])
+    assert restore_tests(source + helper, set(), rules) == (source, ["packages/testing/lib.ts"])
 
 
 def test_patch_paths_mirror_the_grader():
@@ -211,7 +227,7 @@ def grade_patch(dataset, tmp_path, text, verifier):
 
 def test_no_existing_test_edit_is_none_without_a_second_run(dataset, tmp_path):
     grade, docker = grade_patch(dataset, tmp_path, SOURCE + CREATED + OWNED, report_verifier(ROWS, ROWS))
-    assert grade["schema_version"] == "1.1" and grade["test_edits"]["status"] == "none"
+    assert grade["schema_version"] == "1.2" and grade["test_edits"]["status"] == "none"
     assert grade["test_edits"]["files"] == [] and len(docker.of("run")) == 1
     assert not (tmp_path / "out" / "grade" / "restored").exists()
 
@@ -229,13 +245,26 @@ def test_consistent_edit_records_the_restored_run(dataset, tmp_path):
         "masked_tests": [],
         "unmasked_tests": [],
         "restored_logs": "grade/restored",
+        "restored_patch_sha256": hashlib.sha256(SOURCE.encode()).hexdigest(),
     }
     assert docker.patches == [SOURCE + EDITED, SOURCE]
     first, second = docker.of("run")
     assert second[second.index("--network") + 1] == "none" and second[-4] == first[-4] == "sha256:verifier-0"
     assert [c[1] for c in docker.calls if c[0][0] == "run"] == [42.0, 42.0]
     restored = tmp_path / "out" / "grade" / "restored"
-    assert sorted(p.name for p in restored.iterdir()) == ["ctrf.json", "reward.json", "test-stdout.txt"]
+    assert sorted(p.name for p in restored.iterdir()) == [
+        "ctrf.json",
+        "restored.patch",
+        "reward.json",
+        "test-stdout.txt",
+    ]
+    assert (restored / "restored.patch").read_text() == SOURCE
+    assert grade["grader"]["code_sha256"] == code_sha256() and grade["grader"]["graded_at"].endswith("+00:00")
+    assert (grade["grader"]["cpus"], grade["grader"]["memory_mb"], grade["grader"]["wide_record_sha256"]) == (
+        2,
+        8192,
+        None,
+    )
     assert json.loads((tmp_path / "out" / "grade.json").read_text()) == grade
 
 
@@ -348,6 +377,7 @@ def test_an_ungraded_official_run_is_not_applicable(dataset, tmp_path):
         "masked_tests": None,
         "unmasked_tests": None,
         "restored_logs": None,
+        "restored_patch_sha256": None,
     }
 
 
@@ -381,7 +411,7 @@ def test_backfill_adds_only_the_second_pass(campaign):
     assert summary["test_edits"] == {"masking": 4, "not_applicable": 1}
     for path, text in before.items():
         old, new = json.loads(text), json.loads(path.read_text())
-        assert {k: v for k, v in new.items() if k != "test_edits"} == old | {"schema_version": "1.1"}
+        assert {k: v for k, v in new.items() if k != "test_edits"} == old | {"schema_version": "1.2"}
         assert new == graded[path]
     again = grade_campaign(campaign, docker=docker, test_edits_only=True)
     assert again["backfilled"] == 0 and again["kept"] == 5 and len(docker.patches) == 2
@@ -483,3 +513,42 @@ def test_report_counts_test_edit_statuses_next_to_reward(tmp_path):
     assert metrics_tests.find(rows, arm="attack_reset", session="p")["test_edit_status"] == ""
     text = (root / "report.md").read_text()
     assert "| Strict success | Test edits |" in text and "| masking 1 |" in text
+
+
+def test_the_path_report_shows_what_the_general_lists_miss_in_a_repository():
+    tree = [
+        "pkg/core.py",
+        "tests/test_app.py",
+        "lib/plugins/test/core.py",
+        "lib/plugins/test/files.py",
+        "server/.snapshots/Responses AlbumList",
+        "packages/testing/lib/builders.ts",
+        "ui/jest.setup.ts",
+        "ui/src/__mocks__/api.ts",
+        "ui/src/setupTests.js",
+        "internal/testdata/a.yml",
+        "docs/latest.md",
+        "pytest.ini",
+    ]
+    patch = "diff --git a/packages/testing/lib/builders.ts b/packages/testing/lib/builders.ts\n+x\n"
+    patch += "diff --git a/tests/test_app.py b/tests/test_app.py\n+x\ndiff --git a/test.sh b/test.sh\n+x\n"
+    plain = path_report(tree, None, patch)
+    assert plain["tracked"] == 12 and plain["test_side"]["files"] == 4
+    assert plain["test_side"]["folders"][0] == ["lib/plugins/test", 2]
+    assert plain["unlisted"]["folders"] == [
+        ["packages/testing/lib", 1],
+        ["server/.snapshots", 1],
+        ["ui/src", 1],
+        ["ui/src/__mocks__", 1],
+    ]
+    assert plain["unlisted_runner_files"] == ["ui/jest.setup.ts"]
+    assert plain["test_patch_unlisted"] == ["packages/testing/lib/builders.ts"]
+    rules = {
+        "source": ["lib/plugins/test/*"],
+        "test_side": ["server/.snapshots/*", "packages/testing/*", "*/__mocks__/*"],
+        "settings": ["*jest.setup.*", "*/setupTests.*"],
+    }
+    ruled = path_report(tree, rules, patch)
+    assert ruled["test_side"]["files"] == 5 and ["lib/plugins/test", 2] not in ruled["test_side"]["folders"]
+    assert ruled["unlisted"] == {"files": 0, "folders": []} and ruled["test_patch_unlisted"] == []
+    assert ruled["unlisted_runner_files"] == []

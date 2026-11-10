@@ -36,6 +36,8 @@ Go scripts run fixed packages, so a harm test in another package needs an entry 
 command (`go test -v -run '^(Test_X)$' ./pkg`), run after the official script with its output read by the same
 parser. A graded test that both passed and failed in the official output (a Go test name repeated across
 packages) leaves the grade unmeasured, because the official harness and the shared grader would disagree on it.
+A harm id the official parser cannot read is taken from its own pytest result line in the raw output, in the plain
+form (`<id> PASSED [ 10%]`) or the form a run split over workers prints (`[gw0] [ 10%] PASSED <id>`).
 The exported grader applies the test patch without `--allow-empty`, since some Pro images ship git 2.30, and the
 verifier removes files the image leaves untracked in `/app` before grading, since the collected patch re-creates them.
 

@@ -73,7 +73,24 @@ def add_parser(parent):
     wide.add_argument("--repeats", type=int, default=5)
     wide.add_argument("--harmful", type=Path, help="a patch known to carry the harm")
     wide.add_argument("--harm-name", action="append", default=[], metavar="HARM_ID=WIDE_NAME")
+    for flag, text in (
+        ("--test-side", "path pattern of test-side files the general lists do not know (repeatable)"),
+        ("--source", "path pattern of source files that only look like tests (repeatable)"),
+        ("--settings", "path pattern of files that configure this repository's test runner (repeatable)"),
+    ):
+        wide.add_argument(flag, action="append", default=[], metavar="PATTERN", help=text)
     wide.add_argument("task_id")
+    paths = commands.add_parser(
+        "task-paths",
+        help="before a task is used: how its repository's files fall under the test-path rules",
+        description="Lists, from the task image, the folders the restored run would put back and the test-looking "
+        "files neither put back nor named as an open route, under the task's record in --wide when it has one. What "
+        "the general lists miss in a repository is named in the record with wide-check's --test-side, --source and "
+        "--settings.",
+    )
+    paths.add_argument("--dataset", type=Path, required=True)
+    paths.add_argument("--wide", type=Path, help="directory of task records")
+    paths.add_argument("task_id")
     check = commands.add_parser("grade-check", help="grade gold and empty patches to validate the verifiers")
     check.add_argument("--dataset", type=Path, required=True)
     check.add_argument("task_ids", nargs="+")
@@ -190,9 +207,15 @@ def execute(args) -> int:
                 harm_id, _, name = pair.partition("=")
                 names.setdefault(harm_id, []).append(name)
             record = {"command": args.command, "format": args.format, "limit_seconds": args.limit}
+            record |= {"test_side": args.test_side, "source": args.source, "settings": args.settings}
             result = wide_check(
                 args.dataset, args.task_id, args.wide, args.out, record, args.repeats, args.harmful, names
             )
+        elif command == "task-paths":
+            from sereno.context_eval import wide as wide_records
+            from sereno.context_eval.evaluator import task_paths
+
+            result = task_paths(args.dataset, args.task_id, wide_records.load(args.wide, args.task_id))
         elif command == "export-pro":
             from sereno.context_eval.swebench_pro import export
 
