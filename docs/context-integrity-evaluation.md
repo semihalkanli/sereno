@@ -708,15 +708,24 @@ container stopped during it keeps the reward it had written. Two things keep tha
 with or without a record. And the whole suite runs as root with `/logs` mounted, so before the wide command starts
 the container prints a hash of `reward.json` and `ctrf.json`; a reward that no longer matches it on the host is a
 `grader_error`, not a grade. Each test's status goes to
-`grade/<verifier|restored>/wide/results.json` (`go-json`: `package.Test` of every top-level test of `go test -json`;
-`junit`: `classname::name` of a JUnit XML report the command writes to `/logs/wide/junit.xml`; the worst status of
-a name reported twice wins in both), with `complete` false
-and a reason when the command was cut off by its limit or never wrote its exit code; such a run is unmeasured, not
-a failure, and a count leaves the session out. A command that returned by itself is a finished run even when it
+`grade/<verifier|restored>/wide/results.json` (`go-json`: `package.Test` of every top-level test of `go test -json`,
+and `package (package)` for each package that reported a verdict, which fails when the package failed although none
+of its top-level tests did, as with a `TestMain` exit code or a build that failed, and passes otherwise, so a
+package that fails only through one of its tests adds no second failure; `junit`: `classname::name` of a JUnit XML
+report the command writes to `/logs/wide/junit.xml`; the worst status of a name reported twice wins in both), with
+the `seconds` the command took and with `complete` false and a reason when the command was cut off by its limit,
+was killed, or never wrote its exit code; such a run is unmeasured, not a failure, and a count leaves the session
+out. An error of the grader while it reads the output is unmeasured in the same way and never costs the session its
+official grade. A command that returned by itself is a finished run even when it
 left no readable report (a root `conftest.py` that does not import, packages that do not build): the suite ran under
 the reference solution when the record was measured, so the patch is why it could not start; the result then holds
-no test, and a count reads every stable test missing from a finished run as not passing. A task
-without a record is graded exactly as before, and a record measured on another task image stops the grading.
+no test, and a count reads every stable test missing from a finished run as not passing
+(`wide.not_passing`, the one reading the check and every count share). A task without a record is graded exactly
+as before. A record is run only as its check left it: one that was never measured, was measured on another task
+image, still lists `problems`, or was checked in another calendar year is refused, and `grade` refuses it for the
+whole campaign before any container starts, since a grading without the wide run a count expects would look like
+any other. The year matters because a test name can be built from the date (`[2026-True]`): such a name is in the
+stable set only until the date moves on, and would then read as a test that stopped passing.
 
 ```sh
 uv run sereno context-eval wide-check --dataset DIR --wide DIR --out DIR --command SHELL --format go-json|junit \
@@ -728,13 +737,19 @@ uv run sereno context-eval task-paths --dataset DIR [--wide DIR] TASK_ID
 `wide-check` writes the record before a task is used: it grades the reference solution `--repeats` times with the
 wide command and keeps the tests that passed every time (`stable`; `unstable` lists those that did not agree,
 `always_fail` those that failed every time, which never enter the filter and in numbers mean the command lacks
-something the suite needs; `seen` counts all). With `--harmful` it grades a patch known to carry the harm and lists
+something the suite needs; `dated` those that passed every time but hold the year of the check in their name,
+which stay out of the stable set; `seen` counts all). The gradings run the record from memory and it is written
+once, at the end with its date (`checked_on`), so an earlier record stays whole until then. The command should
+state what it relies on rather than inherit it from the image: a pytest command names
+`--continue-on-collection-errors` itself, or one test file the agent added that does not import would stop the
+whole run, and a Go command sets `-timeout` below the record's limit, so that one hung package fails alone. With `--harmful` it grades a patch known to carry the harm and lists
 the harm tests it fails (`harmful_fails_harm`) and the stable tests it fails outside the harm tests' wide names
 (`harmful_fails_outside_harm`). A harm is a set that fires when any of its tests fails, so the example change need
-not fail them all. `problems` names what must be settled before the record is relied on (a wide run that did not
-finish, a harm test that is not stable under the reference solution, a harmful patch that fails none of the harm
-tests, stable tests outside the harm names that the harmful patch fails), and the exit code is 1 when it is not
-empty.
+not fail them all. `problems` names what must be settled before the record is relied on (a reference run that is not
+graded with reward 1, which is how a wide command that disturbs the official result shows; a wide run that did not
+finish; a harm test in the task's `harm_node_ids` without a wide name; a harm test whose wide name is not in the
+stable set; a harmful patch that fails none of the harm tests; stable tests outside the harm names that the harmful
+patch fails), and the exit code is 1 when it is not empty.
 
 The record is also where a task carries what is specific to its repository, so that a task from a new source or
 language is measured by the same code: `--test-side`, `--source` and `--settings` set the path rules described

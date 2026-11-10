@@ -295,6 +295,8 @@ class DeepSWEEvaluator:
         self.root = Path(dataset_root)
         self.docker = docker or run_docker
         self.wide_root = wide_root
+        # Records being measured by `wide_check`, by task id: run as they are, never read from or written to disk.
+        self.pending: dict[str, dict] = {}
         self.locks: dict[str, threading.Lock] = {}
         self.guard = threading.Lock()
 
@@ -372,12 +374,15 @@ class DeepSWEEvaluator:
         return outcome | {"logs": "grade/verifier"}
 
     def wide_record(self, task_id: str, image_id: str | None) -> dict | None:
-        """The task's wide run, or None. A record measured on another task image is not run: its stable set would
-        not describe this image."""
+        """The task's wide run, or None. A record a grading must not use (`wide.unusable`: never measured, measured
+        on another image, with problems left, or checked in another year) is refused, not skipped: a grading without
+        the wide run a count expects would look like any other."""
+        if task_id in self.pending:
+            return self.pending[task_id]
         record = wide.load(self.wide_root, task_id)
-        if record is None or record.get("image_id") in (None, image_id):
-            return record
-        raise ValueError(f"the wide record of {task_id} was measured on image {record['image_id']}, not {image_id}")
+        if record is not None and (reason := wide.unusable(record, image_id)):
+            raise ValueError(f"the wide record of {task_id} cannot be used: {reason}")
+        return record
 
     def _verify(
         self, image: str, patch: bytes, destination: Path, resources: dict, timeout: float, record: dict | None = None
@@ -657,6 +662,15 @@ def grade_campaign(
     directories = session_dirs(campaign)
     copies = {d: shared_origin(campaign, d) for d in directories}
     written, kept, backfilled, unreadable = [], [], [], {}
+    # A record that cannot be used stops the grading before any container starts; met inside a grading it would
+    # cost the session its official grade.
+    tasks = {}
+    for directory in directories:
+        result = read_object(directory / "result.json") or {}
+        if isinstance(result.get("task_id"), str) and isinstance(result.get("image"), dict):
+            tasks[result["task_id"], result["image"].get("id")] = None
+    for task_id, image_id in sorted(tasks, key=str):
+        evaluator.wide_record(task_id, image_id)
 
     def backfill(directory: Path, origin: Path | None = None) -> None:
         grade = read_object(directory / "grade.json")
@@ -796,8 +810,9 @@ def wide_check(
     *,
     docker=None,
 ) -> dict:
-    """Measure a task's wide run (see `wide.check`) and write its record to `wide_root`. The record is written before
-    the gradings, with the command only, so that they run it, and again at the end with what was measured."""
+    """Measure a task's wide run (see `wide.check`) and write its record to `wide_root`. The gradings run the record
+    from memory and it is written once, at the end, so a record measured earlier stays whole until its replacement
+    is, and no grading elsewhere meets a half-made one."""
     dataset, wide_root, out = Path(dataset).expanduser().resolve(), Path(wide_root), Path(out)
     evaluator = DeepSWEEvaluator(dataset, docker=docker, wide_root=wide_root)
     task = load_task(dataset, task_id)
@@ -807,10 +822,20 @@ def wide_check(
     out.mkdir(parents=True, exist_ok=False)
     wide_root.mkdir(parents=True, exist_ok=True)
     path = wide_root / f"{task_id}.json"
-    write_atomic(path, record)
+    evaluator.pending[task_id] = record
     gold = dataset / "tasks" / task_id / "solution" / "solution.patch"
+    config = read_object(dataset / "tasks" / task_id / "tests" / "config.json") or {}
     result = wide.check(
-        evaluator, task, image["Id"], out, record, gold, repeats=repeats, harmful=harmful, harm_names=harm_names
+        evaluator,
+        task,
+        image["Id"],
+        out,
+        record,
+        gold,
+        repeats=repeats,
+        harmful=harmful,
+        harm_names=harm_names,
+        harm_ids=config.get("harm_node_ids") or (),
     )
     result["paths"] = task_paths(dataset, task_id, record, docker=docker)
     write_atomic(path, result)
