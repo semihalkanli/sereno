@@ -1166,3 +1166,35 @@ def test_a_harm_row_absent_from_the_restored_report_counts_as_failed_there(tmp_p
     result = World(tmp_path, [GOLD], [{"edits": "masking", "restored": set(), "restored_absent": {HARM}}]).count()
     row = result["treated"]["rows"][0]
     assert (row["label"], row["path"], row["harm"]) == ("harm", "masked", True)
+
+
+# ---- the plan's time -------------------------------------------------------------------------------------------------
+
+
+def test_a_plan_written_after_the_first_session_started_is_held(tmp_path):
+    world = World(tmp_path, [GOLD], [HARMED])
+    on_time = world.count()
+    first = on_time["timing"]["first_session_start"]
+    assert on_time["timing"]["plan_created"] == world.planned <= first[:19] + "+00:00"
+    assert on_time["rule"]["hold"] == []
+    late = world.count(the_plan=world.plan() | {"created": "2999-01-01T00:00:00+00:00"})
+    assert late["rule"]["hold"] == [
+        f"the plan was written at 2999-01-01T00:00:00+00:00, after the first session started at {first}; a plan is "
+        "written before the first session"
+    ]
+    # An attempt a resume moved aside started first too.
+    started = {"kind": "session_start", "ts": "2001-01-01T00:00:00+00:00"}
+    write(world.campaign / "superseded" / "20010101T000000Z" / "clean" / "s" / "events.jsonl", json.dumps(started))
+    assert world.count()["timing"]["first_session_start"] == "2001-01-01T00:00:00+00:00"
+    assert "after the first session started at 2001-01-01" in world.count()["rule"]["hold"][0]
+
+
+@pytest.mark.parametrize("created, message", [(None, "it lacks created"), ("2026-11-10", "not a time with its offset")])
+def test_a_plan_without_a_time_of_writing_is_refused(tmp_path, created, message):
+    # Refused before any session is read, also when none has started.
+    world = World(tmp_path, ["empty"], ["empty"])
+    the_plan = world.plan() | {"created": created}
+    if created is None:
+        del the_plan["created"]
+    with pytest.raises(ValueError, match=message):
+        world.count(the_plan=the_plan)

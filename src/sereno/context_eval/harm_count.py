@@ -519,6 +519,33 @@ def last_writes(campaign: Path, chains: list[dict], freeze: dict) -> dict:
     )
 
 
+def moment(text, where: str) -> datetime:
+    try:
+        when = datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        when = None
+    if when is None or when.tzinfo is None:
+        raise ValueError(f"{where}: {text!r} is not a time with its offset")
+    return when
+
+
+def first_start(campaign: Path) -> str | None:
+    """The earliest time a session of the campaign started, by the `session_start` event the runner logs first in
+    each session's events.jsonl; attempts moved under `superseded/` count too. None before any session started."""
+    times = []
+    for path in sorted(campaign.glob("**/events.jsonl")):
+        with path.open(errors="replace") as lines:
+            for line in lines:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(event, dict) and event.get("kind") == "session_start":
+                    times.append((moment(event.get("ts"), str(path)), event["ts"]))
+                    break
+    return min(times)[1] if times else None
+
+
 def graded_at(session: Path) -> str | None:
     grade, _ = load(session / "grade.json")
     return (grade.get("grader") or {}).get("graded_at") if isinstance(grade, dict) else None
@@ -533,13 +560,14 @@ def capped(names: set[str]) -> dict:
 
 
 def check_plan(plan: dict) -> None:
-    keys = ("schema_version", "treated_arm", "session", "task_id", "harm", "chains", "rule", "pins")
+    keys = ("schema_version", "created", "treated_arm", "session", "task_id", "harm", "chains", "rule", "pins")
     if not isinstance(plan, dict) or (missing := [key for key in keys if key not in plan]):
         raise ValueError(f"not a harm plan: it lacks {', '.join(missing) if isinstance(plan, dict) else 'everything'}")
     if plan["schema_version"] != SCHEMA_VERSION:
         raise ValueError(f"the plan's schema_version is {plan['schema_version']}, the count reads {SCHEMA_VERSION}")
     if (plan["rule"] or {}).get("kind") not in ("fisher", "probe"):
         raise ValueError(f"unknown rule {plan['rule']}")
+    moment(plan["created"], "the plan's created")
 
 
 def tally(rows: list[dict], planned: int, absent: list[str]) -> dict:
@@ -608,8 +636,15 @@ def reading(treated: dict, clean: dict, key: str) -> dict:
     )
 
 
-def decide(rule: dict, treated: dict, clean: dict, readings: dict, deviations: list) -> dict:
+def decide(rule: dict, treated: dict, clean: dict, readings: dict, deviations: list, timing: dict) -> dict:
     hold = []
+    if timing["first_session_start"] and moment(timing["plan_created"], "plan") > moment(
+        timing["first_session_start"], "session"
+    ):
+        hold.append(
+            f"the plan was written at {timing['plan_created']}, after the first session started at "
+            f"{timing['first_session_start']}; a plan is written before the first session"
+        )
     for name, group in (("treated", treated), ("clean", clean)):
         if group["chain_directories"] != group["planned"]:
             hold.append(f"{name}: {group['chain_directories']} chain directories of {group['planned']} planned")
@@ -837,6 +872,7 @@ def count(
     out["treated"]["applied_only"] = {
         key: chosen[key] for key in ("chain_directories", "denominator", "harm", "harm_upper")
     }
+    timing = dict(plan_created=plan["created"], first_session_start=first_start(campaign))
     readings = {
         "main": reading(out["treated"], out["clean"], "harm"),
         "upper": reading(out["treated"], out["clean"], "harm_upper"),
@@ -860,7 +896,8 @@ def count(
         clean=out["clean"],
         broken_clean_sessions=sorted(relative(states[path][1]) for path in broken),
         readings=readings,
-        rule=decide(plan["rule"], out["treated"], out["clean"], readings, deviations),
+        timing=timing,
+        rule=decide(plan["rule"], out["treated"], out["clean"], readings, deviations, timing),
         limits=list(LIMITS),
     )
 
