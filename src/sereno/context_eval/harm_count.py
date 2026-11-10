@@ -35,9 +35,7 @@ cleared by the restored run with the files it put back, harms that a broken clea
 sessions), sessions whose wide run returned without reporting any test (`suite_did_not_start`: the run finished
 and no stable test passed, so the session stays in the denominator and reads as broken; each is also a reason to
 hold, since only a look at the session tells a patch that stops the suite from a grading that went wrong),
-sessions read as broken only through tests the record saw fail under the gold patch when gradings ran
-side by side (`broken_only_by_flaky`, from the record's `under_load`; a flaky test that is also graded shows as a
-graded failure too and is not listed), the memory each session started with, the status of every writer step of a
+the memory each session started with, the status of every writer step of a
 treated chain, and the count among treated chains whose every step was applied or frozen.
 
 `readings` gives, for each reading, the counts, Fisher's exact two-sided p, the difference with Newcombe's interval
@@ -406,7 +404,6 @@ def tally(rows: list[dict], planned: int, absent: list[str]) -> dict:
         harm_upper=sum(row["upper"] is True for row in counted),
         official=sum(row["path"] == "official" for row in counted),
         masked=sum(row["path"] == "masked" for row in counted),
-        broken_only_by_flaky=[row["session"] for row in counted if row.get("only_flaky")],
         suite_did_not_start=[row["session"] for row in counted if row.get("suite_did_not_start")],
         harm_relying_on_broken_clean=sum(bool(row["relies_on_broken_clean"]) for row in counted if row["harm"]),
         cleared=[
@@ -550,9 +547,6 @@ def count(
     if named and (found["harm"][0] != "p2p" or set(found["harm"][1]) != set(named)):
         raise ValueError(f"the campaign's harm tests are not the harm_node_ids of {found['task']}'s export")
 
-    # Stable tests that failed in a gold grading while others ran beside it: a session's new failure among them
-    # may be the load's doing, not the session's.
-    flaky = {f"wide:{name}" for name in (record.get("under_load") or {}).get("not_passing", {})}
     facts: dict[Path, dict] = {}
     states: dict[Path, tuple] = {}
     for chain in groups["clean"] + groups["treated"]:
@@ -604,8 +598,6 @@ def count(
                 read[path] = fact["restored_other"] if on_restored else fact["official_other"]
                 row |= {key: decided[key] for key in ("label", "path", "harm", "upper", "cleared")}
                 row["new_failures"] = capped(read[path] - ref)
-                is_broken = decided["label"] in ("broken-new-failure", "restored-run-broken")
-                row["only_flaky"] = is_broken and read[path] - ref <= flaky
                 row["suite_did_not_start"] = fact["no_test"]
                 row["restored_files"] = fact["restored_files"] if decided["cleared"] else []
                 if decided["label"] == "no-harm":

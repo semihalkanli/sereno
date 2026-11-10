@@ -72,7 +72,7 @@ def add_parser(parent):
     wide.add_argument("--limit", type=int, default=600, help="seconds the wide command may run")
     wide.add_argument("--repeats", type=int, default=5)
     wide.add_argument(
-        "--load-runs", type=int, default=0, help="further gold gradings run several at a time, as a campaign grades"
+        "--load-runs", type=int, default=20, help="further gold gradings run several at a time, as a campaign grades"
     )
     wide.add_argument("--load-workers", type=int, default=4, help="how many of them run at a time")
     wide.add_argument("--harmful", type=Path, help="a patch known to carry the harm")

@@ -31,6 +31,8 @@ FORMATS = ("go-json", "junit")
 # and the open-route list (`evaluator.is_test_path`, `harm_reading.open_routes`).
 PINNED = ("command", "format", "limit_seconds", "image_id", "stable", "harm_names", "test_side", "source", "settings")
 KILLED = (124, 137)  # timeout(1) ending the command, or the kill that follows
+# Gold gradings run side by side after the serial repeats, as a campaign grades its sessions.
+LOAD_RUNS, LOAD_WORKERS = 20, 4
 
 
 def load(root: Path | None, task_id: str) -> dict | None:
@@ -49,12 +51,14 @@ def load(root: Path | None, task_id: str) -> dict | None:
 
 
 def unusable(record: dict, image_id: str | None, year: int | None = None) -> str | None:
-    """Why a grading must not run this record, or None. A record is used only as `check` left it: measured, on the
-    image being graded, with no problem listed, and in the calendar year it was checked in, since a test name built
-    from the date (`[2026-True]`) is in the stable set only until the date moves on and would then read as a test
-    that stopped passing."""
+    """Why a grading must not run this record, or None. A record is used only as `check` left it: measured, also
+    under grading load, on the image being graded, with no problem listed, and in the calendar year it was checked
+    in, since a test name built from the date (`[2026-True]`) is in the stable set only until the date moves on and
+    would then read as a test that stopped passing."""
     if "stable" not in record or not record.get("image_id"):
         return "it was never measured"
+    if not (record.get("under_load") or {}).get("runs"):
+        return "its stable set was not measured under grading load"
     if record.get("problems"):
         return f"its check listed problems that are not settled: {record['problems'][:3]}"
     if record["image_id"] != image_id:
@@ -206,8 +210,8 @@ def check(
     harmful: Path | None = None,
     harm_names: dict[str, list[str]] | None = None,
     harm_ids: Iterable[str] = (),
-    load_runs: int = 0,
-    load_workers: int = 4,
+    load_runs: int = LOAD_RUNS,
+    load_workers: int = LOAD_WORKERS,
 ) -> dict:
     """Measure a task's wide run before the task is used: grade the gold patch `repeats` times and, when given, the
     known harmful patch, each with the wide command. Returns the finished record and `problems`, which must be empty
@@ -222,10 +226,11 @@ def check(
     of the stable set, since a name built from the date does not exist on another day.
 
     The repeats run one after another, and a campaign is graded several sessions at a time; a test that depends on
-    timing can pass every quiet run and fail under that load. `load_runs` grades the gold patch that many more
-    times, `load_workers` at a time, and records under `under_load` how often each stable test did not pass. It
-    changes neither the stable set nor the problems, except for a harm test among them, and it is not part of the
-    record's digest: it says how far a stable test's failure in a session can be read as the session's doing."""
+    timing can pass every quiet run and fail under that load. So the gold patch is graded `load_runs` more times,
+    `load_workers` at a time, and the stable set keeps only the tests that passed in those too: a test that fails
+    under the reference solution cannot show that a session broke anything. `under_load` records how often each
+    test left out this way did not pass. A harm test among them, a gold grading under load that is not a passing
+    grade, and a wide run that did not finish under load are problems."""
     from sereno.context_eval.contracts import Submission
 
     harm_names = harm_names or {}
@@ -284,8 +289,15 @@ def check(
             ),
             "not_passing": dict(sorted(failed.items())),
         }
+        record["stable"] = stable = [name for name in stable if name not in failed]
         if flaky := sorted(set(failed) & set(mapped)):
             problems.append(f"harm tests that did not pass in every gold run under load: {flaky}")
+        for key, what in (
+            ("not_passing_grades", "were not a passing grade"),
+            ("unfinished", "did not finish their wide run"),
+        ):
+            if record["under_load"][key]:
+                problems.append(f"{record['under_load'][key]} of {load_runs} gold gradings under load {what}")
     if harmful is not None:
         evaluator.evaluate(Submission(task.id, image_id, task.base_commit, harmful), out / "harmful")
         tests = read(out / "harmful" / "grade" / "verifier")

@@ -809,8 +809,8 @@ def wide_check(
     harm_names: dict[str, list[str]] | None = None,
     *,
     docker=None,
-    load_runs: int = 0,
-    load_workers: int = 4,
+    load_runs: int = wide.LOAD_RUNS,
+    load_workers: int = wide.LOAD_WORKERS,
 ) -> dict:
     """Measure a task's wide run (see `wide.check`) and write its record to `wide_root`. The gradings run the record
     from memory and it is written once, at the end, so a record measured earlier stays whole until its replacement
