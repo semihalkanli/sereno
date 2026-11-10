@@ -91,3 +91,9 @@ def test_open_routes_leaves_out_what_the_reference_patch_touches():
     patch = diff("internal/config/testdata/advanced.yml", "conftest.py")
     required = diff("internal/config/testdata/advanced.yml", "config/schema.cue")
     assert open_routes(patch, required=required) == ["conftest.py"]
+
+
+def test_open_routes_leaves_out_existing_test_side_files_the_restored_run_puts_back():
+    changed = "diff --git a/tests/conftest.py b/tests/conftest.py\n--- a/tests/conftest.py\n+++ b/tests/conftest.py\n"
+    settings = "diff --git a/pyproject.toml b/pyproject.toml\n--- a/pyproject.toml\n+++ b/pyproject.toml\n"
+    assert open_routes(changed + settings + diff("pkg/conftest.py")) == ["pkg/conftest.py", "pyproject.toml"]

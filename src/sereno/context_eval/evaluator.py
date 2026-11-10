@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
+from sereno.context_eval import wide
 from sereno.context_eval.contracts import Submission
 from sereno.context_eval.dataset import load_task
 from sereno.context_eval.engine import write_atomic
@@ -223,9 +224,10 @@ def edit_status(grade) -> str | None:
 class DeepSWEEvaluator:
     """EvaluatorAdapter for DeepSWE. Every Docker call goes through `docker(args, timeout)`, `run_docker` by default."""
 
-    def __init__(self, dataset_root: Path, *, docker=None):
+    def __init__(self, dataset_root: Path, *, docker=None, wide_root: Path | None = None):
         self.root = Path(dataset_root)
         self.docker = docker or run_docker
+        self.wide_root = wide_root
         self.locks: dict[str, threading.Lock] = {}
         self.guard = threading.Lock()
 
@@ -289,11 +291,25 @@ class DeepSWEEvaluator:
         if base["Id"] != submission.image_id:
             return {"error": f"verifier base image {reference} is {base['Id']}, not the graded {submission.image_id}"}
         grade["verifier"] = self.verifier_image(task.id, base, float(resources.get("build_timeout_sec", 1800)))
-        outcome = self._verify(grade["verifier"]["id"], patch, output_dir / "grade" / "verifier", resources, timeout)
+        destination = output_dir / "grade" / "verifier"
+        record = self.wide_record(task.id, submission.image_id)
+        outcome = self._verify(grade["verifier"]["id"], patch, destination, resources, timeout, record)
         return outcome | {"logs": "grade/verifier"}
 
-    def _verify(self, image: str, patch: bytes, destination: Path, resources: dict, timeout: float) -> dict:
-        """One verifier run on `patch`, its logs copied to `destination`; the outcome as grade fields."""
+    def wide_record(self, task_id: str, image_id: str | None) -> dict | None:
+        """The task's wide run, or None. A record measured on another task image is not run: its stable set would
+        not describe this image."""
+        record = wide.load(self.wide_root, task_id)
+        if record is None or record.get("image_id") in (None, image_id):
+            return record
+        raise ValueError(f"the wide record of {task_id} was measured on image {record['image_id']}, not {image_id}")
+
+    def _verify(
+        self, image: str, patch: bytes, destination: Path, resources: dict, timeout: float, record: dict | None = None
+    ) -> dict:
+        """One verifier run on `patch`, its logs copied to `destination`; the outcome as grade fields. With a wide
+        `record` the wide command runs after the tests on the same tree, under its own limit, and its results go to
+        `destination/wide`; it never changes the outcome."""
         if destination.exists():
             shutil.rmtree(destination)
         # Not TemporaryDirectory: on Python 3.12 its cleanup raises PermissionError on root-owned files even with
@@ -303,11 +319,13 @@ class DeepSWEEvaluator:
             (logs / "artifacts").mkdir()
             (logs / "artifacts" / "model.patch").write_bytes(patch)
             name = f"sereno-grade-{uuid.uuid4().hex[:16]}"
-            command = f"bash /tests/test.sh; status=$?; chown -R {os.getuid()}:{os.getgid()} /logs; exit $status"
+            extra = wide.snippet(record) if record else ""
+            command = f"bash /tests/test.sh; status=$?; {extra}chown -R {os.getuid()}:{os.getgid()} /logs; exit $status"
+            allowed = timeout + (float(record["limit_seconds"]) + 60 if record else 0)
             args = ["run", "--rm", "--name", name, "--network", "none", "--cpus", str(resources.get("cpus", 2))]
             args += ["--memory", f"{resources.get('memory_mb', 8192)}m", "-v", f"{logs}:/logs"]
             try:
-                result = self.docker([*args, image, "bash", "-c", command], timeout)
+                result = self.docker([*args, image, "bash", "-c", command], allowed)
                 stdout, timed_out = (result.stdout or "") + (result.stderr or ""), False
             except subprocess.TimeoutExpired as error:
                 stdout, timed_out = text(error.stdout) + text(error.stderr), True
@@ -327,6 +345,10 @@ class DeepSWEEvaluator:
                 shutil.copytree(verifier, destination, ignore=special_files)
             destination.mkdir(parents=True, exist_ok=True)
             (destination / "test-stdout.txt").write_text(stdout)
+            if record:
+                wide.collect(logs / "wide", destination / "wide", record)
+                # A container stopped during the wide command had finished its tests: the reward stands.
+                timed_out = timed_out and not (destination / "reward.json").exists()
             if timed_out:
                 # Strict success counts a timeout as a failure, so the partial score does too.
                 error = f"verifier exceeded {timeout:g} s"
@@ -372,7 +394,8 @@ class DeepSWEEvaluator:
             if self.inspect(image) is None:
                 return record("unknown", f"verifier image {image} is not available locally")
             resources = self.verifier_spec(task_id).get("environment", {})
-            outcome = self._verify(image, restored, destination, resources, grade["timeout_seconds"])
+            wide_run = self.wide_record(task_id, grade.get("task_image_id"))
+            outcome = self._verify(image, restored, destination, resources, grade["timeout_seconds"], wide_run)
             logs = {"restored_logs": "grade/restored"}
             if outcome.get("status") != "graded":
                 reason = f"restored run: {outcome.get('error') or outcome.get('status')}"
@@ -494,6 +517,7 @@ def grade_campaign(
     force: bool = False,
     test_edits_only: bool = False,
     docker=None,
+    wide_root: Path | None = None,
 ):
     """Grade every complete session. `test_edits_only` adds only the second pass to existing grades that lack it or
     whose second pass is `unknown`."""
@@ -502,7 +526,7 @@ def grade_campaign(
     campaign = Path(campaign).resolve()
     if dataset is None:
         dataset = Path(json.loads((campaign / "manifest.json").read_text())["config"]["dataset_root"])
-    evaluator = DeepSWEEvaluator(Path(dataset).expanduser().resolve(), docker=docker)
+    evaluator = DeepSWEEvaluator(Path(dataset).expanduser().resolve(), docker=docker, wide_root=wide_root)
     directories = session_dirs(campaign)
     copies = {d: shared_origin(campaign, d) for d in directories}
     written, kept, backfilled, unreadable = [], [], [], {}
@@ -631,3 +655,35 @@ def grade_check(dataset: Path, task_ids: list[str], *, out: Path | None = None, 
         for (task_id, kind, _), grade in zip(jobs, grades, strict=True)
     ]
     return {"out": str(out.resolve()), "passed": all(r["ok"] for r in rows), "results": rows}
+
+
+def wide_check(
+    dataset: Path,
+    task_id: str,
+    wide_root: Path,
+    out: Path,
+    record: dict,
+    repeats: int = 5,
+    harmful: Path | None = None,
+    harm_names: dict[str, list[str]] | None = None,
+    *,
+    docker=None,
+) -> dict:
+    """Measure a task's wide run (see `wide.check`) and write its record to `wide_root`. The record is written before
+    the gradings, with the command only, so that they run it, and again at the end with what was measured."""
+    dataset, wide_root, out = Path(dataset).expanduser().resolve(), Path(wide_root), Path(out)
+    evaluator = DeepSWEEvaluator(dataset, docker=docker, wide_root=wide_root)
+    task = load_task(dataset, task_id)
+    image = evaluator.inspect(task.image)
+    if image is None:
+        raise ValueError(f"task image {task.image} is not available locally")
+    out.mkdir(parents=True, exist_ok=False)
+    wide_root.mkdir(parents=True, exist_ok=True)
+    path = wide_root / f"{task_id}.json"
+    write_atomic(path, record)
+    gold = dataset / "tasks" / task_id / "solution" / "solution.patch"
+    result = wide.check(
+        evaluator, task, image["Id"], out, record, gold, repeats=repeats, harmful=harmful, harm_names=harm_names
+    )
+    write_atomic(path, result)
+    return result | {"record": str(path.resolve()), "stable": len(result["stable"]), "out": str(out.resolve())}
