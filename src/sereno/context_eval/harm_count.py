@@ -54,17 +54,31 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from sereno.context_eval import wide
+from sereno.context_eval.adaptive import FAILED, adaptive_manifest
+from sereno.context_eval.config import fingerprint
 from sereno.context_eval.counting import HARM_CHECK, harm_node, session_failures, session_state, shared_origin
 from sereno.context_eval.engine import MEMORY_READ
 from sereno.context_eval.evaluator import CTRF_ROW, ctrf_passes
 from sereno.context_eval.harm_reading import open_routes, read_harm
-from sereno.context_eval.metrics import graded_rows, load
+from sereno.context_eval.memory import INSTRUCTIONS
+from sereno.context_eval.metrics import adaptive_treatment, graded_rows, load, pooled_config
+from sereno.context_eval.schema import Adaptive
 from sereno.context_eval.stats import fisher_exact, newcombe
 
-SCHEMA_VERSION = "1"
+# 2: the config pin also covers the treatment and the start (2026-11-10).
+SCHEMA_VERSION = "2"
 HERE = Path(__file__).resolve().parent
 # The modules a session's label and the rule's result pass through.
-CODE = ("counting.py", "evaluator.py", "harm_count.py", "harm_reading.py", "metrics.py", "stats.py", "wide.py")
+CODE = (
+    "adaptive.py",
+    "counting.py",
+    "evaluator.py",
+    "harm_count.py",
+    "harm_reading.py",
+    "metrics.py",
+    "stats.py",
+    "wide.py",
+)
 IN_DENOMINATOR = ("measured", "apply-failed")
 GRADE_STATES = {"apply_failed": "apply-failed", "verifier_timeout": "verifier-timeout", "grader_error": "grader-error"}
 RESTORED_READ = ("consistent", "masking")
@@ -99,10 +113,36 @@ def harm_check(config: dict) -> dict:
     return found[0]
 
 
-def config_sha256(config: dict) -> str:
-    """The hash of the part of an experiment config the count reads; the same for the loaded config file and the
-    manifest's copy of it."""
+def contents(config: dict) -> dict:
+    """What the files an experiment config names hold, read from disk in the form the runner records them in the
+    manifest when a campaign starts: the model config's text, the memory instructions' sha256 (the default text's
+    without a file) and the adaptive program with the sha256 of every word that names a file."""
+    model = config.get("model_config_file")
+    instructions = (config.get("memory") or {}).get("instructions_file")
+    adaptive = config.get("adaptive")
+    return {
+        "model_config": Path(model).read_text() if model else None,
+        "memory_instructions_sha256": fingerprint(Path(instructions).read_text() if instructions else INSTRUCTIONS),
+        "adaptive": adaptive_manifest(Adaptive.model_validate(adaptive)) if adaptive else None,
+    }
+
+
+def recorded(manifest: dict) -> dict:
+    """`contents` as a campaign's manifest recorded them when it started."""
+    return {key: manifest.get(key) for key in ("model_config", "memory_instructions_sha256", "adaptive")}
+
+
+def config_sha256(config: dict, files: dict | None = None) -> str:
+    """The hash of what a count's meaning rests on in an experiment config (as the config loader dumps it, which is
+    the manifest's copy): the part the count reads (arms, targets, sessions, repeats, the harm check) and the
+    treatment and start of both groups. These are every field two pooled campaigns must share (`pooled_config`:
+    the agent and its model config by content, the sessions, the memory seed and instructions by content, the guard
+    and the rest), the variants, and the adaptive program as two adaptive campaigns must share it
+    (`adaptive_treatment`: its files by content, its limits, and the session it is frozen from). `files` holds what
+    the config's files held (`recorded` from a manifest); without it they are read from disk (`contents`)."""
     check = harm_check(config)
+    files = contents(config) if files is None else files
+    program = (files.get("adaptive") or {}).get("program_sha256") or {}
     return canonical_sha256(
         {
             "arms": list(config["arms"]),
@@ -110,6 +150,9 @@ def config_sha256(config: dict) -> str:
             "sessions": [{"id": s["id"], "task_id": s.get("task_id")} for s in config["sessions"]],
             "repeats": config["repeats"],
             "harm_check": {"regex": check.get("regex"), "sessions": list(check.get("sessions") or [])},
+            "treatment": pooled_config({"config": config} | files),
+            "variants": config.get("variants"),
+            "adaptive": adaptive_treatment(config.get("adaptive"), program),
         }
     )
 
@@ -360,6 +403,68 @@ def transitions(chain: Path) -> list[dict]:
     return out
 
 
+def freeze_of(config: dict, found: dict) -> dict | None:
+    """The freeze of an adaptive config, None without one: the session it starts at, whether the read session is
+    frozen, and the last step the program wrote before the read session (the step before the first frozen session,
+    or the read session's own when the freeze comes after it). Step folders are named by the position of the session
+    they precede, `001` before the first."""
+    start = (config.get("adaptive") or {}).get("freeze_from")
+    if not start:
+        return None
+    first = [session["id"] for session in found["config_sessions"]].index(start)
+    return dict(
+        freeze_from=start,
+        read_session_frozen=first <= found["index"],
+        read_step=f"{found['index'] + 1:03d}",
+        last_write_step=f"{min(found['index'], first - 1) + 1:03d}",
+    )
+
+
+def step_status(chain: Path, step: str) -> str:
+    """How a writer step of a treated chain ended: its record in place, else the last one moved under `stopped/`,
+    else `missing`."""
+    root = chain / "transitions"
+    for path in [root / step, *sorted(root.glob(f"stopped/*/{step}"), reverse=True)]:
+        record, _ = load(path / "transition.json")
+        if isinstance(record, dict) and isinstance(record.get("status"), str):
+            return record["status"]
+    return "missing"
+
+
+def check_frozen(campaign: Path, groups: dict, freeze: dict | None) -> None:
+    """A plan whose read session is frozen counts only a run that froze it: in every treated chain whose read
+    session started, the step before it must be recorded in place as `frozen`."""
+    if freeze is None or not freeze["read_session_frozen"]:
+        return
+    for chain in groups["treated"]:
+        record, _ = load(chain["chain"] / "transitions" / freeze["read_step"] / "transition.json")
+        status = record.get("status") if isinstance(record, dict) else None
+        if chain["sessions"].get(int(freeze["read_step"]) - 1) is not None and status != "frozen":
+            raise ValueError(
+                f"{chain['chain'].relative_to(campaign)}: the step before the read session is {status or 'missing'}, "
+                f"not frozen; the run did not freeze from {freeze['freeze_from']} as the plan says"
+            )
+
+
+def last_writes(campaign: Path, chains: list[dict], freeze: dict) -> dict:
+    """How the program's last write before the read session ended in each treated chain: counts by status, and the
+    chains of every status other than `applied`."""
+    statuses = {
+        str(chain["chain"].relative_to(campaign)): step_status(chain["chain"], freeze["last_write_step"])
+        for chain in chains
+    }
+    listed: dict[str, list[str]] = {}
+    for path, status in sorted(statuses.items()):
+        if status != "applied":
+            listed.setdefault(status, []).append(path)
+    return dict(
+        step=freeze["last_write_step"],
+        statuses=dict(sorted(Counter(statuses.values()).items())),
+        chains=dict(sorted(listed.items())),
+        program_failed=sorted(path for path, status in statuses.items() if status in FAILED),
+    )
+
+
 def graded_at(session: Path) -> str | None:
     grade, _ = load(session / "grade.json")
     return (grade.get("grader") or {}).get("graded_at") if isinstance(grade, dict) else None
@@ -460,6 +565,12 @@ def decide(rule: dict, treated: dict, clean: dict, readings: dict, deviations: l
                 f"{name}: {len(group['suite_did_not_start'])} session(s) whose whole suite reported no test are "
                 "counted as broken; check by hand that the patch, not the grading, stopped the suite"
             )
+    if failed := (treated.get("last_write") or {}).get("program_failed"):
+        hold.append(
+            f"treated: the program's last write before the read session ended in a program failure "
+            f"({', '.join(sorted(FAILED))}) in {len(failed)} chain(s); look at those chains (last_write) before the "
+            "result is read"
+        )
     if rule["kind"] == "fisher":
         claim = robust = None
         if not empty:
@@ -502,7 +613,7 @@ def count(
     found = design(config)
     record = wide.load(wide_root, plan["task_id"])
     hashes = dict(
-        config_sha256=config_sha256(config),
+        config_sha256=config_sha256(config, recorded(manifest)),
         wide_record_sha256=wide.digest(record) if record is not None else None,
         count_code_sha256=code_sha256(),
     )
@@ -535,6 +646,8 @@ def count(
     check_arms(arms, plan["treated_arm"], str(campaign))
     groups = chains_of(campaign, plan["treated_arm"], found)
     check_tasks(campaign, groups, found)
+    freeze = freeze_of(config, found)
+    check_frozen(campaign, groups, freeze)
     if dataset is None and not config.get("dataset_root"):
         raise ValueError(f"{campaign}: no dataset given and the manifest has no dataset_root")
     solution = Path(dataset or config["dataset_root"]) / "tasks" / found["task"] / "solution" / "solution.patch"
@@ -630,6 +743,8 @@ def count(
         if row["transitions"]
         and all(step["status"] in APPLIED and not step["step"].startswith("stopped/") for step in row["transitions"])
     ]
+    if freeze is not None:
+        out["treated"]["last_write"] = last_writes(campaign, groups["treated"], freeze)
     chosen = tally(applied, len(applied), [])
     out["treated"]["applied_only"] = {
         key: chosen[key] for key in ("chain_directories", "denominator", "harm", "harm_upper")
@@ -647,6 +762,7 @@ def count(
         task=found["task"],
         session=found["session"],
         harm_nodes=[f"{found['harm'][0]}:{node}" for node in found["harm"][1]],
+        freeze=freeze,
         wide=dict(
             stable=len(record["stable"]),
             harm_names=len(record["harm_names"]),
