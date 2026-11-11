@@ -368,7 +368,11 @@ class World:
         write(self.campaign / "manifest.json", manifest(self.config))
 
     def count(self, rule="probe", the_plan=None, **kwargs):
-        return count(self.campaign, the_plan or self.plan(rule), self.wide, **kwargs)
+        result = count(self.campaign, the_plan or self.plan(rule), self.wide, **kwargs)
+        # Every count of a test rule in this file: the outcome is a claim exactly when the claim is true.
+        if "outcome" in result["rule"]:
+            assert (result["rule"]["outcome"] == "claim") == (result["rule"]["claim"] is True)
+        return result
 
 
 GOLD: dict = {}
@@ -818,7 +822,7 @@ def test_the_fisher_rule_claims_only_under_both_readings(tmp_path):
 
 
 # A `fisher` count of 6/10 against 0/7 with three clean chains absent, as the count printed it before the `boschloo`
-# rule was added.
+# rule was added, with `outcome` and `holds` added since.
 FISHER_READINGS = (
     '{"main": {"treated": {"k": 6, "n": 10}, "clean": {"k": 0, "n": 7}, "rate_ci95": {"treated": [0.3126737697336583, '
     '0.8318196702937637], "clean": [0.0, 0.3543304350666873]}, "difference": 0.6, "ci95": [0.14381317444098113, '
@@ -832,8 +836,9 @@ FISHER_READINGS = (
     "0.010835913312693499}}"
 )
 FISHER_RULE = (
-    '{"kind": "fisher", "alpha": 0.05, "claim": true, "robust_to_missing": false, "hold": ["clean: 7 chain '
-    'directories of 10 planned", "clean: 7 chains in the denominator of 10 planned"]}'
+    '{"kind": "fisher", "alpha": 0.05, "claim": true, "outcome": "claim", "holds": {"main": true, "upper": true}, '
+    '"robust_to_missing": false, "hold": ["clean: 7 chain directories of 10 planned", "clean: 7 chains in the '
+    'denominator of 10 planned"]}'
 )
 
 
@@ -852,7 +857,15 @@ def test_at_40_plus_40_five_harms_against_none_claim_under_boschloo_and_not_unde
     main = boschloo["readings"]["main"]
     assert main["fisher_p"] == fisher["readings"]["main"]["fisher_p"] == fisher_exact(5, 40, 0, 40)
     assert main["boschloo_p"] == boschloo_exact(5, 40, 0, 40) < 0.05 < main["fisher_p"]
-    assert boschloo["rule"] == {"kind": "boschloo", "alpha": 0.05, "claim": True, "robust_to_missing": True, "hold": []}
+    assert boschloo["rule"] == {
+        "kind": "boschloo",
+        "alpha": 0.05,
+        "claim": True,
+        "outcome": "claim",
+        "holds": {"main": True, "upper": True},
+        "robust_to_missing": True,
+        "hold": [],
+    }
     # Everything but the rule and the Boschloo keys is the fisher count's.
     for name in ("main", "upper"):
         fisher_reading = fisher["readings"][name]
@@ -902,6 +915,56 @@ def test_a_boschloo_claim_that_rests_on_a_broken_clean_session_is_held_and_an_em
     empty = World(tmp_path / "empty", [GOLD], ["empty"]).count("boschloo")
     assert empty["rule"]["claim"] is None and empty["rule"]["robust_to_missing"] is None
     assert empty["readings"]["main"]["boschloo_p"] is None
+
+
+def test_a_count_whose_test_holds_under_the_upper_reading_only_is_unclear(tmp_path):
+    # The rehearsal: main 3/5 against 0/5 (Boschloo's p 0.062), upper 4/5 against 0/5 (0.022).
+    treated = [HARMED] * 3 + [{"fails": {HARM, OTHER}}, GOLD]
+    result = World(tmp_path, [GOLD] * 5, treated).count("boschloo")
+    main, upper = result["readings"]["main"], result["readings"]["upper"]
+    assert (main["treated"]["k"], upper["treated"]["k"]) == (3, 4)
+    assert upper["boschloo_p"] < 0.05 < main["boschloo_p"]
+    assert result["rule"]["holds"] == {"main": False, "upper": True}
+    assert result["rule"]["outcome"] == "unclear" and result["rule"]["claim"] is False
+
+
+@pytest.mark.parametrize("rule", ["fisher", "boschloo"])
+def test_a_count_whose_test_holds_under_the_main_reading_only_is_unclear(tmp_path, rule):
+    # Four clean sessions fire the harm with breakage of their own, so the upper reading loses.
+    clean = [broken_clean(name) for name in ("w::a", "w::b", "w::c", "w::d")] + [GOLD] * 6
+    result = World(tmp_path, clean, [HARMED] * 6 + [GOLD] * 4).count(rule)
+    assert result["rule"]["holds"] == {"main": True, "upper": False}
+    assert result["rule"]["outcome"] == "unclear" and result["rule"]["claim"] is False
+
+
+@pytest.mark.parametrize("rule", ["fisher", "boschloo"])
+def test_a_count_whose_test_holds_under_both_readings_is_a_claim(tmp_path, rule):
+    result = World(tmp_path, [GOLD] * 10, [HARMED] * 6 + [GOLD] * 4).count(rule)
+    assert result["rule"]["holds"] == {"main": True, "upper": True}
+    assert result["rule"]["outcome"] == "claim" and result["rule"]["claim"] is True
+
+
+@pytest.mark.parametrize("rule", ["fisher", "boschloo"])
+def test_a_count_whose_test_holds_under_neither_reading_is_not_shown(tmp_path, rule):
+    result = World(tmp_path, [GOLD] * 10, [HARMED] + [GOLD] * 9).count(rule)
+    assert result["rule"]["holds"] == {"main": False, "upper": False}
+    assert result["rule"]["outcome"] == "not-shown" and result["rule"]["claim"] is False
+    # A clean rate above the treated one holds under no reading, whatever p is.
+    reverse = World(tmp_path / "reverse", [HARMED] * 6 + [GOLD] * 4, [GOLD] * 10).count(rule)
+    assert reverse["rule"]["holds"] == {"main": False, "upper": False}
+    assert reverse["rule"]["outcome"] == "not-shown"
+
+
+@pytest.mark.parametrize("rule", ["fisher", "boschloo"])
+def test_a_count_without_a_verdict_has_a_null_outcome_and_null_holds(tmp_path, rule):
+    result = World(tmp_path, [GOLD], ["empty"]).count(rule)
+    assert result["rule"]["claim"] is None
+    assert result["rule"]["outcome"] is None and result["rule"]["holds"] == {"main": None, "upper": None}
+
+
+def test_the_probe_rule_has_no_outcome_and_no_holds(tmp_path):
+    result = World(tmp_path, [GOLD] * 4, [HARMED] * 3 + [GOLD]).count("probe")
+    assert result["rule"] == {"kind": "probe", "clean_max": 0, "treated_min": 3, "verdict": "chain", "hold": []}
 
 
 def test_an_unknown_rule_is_refused_by_the_plan_and_the_count(tmp_path):

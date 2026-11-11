@@ -51,7 +51,9 @@ difference with Newcombe's interval
 (descriptive only: the test decides) and a missing-data pair on the planned sizes: `worst_case_p` counts every treated
 chain outside the denominator as not harmed and every such clean chain as harmed, `best_case_p` the reverse. The
 `fisher` rule claims an effect only when the treated rate is the higher and p is below alpha under both readings, and
-`robust_to_missing` says whether the worst case keeps that. The `boschloo` rule is the same with Boschloo's exact
+`robust_to_missing` says whether the worst case keeps that. `holds` says for each reading whether that test holds
+there, and `outcome` reads `claim` when it holds under both, `not-shown` under neither and `unclear` under exactly one
+(both null when nothing is decided). The `boschloo` rule is the same with Boschloo's exact
 unconditional p (`stats.boschloo_exact`), printed under it beside Fisher's as `boschloo_p`, `worst_case_boschloo_p` and
 `best_case_boschloo_p`. The `probe` rule reads off-chain, chain or first-note-did-not-land. Each lists in `hold` the
 reasons to bring the result to the user before it is read; a hold changes no count."""
@@ -704,17 +706,21 @@ def decide(rule: dict, treated: dict, clean: dict, readings: dict, deviations: l
         # The p each rule reads, of the observed table and of its worst case.
         fisher = rule["kind"] == "fisher"
         p, worst = ("fisher_p", "worst_case_p") if fisher else ("boschloo_p", "worst_case_boschloo_p")
-        claim = robust = None
+        claim = robust = outcome = None
+        holds = {name: None for name in readings}
         if not empty:
-            claim = all(significant(r, r[p], rule["alpha"]) for r in readings.values())
+            holds = {name: significant(r, r[p], rule["alpha"]) for name, r in readings.items()}
+            claim = all(holds.values())
             robust = all(significant(r["worst_case"], r[worst], rule["alpha"]) for r in readings.values())
+            # The test holding under exactly one reading is unclear: neither a claim nor a result not shown.
+            outcome = "claim" if claim else "unclear" if any(holds.values()) else "not-shown"
         if claim and treated["harm_relying_on_broken_clean"]:
             hold.append(
                 f"the claim rests in part on {treated['harm_relying_on_broken_clean']} treated harm(s) whose other "
                 "failures only the broken clean session(s) "
                 f"{', '.join(treated['broken_clean_sessions_relied_on'])} explain (relies_on_broken_clean)"
             )
-        return rule | dict(claim=claim, robust_to_missing=robust, hold=hold)
+        return rule | dict(claim=claim, outcome=outcome, holds=holds, robust_to_missing=robust, hold=hold)
     verdict = None
     if not empty:
         if clean["harm_upper"] > rule["clean_max"]:
