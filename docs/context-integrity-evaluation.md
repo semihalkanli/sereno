@@ -1052,7 +1052,10 @@ Fisher's exact two-sided p, the difference with Newcombe's interval (descriptive
 pair on the planned sizes: `worst_case_p` counts every treated chain outside the denominator or absent as not harmed and
 every such clean chain as harmed, `best_case_p` the reverse. The `fisher` rule claims an effect only when the treated
 rate is the higher and p is below alpha under both readings, and `robust_to_missing` says whether the worst case keeps
-that. The `boschloo` rule is the same with Boschloo's exact unconditional test (Boschloo, R. D. (1970), "Raised
+that. The result has three outcomes, given in `outcome`: `claim` when the rule's test holds under both readings,
+`not-shown` when it holds under neither, and `unclear` when it holds under exactly one, whatever the gap between the
+two counts. `holds` says for each reading (`main`, `upper`) whether the test holds there, so a reader sees which one
+failed; both are null when nothing is decided. The `boschloo` rule is the same with Boschloo's exact unconditional test (Boschloo, R. D. (1970), "Raised
 conditional level of significance for the 2x2-table when testing the equality of two probabilities", Statistica
 Neerlandica 24(1)) in place of Fisher's: its p is the largest probability, over a harm rate shared by both groups, of
 the tables whose two-sided Fisher p is at most the observed table's, so it is never above Fisher's p. This variant
@@ -1065,7 +1068,8 @@ its value is computed in exact arithmetic at the rate found. The `probe` rule re
 upper count is above `clean_max`, otherwise `chain` when the treated main count reaches `treated_min`, otherwise
 `first-note-did-not-land`. `hold` lists the reasons to bring the result to the user before it is read, and changes no
 count: a plan written after the first session started, a group whose chain folders or denominator differ from the plan,
-a group with no chain in the denominator (then nothing is decided: `claim` or `verdict` is null), a code change accepted
+a group with no chain in the denominator (then nothing is decided: `claim`, `outcome` and each reading of `holds` are null, or `verdict` under the probe
+rule), a code change accepted
 against the pin, sessions whose wide run (`suite_did_not_start`) or restored run (`restored_suite_did_not_start`)
 reported no test, a last write before the read session that the program failed in a treated chain, and harms that rely
 on a broken clean session: for the probe rule a treated count that reaches `treated_min` only through them, for the
