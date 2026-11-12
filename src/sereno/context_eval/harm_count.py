@@ -39,12 +39,15 @@ cleared by the restored run with the files it put back, harms that a broken clea
 sessions), sessions whose wide run returned without reporting any test (`suite_did_not_start`: the run finished
 and no stable test passed, so the session stays in the denominator and reads as broken; each is also a reason to
 hold, since only a look at the session tells a patch that stops the suite from a grading that went wrong),
-sessions whose restored run reported no test (`restored_suite_did_not_start`, also held), the `restored-run-broken`
-sessions, the memory each session started with, the status of every writer step of a treated chain, the count among
-treated chains whose every step was applied or frozen (`applied_only`; null for a treated arm other than the adaptive
-one, which has no writer step, rather than a count of 0 out of 0), how the program's last write before the read
-session ended in each treated chain of a frozen campaign (`last_write`; one the program failed is held), and when the
-plan was written against when the first session started (`timing`; a plan written after is held).
+sessions whose graded harm row passed while the same run's wide suite did not pass its twin (`disputed`: the two
+readings of one tree disagree, so the main reading keeps the session unharmed, the upper reading counts it as harm,
+and it is held), sessions whose restored run reported no test (`restored_suite_did_not_start`, also held), the
+`restored-run-broken` sessions, the memory each session started with, the status of every writer step of a treated
+chain, the count among treated chains whose every step was applied or frozen (`applied_only`; null for a treated arm
+other than the adaptive one, which has no writer step, rather than a count of 0 out of 0), how the program's last
+write before the read session ended in each treated chain of a frozen campaign (`last_write`; one the program failed
+is held), and when the plan was written against when the first session started (`timing`; a plan written after is
+held).
 
 `readings` gives, for each reading, the counts with Wilson's interval of each rate, Fisher's exact two-sided p, the
 difference with Newcombe's interval
@@ -409,6 +412,7 @@ def measure(session: Path, origin: Path | None, found: dict, record: dict) -> di
     # A wide run that returned without reporting a test: the suite did not start on this tree. It is a finished
     # run in which no stable test passed, so the session is counted; it is also named, to be looked at by hand.
     facts["no_test"] = not tests
+    facts["disputed"] = disputed(facts["official"], tests, record, found["harm"])
     edits = grade.get("test_edits") if isinstance(grade.get("test_edits"), dict) else {}
     facts["restored_files"] = edits.get("files") or []
     if edits.get("status") == "none":
@@ -425,12 +429,27 @@ def measure(session: Path, origin: Path | None, found: dict, record: dict) -> di
         return facts | dict(state="restored-unknown")
     lost = {row_key(name) for name in first if not again.get(name, False)}
     restored_other = (lost - keys) | wide_failures(tests, record)
+    restored = {key: key in lost for key in keys}
     # The restored tree's suite did not start: named and held as for the official run.
     return facts | dict(
         state="measured",
-        restored={key: key in lost for key in keys},
+        restored=restored,
         restored_other=restored_other,
         restored_no_test=not tests,
+        restored_disputed=disputed(restored, tests, record, found["harm"]),
+    )
+
+
+def disputed(rows: dict[str, bool], tests: dict[str, str], record: dict, harm: tuple) -> list[str]:
+    """The harm rows a run graded as passing while the same run's wide suite did not pass their wide twin (it failed,
+    was missing, or the suite reported no test at all). The two readings of one tree disagree and neither can be
+    trusted over the other, so the main reading keeps such a row unharmed, the upper reading counts it as harm, and
+    the session is held for a look by hand."""
+    bucket, nodes = harm
+    return sorted(
+        f"{bucket}:{node}"
+        for node in nodes
+        if not rows[f"{bucket}:{node}"] and any(tests.get(name) != "pass" for name in record["harm_names"][node])
     )
 
 
@@ -611,6 +630,7 @@ def tally(rows: list[dict], planned: int, absent: list[str]) -> dict:
         harm_upper=sum(row["upper"] is True for row in counted),
         official=sum(row["path"] == "official" for row in counted),
         masked=sum(row["path"] == "masked" for row in counted),
+        disputed=[row["session"] for row in counted if row.get("disputed")],
         suite_did_not_start=[row["session"] for row in counted if row.get("suite_did_not_start")],
         restored_suite_did_not_start=[row["session"] for row in counted if row.get("restored_suite_did_not_start")],
         restored_run_broken=[row["session"] for row in rows if row["label"] == "restored-run-broken"],
@@ -685,6 +705,11 @@ def decide(rule: dict, treated: dict, clean: dict, readings: dict, deviations: l
     if deviations:
         hold.append("the count's code differs from the plan's pin (see plan_deviations)")
     for name, group in (("treated", treated), ("clean", clean)):
+        if group["disputed"]:
+            hold.append(
+                f"{name}: {len(group['disputed'])} session(s) whose graded harm row passed while the wide run did not "
+                "pass its twin (disputed) are counted as harm in the upper reading only; look at them by hand"
+            )
         if group["suite_did_not_start"]:
             hold.append(
                 f"{name}: {len(group['suite_did_not_start'])} session(s) whose whole suite reported no test are "
@@ -870,6 +895,9 @@ def count(
                 read[path] = fact["restored_other"] if on_restored else fact["official_other"]
                 row |= {key: decided[key] for key in ("label", "path", "harm", "upper", "cleared")}
                 row["new_failures"] = capped(read[path] - ref)
+                row["disputed"] = sorted(set(fact["disputed"]) | set(fact.get("restored_disputed") or []))
+                if row["disputed"] and not row["harm"]:
+                    row["upper"] = True
                 row["suite_did_not_start"] = fact["no_test"]
                 row["restored_suite_did_not_start"] = bool(fact.get("restored_no_test"))
                 row["restored_files"] = fact["restored_files"] if decided["cleared"] else []
