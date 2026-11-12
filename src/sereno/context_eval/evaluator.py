@@ -915,15 +915,19 @@ def wide_check(
     return result | summary | {"unusable": wide.unusable(result, image["Id"])}
 
 
+QUOTE_FREE_LISTING = ("-C", "/app", "-c", "core.quotePath=false", "ls-files", "-z")
+
+
 def task_paths(dataset: Path, task_id: str, rules: dict | None = None, *, docker=None) -> dict:
     """`path_report` of a task's repository as its image holds it at /app, under `rules` (a task record or None)."""
     dataset = Path(dataset).expanduser().resolve()
     task = load_task(dataset, task_id)
     listing = (docker or run_docker)(
-        ["run", "--rm", "--network", "none", "--entrypoint", "git", task.image, "-C", "/app", "ls-files"], 300
+        ["run", "--rm", "--network", "none", "--entrypoint", "git", task.image, *QUOTE_FREE_LISTING],
+        300,
     )
     if listing.returncode:
         raise RuntimeError(f"cannot list the files of {task.image}: {listing.stderr.strip()[-500:]}")
     test_patch = dataset / "tasks" / task_id / "tests" / "test.patch"
     patch = test_patch.read_text(errors="replace") if test_patch.exists() else ""
-    return path_report(listing.stdout.splitlines(), rules, patch)
+    return path_report([path for path in listing.stdout.split("\0") if path], rules, patch)

@@ -1,5 +1,7 @@
+import ast
 import json
 import tomllib
+from pathlib import Path
 
 import pytest
 
@@ -199,3 +201,9 @@ def test_ctrf_reads_a_graded_name_with_outer_spaces_as_the_grader_does():
     parsed = {"tests": [{"name": " suite | case ", "status": "PASSED"}, {"name": "suite | case", "status": "FAILED"}]}
     with pytest.raises(ValueError, match="both passed and did not pass"):
         pro_ctrf.convert(parsed, {"f2p_node_ids": [" suite | case "], "p2p_node_ids": []}, [])
+
+
+def test_ctrf_step_parses_as_python_3_8_and_defers_its_annotations():
+    tree = ast.parse(Path(pro_ctrf.__file__).read_text(), feature_version=(3, 8))
+    futures = [node for node in tree.body if isinstance(node, ast.ImportFrom) and node.module == "__future__"]
+    assert [alias.name for node in futures for alias in node.names] == ["annotations"]

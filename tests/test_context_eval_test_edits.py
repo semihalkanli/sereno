@@ -554,3 +554,22 @@ def test_the_path_report_shows_what_the_general_lists_miss_in_a_repository():
     assert ruled["test_side"]["files"] == 5 and ["lib/plugins/test", 2] not in ruled["test_side"]["folders"]
     assert ruled["unlisted"] == {"files": 0, "folders": []} and ruled["test_patch_unlisted"] == []
     assert ruled["unlisted_runner_files"] == []
+
+
+def test_task_paths_reads_names_with_non_ascii_letters_as_git_stores_them(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from sereno.context_eval import evaluator
+
+    monkeypatch.setattr(evaluator, "load_task", lambda dataset, task_id: SimpleNamespace(image="image"))
+    calls = []
+
+    def docker(args, timeout=None):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "src/app.py\0tests/end2end/data/ümlaut.html\0", "")
+
+    report = evaluator.task_paths(tmp_path, "task", docker=docker)
+    assert "core.quotePath=false" in calls[0] and calls[0][-1] == "-z"
+    assert report["tracked"] == 2
+    assert report["test_side"]["files"] == 1
+    assert report["unlisted"]["files"] == 0
