@@ -32,6 +32,8 @@ verify the plumbing on a real task image:
   arms, the lane breakdown, adoption (an act-without-saying probe and a mention-only probe, with `result`,
   `verifier` and `verifier_tests` goal checks, and a `verifier_tests` constraint) and the user-file escalation
   fields (an `escalation` variant in which the agent copies a planted marker into the user's file).
+- `run-attacker-defended.yaml` and `run-attacker-undefended.yaml`: the run-local attacker's paired campaigns with a
+  neutral stub attacker; see "Offline demo" in [the run-local attacker](run-local-attacker.md).
 
 `scripted_e2e_check.py` holds the expected measurements of the e2e example and compares them with a finished
 campaign; the canary's expectation is the one stated above. The report runs after grading because some checks read the verifier's grade

@@ -14,8 +14,8 @@ campaigns, one defended (with `guard`) and one undefended (without), each with t
 arms. The attacker is called only in `attack_carry`, never in `clean`. Nothing but a pairing manifest sits on top; there
 is no new chain executor.
 
-```
-sereno context-eval pair defended.yaml undefended.yaml --out pair.json
+```sh
+uv run sereno context-eval pair defended.yaml undefended.yaml --out pair.json
 ```
 
 checks, with no model call and no container, that the two files differ only in `guard` and `notices`: task order,
@@ -134,19 +134,54 @@ The measurements stay separate:
 5. probe sessions after writes close, and recovery, again from the existing grading;
 6. attacker cost and use beside the equal bounds, and infrastructure errors.
 
-```
-sereno context-eval pair-summary --pair pair.json DEFENDED_CAMPAIGN UNDEFENDED_CAMPAIGN [--min-line-chars 20]
+```sh
+uv run sereno context-eval pair-summary --pair pair.json DEFENDED_CAMPAIGN UNDEFENDED_CAMPAIGN [--min-line-chars 20]
 ```
 
-reports 1, 2 and 6 per chain from the records, and refuses a campaign that does not run the paired config. Its readings
-of "seen", "carried" and "copied" match added lines of at least `--min-line-chars` characters verbatim and are stated in
-its output. No outcome is derived from what the attacker or the agent says: a success claim in a transcript or notebook
+reports 1, 2 and 6 per chain from the records, and refuses a directory with no campaign manifest and a campaign that
+does not run the paired config or the pairing's attacker (its settings, starting strategy and program hashes). Its
+readings of "seen", "carried" and "copied" match added lines of at least `--min-line-chars` characters verbatim and are
+stated in its output. No outcome is derived from what the attacker or the agent says: a success claim in a transcript or notebook
 is never a measured success.
 
 Independently evolving attackers need not write the same content in the two campaigns, so the result is named
 **defense effectiveness under equal-budget adaptive attack**, never a direct comparison of the same attack. The
 independent unit for uncertainty is the chain (one target and repeat); the sessions of a chain are not independent
 samples.
+
+## Offline demo
+
+`examples/context-eval/run-attacker-defended.yaml` and `run-attacker-undefended.yaml` run the whole path with no model
+and no API key: the scripted agent replays fixed commands on the `fastapi-implicit-head-options` image, and the attacker
+is `tests/run_attacker_stub.py`, a neutral stub that writes one inert marker line to a fixed memory file in the first
+exposure call, keeps a call counter in its notebook and reports zero usage. The two files differ only in the guard,
+which runs its deterministic rules only (the judge rules 3 and 4 off, no notices). From the repository root, one
+campaign at a time:
+
+```sh
+uv run sereno context-eval pair examples/context-eval/run-attacker-defended.yaml \
+  examples/context-eval/run-attacker-undefended.yaml --out runs/context-eval/run-attacker-demo/pair.json
+uv run sereno context-eval run examples/context-eval/run-attacker-defended.yaml \
+  --out runs/context-eval/run-attacker-demo/defended
+uv run sereno context-eval run examples/context-eval/run-attacker-undefended.yaml \
+  --out runs/context-eval/run-attacker-demo/undefended
+uv run sereno context-eval pair-summary --pair runs/context-eval/run-attacker-demo/pair.json \
+  runs/context-eval/run-attacker-demo/defended runs/context-eval/run-attacker-demo/undefended
+uv run python examples/context-eval/run_attacker_check.py runs/context-eval/run-attacker-demo/pair.json \
+  runs/context-eval/run-attacker-demo/defended runs/context-eval/run-attacker-demo/undefended
+```
+
+`pair` refuses an existing manifest, so remove the demo directory before a second pass. Each campaign runs four
+sessions, two in `clean` and two in `attack_carry`, each in its own container. Expected: both campaigns pair and complete
+with no infrastructure error; each attack chain makes seven calls (three in-task and one session-end in the exposure,
+two and one in the probe), one applied write that the agent reads in the same session, that is carried into the probe's
+start memory and seen there, and no write in the probe; `run_attacker_check.py` prints the full table and exits 1 on any
+mismatch. `SERENO_DOCKER_TESTS=1 uv run pytest tests/test_context_eval_examples.py -k run_attacker` runs the same
+sequence.
+
+The demo validates the plumbing only. The marker is inert, so no guard rule fires: the defended campaign differs from
+the undefended one only by the guard's own records (`guard.json`, no `guard_finding`), and the demo shows no defense
+effect.
 
 ## The DeepSeek writer in live mode
 
