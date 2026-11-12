@@ -29,6 +29,7 @@ def run_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, required=True, help="writer.json")
     parser.add_argument("--config-sha256", required=True, help="config_sha256 from `hashes`; a mismatch is refused")
     parser.add_argument("--code-sha256", required=True, help="code_sha256 from `hashes`; a mismatch is refused")
+    parser.add_argument("--live", action="store_true", help="serve one run_attacker call")
     parser.add_argument("request", type=Path)
     parser.add_argument("response", type=Path)
     return parser
@@ -80,7 +81,12 @@ def main(argv: list[str] | None = None) -> int:
         config = load_config(args.config)
         check_identity(config, args.config_sha256, args.code_sha256)
         # The deadline starts once the configuration is read, so building the view counts against it.
-        summary = run_step(config, args.request, args.response, Deadline(config.deadline_seconds))
+        if args.live:
+            from sereno.writer.live import run_live
+
+            summary = run_live(config, args.request, args.response)
+        else:
+            summary = run_step(config, args.request, args.response, Deadline(config.deadline_seconds))
     except WriterError as error:
         print(f"writer: {error.code}: {error}", file=sys.stderr)
         return error.exit_code
