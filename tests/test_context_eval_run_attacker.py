@@ -1,6 +1,7 @@
 """The run-local attacker with a fake writer: no model, no network, no container."""
 
 import json
+import shutil
 import sys
 
 import pytest
@@ -11,7 +12,7 @@ from sereno.context_eval import run_attacker
 from sereno.context_eval.cli import main
 from sereno.context_eval.config import default_registry, load_config
 from sereno.context_eval.engine import EventLog, InterventionEngine, Runtime
-from sereno.context_eval.pairing import pair, summarize_pair
+from sereno.context_eval.pairing import campaign_summary, pair, summarize_pair
 from sereno.context_eval.runner import complete, run_campaign
 from sereno.context_eval.schema import ExperimentConfig, MemoryConfig, RunAttacker, Session
 
@@ -419,3 +420,13 @@ def test_pairing_and_summary_keep_the_measurements_apart(tmp_path, fixture_world
         == 1
     )
     assert json.loads(unpaired.read_text())["problems"] == ["repeats differs"]
+
+
+def test_clean_infrastructure_errors_are_counted_once_at_the_origin(tmp_path):
+    origin = tmp_path / "clean" / "first--r001" / "sessions" / "001-exposure"
+    origin.mkdir(parents=True)
+    (origin / "result.json").write_text(json.dumps({"infrastructure_error": {"code": "writer_failed"}}))
+    for variant in ("default", "other"):
+        copy = tmp_path / "cases" / f"first--{variant}--r001" / "arms" / "clean" / "sessions" / "001-exposure"
+        shutil.copytree(origin, copy)
+    assert campaign_summary(tmp_path, 20)["clean_infrastructure_errors"] == 1
