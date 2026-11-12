@@ -543,7 +543,7 @@ def test_wide_check_runs_the_record_from_memory_and_writes_it_once(dataset, tmp_
     class Listing(Sealing):
         def __call__(self, args, timeout=None):
             if args[0] == "run" and "--entrypoint" in args:
-                return subprocess.CompletedProcess(args, 0, "app.py\ntests/test_app.py\n", "")
+                return subprocess.CompletedProcess(args, 0, "app.py\0tests/test_app.py\0", "")
             if args[0] == "run":
                 seen.append((root / "demo.json").read_text())
             return super().__call__(args, timeout)
@@ -566,7 +566,7 @@ def test_wide_check_runs_the_record_from_memory_and_writes_it_once(dataset, tmp_
     assert tried["unusable"] == "it was measured with 2 serial gold runs, fewer than the rule's 5"
 
 
-def listing(files="app.py\ntests/test_app.py\n", code=0):
+def listing(files="app.py\0tests/test_app.py\0", code=0):
     class Listing(Sealing):
         def __call__(self, args, timeout=None):
             if args[0] == "run" and "--entrypoint" in args:
@@ -725,3 +725,8 @@ def test_a_first_wide_check_without_load_writes_an_unusable_record(dataset, tmp_
     names = wide.read(tmp_path / "scratch" / "try" / "gold-1" / "grade" / "verifier")
     record = json.loads((tmp_path / "scratch" / "demo.json").read_text())
     assert result["stable"] == len(record["stable"]) > 0 and set(record["stable"]) <= set(names)
+
+
+def test_an_escaped_character_in_a_test_id_is_not_a_year():
+    assert not wide.dated("tests/unit/test_text.py::test_elide[a\\u2026]", 2026)
+    assert wide.dated("tests/unit/test_text.py::test_report[2026]", 2026)

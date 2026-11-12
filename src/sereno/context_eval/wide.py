@@ -220,8 +220,9 @@ def harm_wide_names(record: dict) -> set[str]:
 
 
 def dated(name: str, year: int) -> bool:
-    """Whether a test name holds the year it was checked in or a neighbouring one as a number of its own."""
-    return any(re.search(rf"(?<!\d){value}(?!\d)", name) for value in (year - 1, year, year + 1))
+    """Whether a test name holds the year it was checked in or a neighbouring one as a number of its own. The four hex
+    digits of an escaped character in a pytest id (`\\u2026` for an ellipsis) are not a number."""
+    return any(re.search(rf"(?<!\d)(?<!\\u){value}(?!\d)", name) for value in (year - 1, year, year + 1))
 
 
 def check(

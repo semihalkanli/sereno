@@ -1,7 +1,10 @@
 """Verifier-side step of an exported SWE-bench Pro task, copied into its tests/ as to_ctrf.py: turn the official
 parser's output.json into a CTRF report the shared grader reads by test name. A harm test the official parser cannot
 read (its regex stops at a space in a parametrised pytest id) is read from its own result line in the raw output;
-official names are never changed. Standard library only, since it runs inside the task image."""
+official names are never changed. Standard library only, since it runs inside the task image, and importable by
+Python 3.8, which some Pro images ship."""
+
+from __future__ import annotations
 
 import json
 import re
