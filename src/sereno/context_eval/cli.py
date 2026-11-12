@@ -205,6 +205,11 @@ def add_parser(parent):
     pair_summary = commands.add_parser(
         "pair-summary",
         help="the run-local attacker's records of both campaigns of a pair, measurements kept apart",
+        description="Reads the attacker records of a finished defended and undefended campaign with no model call and "
+        "no container, and prints per chain the calls and what their actions came to, the use beside the budget, "
+        "whether each applied write was later seen, carried or copied, and infrastructure errors. Refuses a campaign "
+        "that does not run the paired config or the pairing's attacker. Task success and the attack objective come "
+        "from grade, report and harm-count.",
     )
     pair_summary.add_argument("--pair", type=Path, required=True, help="the pairing manifest")
     pair_summary.add_argument("defended", type=Path, help="the defended campaign directory")
@@ -268,7 +273,11 @@ def execute(args) -> int:
 
             result = pair(args.defended, args.undefended, default_registry(args.plugin))
             args.out.parent.mkdir(parents=True, exist_ok=True)
-            with args.out.open("x") as stream:
+            try:
+                stream = args.out.open("x")
+            except FileExistsError:
+                raise ValueError(f"{args.out} already exists; a pairing manifest is never overwritten") from None
+            with stream:
                 stream.write(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
         elif command == "pair-summary":
             from sereno.context_eval.pairing import summarize_pair

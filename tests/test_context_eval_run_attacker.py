@@ -3,6 +3,7 @@
 import json
 import shutil
 import sys
+from pathlib import Path
 
 import pytest
 import test_context_eval as base
@@ -430,3 +431,87 @@ def test_clean_infrastructure_errors_are_counted_once_at_the_origin(tmp_path):
         copy = tmp_path / "cases" / f"first--{variant}--r001" / "arms" / "clean" / "sessions" / "001-exposure"
         shutil.copytree(origin, copy)
     assert campaign_summary(tmp_path, 20)["clean_infrastructure_errors"] == 1
+
+
+STUB = Path(__file__).parent / "run_attacker_stub.py"
+
+
+def paired_campaigns(tmp_path, fixture_world, monkeypatch):
+    """A defended and an undefended campaign of one chain each, run with the fake writer, and their pairing."""
+    files, roots = {}, {}
+    for side, guard in (("defended", True), ("undefended", False)):
+        raw = raw_config(fixture_world[0], guard=guard) | {"repeats": 1}
+        files[side] = tmp_path / f"{side}.yaml"
+        files[side].write_text(yaml.safe_dump(raw))
+    pairing = pair(files["defended"], files["undefended"], default_registry())
+    monkeypatch.setattr(run_attacker, "run_program", FakeWriter(counting))
+    for side, path in files.items():
+        roots[side] = tmp_path / side
+        run_campaign(load_config(path), roots[side], default_registry(), env_factory=fixture_world[1], identities=IDS)
+    return pairing, roots
+
+
+def test_summary_refuses_a_campaign_whose_attacker_differs_from_the_pairing(tmp_path, fixture_world, monkeypatch):
+    pairing, roots = paired_campaigns(tmp_path, fixture_world, monkeypatch)
+    assert summarize_pair(pairing, roots["defended"], roots["undefended"])["campaigns"]
+    path = roots["undefended"] / "manifest.json"
+    manifest = json.loads(path.read_text())
+    word = next(iter(manifest["run_attacker"]["program_sha256"]))
+    manifest["run_attacker"]["program_sha256"][word] = "0" * 64
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="undefended campaign's attacker program or settings differ"):
+        summarize_pair(pairing, roots["defended"], roots["undefended"])
+
+
+def test_summary_names_a_missing_manifest(tmp_path, fixture_world, monkeypatch, capsys):
+    pairing, roots = paired_campaigns(tmp_path, fixture_world, monkeypatch)
+    missing = tmp_path / "not-a-campaign"
+    with pytest.raises(ValueError, match=r"undefended campaign has no readable .*manifest\.json"):
+        summarize_pair(pairing, roots["defended"], missing)
+    (tmp_path / "pair.json").write_text(json.dumps(pairing))
+    capsys.readouterr()
+    code = main(
+        ["context-eval", "pair-summary", "--pair", str(tmp_path / "pair.json"), str(roots["defended"]), str(missing)]
+    )
+    assert code == 2
+    assert capsys.readouterr().out.startswith(f"context-eval: the undefended campaign has no readable {missing}")
+
+
+def test_pair_refuses_to_overwrite_with_a_one_line_error(tmp_path, fixture_world, capsys):
+    files = {}
+    for side, guard in (("defended", True), ("undefended", False)):
+        files[side] = tmp_path / f"{side}.yaml"
+        files[side].write_text(yaml.safe_dump(raw_config(fixture_world[0], guard=guard)))
+    out = tmp_path / "pair.json"
+    out.write_text("{}\n")
+    assert main(["context-eval", "pair", str(files["defended"]), str(files["undefended"]), "--out", str(out)]) == 2
+    printed = capsys.readouterr().out
+    assert printed == f"context-eval: {out} already exists; a pairing manifest is never overwritten\n"
+    assert out.read_text() == "{}\n"
+
+
+def test_the_stub_program_runs_through_the_real_subprocess_path(tmp_path, fixture_world):
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    config = RunAttacker(**attacker_settings(command=[sys.executable, str(STUB)], strategy=""))
+    attacker = run_attacker.RunLocalAttacker(config, runtime, "fixture task", "first")
+    attacker.advance([{"role": "user", "content": "fixture task"}])
+    attacker.advance([{"role": "user", "content": "next model call"}])
+    state = attacker.finish([{"role": "user", "content": "fixture task"}], {"exit_status": "Submitted"})
+    written = f"{ROOT}/ci-attacker-fixture.md"
+    assert [(r["kind"], r["status"]) for r in attacker.calls] == [
+        ("in_task", "applied"),
+        ("in_task", "no_action"),
+        ("session_end", "no_action"),
+    ]
+    assert attacker.calls[0]["program"]["exit_code"] == 0 and attacker.calls[0]["changes"][0]["path"] == written
+    assert env.read(written) and state["owned"] == [written] and state["notebook"] == "3"
+    assert state["usage"] | {"seconds": 0} == {
+        "calls": 3,
+        "tokens": 0,
+        "seconds": 0,
+        "writes": 1,
+        "cost_usd": 0.0,
+        "unreported_usage_calls": 0,
+        "skipped_calls": 0,
+    }
+    assert (tmp_path / "run_attacker/0001/response.json").is_file()

@@ -206,8 +206,8 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int) -> dict:
     }
 
 
-def campaign_summary(campaign: Path, min_chars: int) -> dict:
-    manifest = read_json(campaign / "manifest.json") or {}
+def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = None) -> dict:
+    manifest = manifest if manifest is not None else read_json(campaign / "manifest.json") or {}
     budget = (manifest.get("run_attacker") or {}).get("budget") or {}
     chains = {}
     clean_errors = 0
@@ -232,12 +232,22 @@ def campaign_summary(campaign: Path, min_chars: int) -> dict:
 
 def summarize_pair(pairing: dict, defended: Path, undefended: Path, *, min_line_chars: int = 20) -> dict:
     """The attacker-side records of both campaigns of a pair. A campaign whose manifest is not the paired config is
-    refused."""
+    refused, and so is one whose recorded attacker (settings, starting strategy and program hashes) is not the
+    pairing's."""
     sides = {"defended": defended, "undefended": undefended}
-    summaries = {side: campaign_summary(path, min_line_chars) for side, path in sides.items()}
-    for side, summary in summaries.items():
-        if summary["config_sha256"] != pairing["campaigns"][side]["config_sha256"]:
+    manifests = {}
+    for side, path in sides.items():
+        manifest = read_json(path / "manifest.json")
+        if not isinstance(manifest, dict):
+            raise ValueError(
+                f"the {side} campaign has no readable {path / 'manifest.json'}; is it a campaign directory?"
+            )
+        if manifest.get("config_sha256") != pairing["campaigns"][side]["config_sha256"]:
             raise ValueError(f"the {side} campaign does not run the paired config")
+        if manifest.get("run_attacker") != pairing.get("run_attacker"):
+            raise ValueError(f"the {side} campaign's attacker program or settings differ from the pairing's")
+        manifests[side] = manifest
+    summaries = {side: campaign_summary(path, min_line_chars, manifests[side]) for side, path in sides.items()}
     return {
         "schema_version": SCHEMA_VERSION,
         "result_name": pairing["result_name"],

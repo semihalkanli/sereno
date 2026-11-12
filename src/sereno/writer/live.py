@@ -1,5 +1,5 @@
-"""The writer behind the run-local attacker (`run --live`): one request of the harness's run_attacker protocol in, one
-response out, with no state of its own.
+"""The writer behind the run-local attacker (`python -m sereno.writer --live ...`): one request of the harness's
+run_attacker protocol in, one response out, with no state of its own.
 
 The prompt has three parts. The fixed contract is the frozen design's system prompt and objective together with the
 harness's contract (stage, memory root, limits, budgets, the answer's form); the run cannot change it. The evolving
