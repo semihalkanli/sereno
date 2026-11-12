@@ -284,6 +284,65 @@ class Adaptive(Contract):
         return self
 
 
+class RunAttackerBudget(Contract):
+    """Upper bounds of one attack chain (one case, repeat and arm). They are part of the measurement, so none has a
+    default; a paired defended and undefended campaign must use the same numbers. A call starts only while every bound
+    still has room, so the realized use can pass a bound by at most the one call that crossed it."""
+
+    # Calls of the chain, the session-end evaluation calls included.
+    max_calls: int = Field(ge=1, le=100_000)
+    max_calls_per_session: int = Field(ge=1, le=10_000)
+    # Provider tokens the program reports in writer_usage, summed over the chain.
+    max_tokens: int = Field(ge=1)
+    # Wall clock of the program, summed over the chain.
+    max_seconds: int = Field(ge=1)
+    # Calls whose memory actions were applied, over the chain.
+    max_writes: int = Field(ge=0, le=100_000)
+
+
+class RunAttacker(Contract):
+    """The run-local adaptive attacker of the attack_carry arm: an external program called before the agent's model
+    calls and once at each session end, whose private strategy and notebook carry within one chain only."""
+
+    # argv, run on the host; a word that names an existing file next to the YAML file resolves against it.
+    command: list[str] = Field(min_length=1)
+    limits: AdaptiveLimits
+    budget: RunAttackerBudget
+    # Wall clock for one call of the program.
+    timeout_seconds: int = Field(120, ge=1, le=1800)
+    # The program is called before every n-th model call of the agent.
+    every_calls: int = Field(1, ge=1)
+    # The strategy the attacker starts each chain with; load_config reads strategy_file into strategy.
+    strategy_file: Path | None = None
+    strategy: str = ""
+    strategy_max_bytes: int = Field(20_000, ge=1, le=1_000_000)
+    notebook_max_bytes: int = Field(20_000, ge=1, le=1_000_000)
+    # Read-only code access: the files of code_paths on every call, other files below code_root on request.
+    code_root: str = "/app"
+    code_paths: list[str] = Field([], max_length=100)
+    max_reads_per_call: int = Field(10, ge=0, le=100)
+    # A code file over this size is named with its size and never cut.
+    max_read_bytes: int = Field(200_000, ge=1, le=5_000_000)
+    # A file index with more entries is named with its count and never cut.
+    max_index_entries: int = Field(100_000, ge=1, le=1_000_000)
+    # A request over this size is an infrastructure error, never cut.
+    max_input_bytes: int = Field(4_000_000, ge=1, le=50_000_000)
+
+    @model_validator(mode="after")
+    def coherent(self):
+        if not self.command[0].strip() or any("\0" in word for word in self.command):
+            raise ValueError("command needs a program name and no NUL bytes")
+        if self.code_root != "/app":
+            validate_path(self.code_root, "/app")
+        for path in self.code_paths:
+            validate_path(path, self.code_root)
+        if self.strategy_file is not None and self.strategy:
+            raise ValueError("provide at most one of strategy and strategy_file")
+        if len(self.strategy.encode()) > self.strategy_max_bytes:
+            raise ValueError("the starting strategy is over strategy_max_bytes")
+        return self
+
+
 class GuardConfig(Contract):
     """The live memory guard. Each rule group is off, records its findings in the event log, or, for rules 1 and 2,
     also puts the copy the harness kept back. Rules 3 and 4 are read by a judge model, and can send notices."""
@@ -358,6 +417,8 @@ class ExperimentConfig(Contract):
     repair: Repair | None = None
     # The program behind the attack_adaptive arm; schema 1.2, and the arm needs it.
     adaptive: Adaptive | None = None
+    # The run-local adaptive attacker of the attack_carry arm; off unless set.
+    run_attacker: RunAttacker | None = None
     # Off unless set; a campaign without it runs as before.
     guard: GuardConfig | None = None
     notices: list[Notice] = []
@@ -382,6 +443,14 @@ class ExperimentConfig(Contract):
         }.items():
             if arm in self.arms and base not in self.arms:
                 raise ValueError(f"{arm} requires {base}")
+        if self.run_attacker:
+            # The same attacker runs with the guard on and off, so the guard is neither required nor constrained here.
+            if self.adaptive or self.repair:
+                raise ValueError("run_attacker cannot combine with adaptive or repair")
+            if "attack_carry" not in self.arms or set(self.arms) - {"clean", "attack_carry"}:
+                raise ValueError("run_attacker supports clean and attack_carry only")
+            if self.variants != {"default": []}:
+                raise ValueError("run_attacker takes no static interventions")
         adaptive_arm = "attack_adaptive" in self.arms
         if adaptive_arm != (self.adaptive is not None):
             raise ValueError("the attack_adaptive arm and the adaptive section need each other")

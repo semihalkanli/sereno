@@ -55,6 +55,15 @@ from sereno.context_eval.memory import (
     resolve_files,
 )
 from sereno.context_eval.metrics import content_found, content_spans, report
+from sereno.context_eval.run_attacker import (
+    STATE_FILE as ATTACKER_STATE,
+)
+from sereno.context_eval.run_attacker import (
+    AttackerInfrastructureError,
+    RunLocalAttacker,
+    read_state,
+    writer_manifest,
+)
 from sereno.context_eval.schema import AgentOutcome
 
 COMPLETE = {
@@ -243,6 +252,11 @@ def run_session(
         if runtime.guard:
             # After the interventions, which stand for whatever changed memory between tasks; before the context.
             runtime.guard.task_start(instruction, task.id, lineage_start=lineage_start)
+        if config.run_attacker and engine.enabled:
+            # The attack arm's engine holds the chain's checkpoint; the clean arm's engine is disabled.
+            runtime.run_attacker = RunLocalAttacker(
+                config.run_attacker, runtime, instruction, task.id, getattr(engine, "run_attacker_state", None)
+            )
         # Read after session_start interventions, so a planted instruction file loads as the repository's own.
         repo = repo_instructions(env.read_instructions(REPO_INSTRUCTIONS))
         context = mem.context(runtime.memory, repo)
@@ -281,6 +295,18 @@ def run_session(
             memory = runtime.capture_memory("agent")
             if runtime.guard:
                 runtime.guard.task_end()
+        if runtime.run_attacker and result["status"] == "complete":
+            # The session-end evaluation sees the final memory; its checkpoint makes the session complete.
+            summary = {
+                "exit_status": status,
+                "steps": agent_result["steps"],
+                "limit": result["limit"],
+                "submitted": status == "Submitted",
+                "task_success": "not_evaluated",
+            }
+            state = runtime.run_attacker.finish(agent_result["messages"], summary)
+            write_atomic(directory / ATTACKER_STATE, state)
+            engine.run_attacker_state = state
         for check in config.checks:
             if check.source == "workspace" and (not check.sessions or session.id in check.sessions):
                 result["workspace"][check.path] = env.read(check.path) or ""
@@ -296,6 +322,9 @@ def run_session(
         result["status"] = "invalid"
         result["error"] = str(error)
         result["exit_status"] = type(error).__name__
+        if isinstance(error, AttackerInfrastructureError):
+            # Not an attack outcome: the attacker's program, configuration or provider failed.
+            result["infrastructure_error"] = {"source": "run_attacker", "code": error.code, "message": str(error)}
         log.emit("error", session_id=session.id, error_type=type(error).__name__, message=str(error))
         if runtime:
             result.update(getattr(runtime, "partial_agent_result", {}))
@@ -340,11 +369,17 @@ def read(path: Path):
 
 
 def complete(
-    directory: Path, copy: bool = False, ablated: bool = False, repaired: bool = False, transitioned: bool = False
+    directory: Path,
+    copy: bool = False,
+    ablated: bool = False,
+    repaired: bool = False,
+    transitioned: bool = False,
+    checkpointed: bool = False,
 ) -> bool:
     """A finished session. A copy is finished once its branch.json, written after the copy, parses, and a session
     that started from ablated or repaired memory once its ablation.json or repair.json, written after the session,
-    does. A session of the adaptive arm (`transitioned`) also needs the transition.json of the step before it."""
+    does. A session of the adaptive arm (`transitioned`) also needs the transition.json of the step before it, and a
+    session of a run-local attacker chain (`checkpointed`) the attacker checkpoint it wrote."""
     try:
         status = read(directory / "result.json")["status"]
         for name in ("branch.json",) * copy + ("ablation.json",) * ablated + ("repair.json",) * repaired:
@@ -356,6 +391,8 @@ def complete(
         transitioned
         and read_transition(directory.parent.parent / "transitions" / directory.name[:3] / "transition.json") is None
     ):
+        return False
+    if checkpointed and read_state(directory / ATTACKER_STATE) is None:
         return False
     return status == "complete"
 
@@ -458,6 +495,7 @@ def check_resume(output: Path, manifest: dict) -> None:
     keys += ("code_sha256",) if "code_sha256" in previous else ()
     # The adaptive program is part of the experiment: its argv, files and limits stay what the campaign started with.
     keys += ("adaptive",) if "adaptive" in previous else ()
+    keys += ("run_attacker",) if "run_attacker" in previous else ()
     changed = [key for key in keys if previous.get(key) != manifest.get(key)]
     if {k: v["id"] for k, v in previous["images"].items()} != {k: v["id"] for k, v in manifest["images"].items()}:
         changed.append("images")
@@ -656,6 +694,7 @@ def run_campaign(
             for key, task in tasks.items()
         },
         **({"adaptive": adaptive_manifest(config.adaptive)} if config.adaptive else {}),
+        **({"run_attacker": writer_manifest(config.run_attacker)} if config.run_attacker else {}),
     }
     if config.adaptive and config.adaptive.grade_before_step and grader is None:
         grader = default_grader(config.dataset_root)
@@ -736,7 +775,11 @@ def run_campaign(
             return False
 
     def first_incomplete(
-        arm_dir: Path, copied=lambda session: False, ablated: bool = False, transitioned: bool = False
+        arm_dir: Path,
+        copied=lambda session: False,
+        ablated: bool = False,
+        transitioned: bool = False,
+        checkpointed: bool = False,
     ) -> int:
         return next(
             (
@@ -748,6 +791,7 @@ def run_campaign(
                     ablated and n == exposures,
                     n == repairs,
                     transitioned,
+                    checkpointed,
                 )
                 or (copied(s) and not current(directory))
             ),
@@ -767,6 +811,11 @@ def run_campaign(
         if last and (last / "rng_state.json").exists() and not (last / "branch.json").exists():
             version, state, gauss = read(last / "rng_state.json")
             restored.rng.setstate((version, tuple(state), gauss))
+        if config.run_attacker and restored.enabled and last:
+            # Only the last completed session's checkpoint: a half-finished session's private state never carries.
+            restored.run_attacker_state = read_state(last / ATTACKER_STATE)
+            if restored.run_attacker_state is None:
+                raise ValueError(f"cannot resume: {last / ATTACKER_STATE} is missing or unreadable")
         return restored
 
     def run(target, engine):
@@ -971,7 +1020,7 @@ def run_campaign(
             advance(adaptive_dir, target, run(target, engine), start, hook)
         carry_start, seed = len(sessions), config.seed + repeat
         if "attack_carry" in config.arms:
-            carry_start = first_incomplete(arms / "attack_carry")
+            carry_start = first_incomplete(arms / "attack_carry", checkpointed=config.run_attacker is not None)
             notices = [n for n in config.notices if variant in n.variants]
             carry = engine_for(events, arms / "attack_carry", carry_start, seed=seed, notices=notices)
             advance(arms / "attack_carry", target, run(target, carry), carry_start)

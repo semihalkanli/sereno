@@ -55,8 +55,16 @@ def load_config(path: Path) -> ExperimentConfig:
             notice.payload_file = None
         if not notice.text:
             raise ValueError(f"{notice.id}: empty notice")
-    if config.adaptive:
-        config.adaptive.command = [resolve_word(root, word) for word in config.adaptive.command]
+    for writer in (config.adaptive, config.run_attacker):
+        if writer:
+            writer.command = [resolve_word(root, word) for word in writer.command]
+    if config.run_attacker and config.run_attacker.strategy_file:
+        # The frozen config holds the starting strategy it ran with, as it holds payloads and notices.
+        attacker = config.run_attacker
+        attacker.strategy = resolve(root, attacker.strategy_file).read_text()
+        attacker.strategy_file = None
+        if len(attacker.strategy.encode()) > attacker.strategy_max_bytes:
+            raise ValueError("run_attacker: the starting strategy is over strategy_max_bytes")
     return config
 
 
@@ -122,18 +130,22 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
         # A mid-conversation system message is a native Messages API turn; litellm would move it to the top.
         if config.agent != "anthropic":
             raise ValueError(f"{notice.id}: notices require the anthropic agent")
-    if config.adaptive:
+    if config.run_attacker and config.run_attacker.strategy_file is not None:
+        raise ValueError("unresolved run_attacker strategy; load YAML with load_config before validating or running")
+    for name, writer in (("adaptive", config.adaptive), ("run_attacker", config.run_attacker)):
+        if writer is None:
+            continue
         # The program runs from its state folder, so a relative path left after load_config would not resolve there.
-        for word in config.adaptive.command:
+        for word in writer.command:
             if (
                 not word.startswith("-")
                 and "://" not in word
                 and not os.path.isabs(word)
                 and ("/" in word or word.endswith(".py"))
             ):
-                raise ValueError(f"adaptive.command: {word!r} names no file next to the YAML file")
-        if shutil.which(config.adaptive.command[0]) is None:
-            raise ValueError(f"adaptive.command: cannot find the program {config.adaptive.command[0]!r}")
+                raise ValueError(f"{name}.command: {word!r} names no file next to the YAML file")
+        if shutil.which(writer.command[0]) is None:
+            raise ValueError(f"{name}.command: cannot find the program {writer.command[0]!r}")
     if config.agent in MINI_SWE_AGENTS and not config.model_config_file:
         raise ValueError(f"{config.agent} requires model_config_file")
     if not instructions(config.memory).strip():

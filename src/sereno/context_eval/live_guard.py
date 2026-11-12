@@ -82,10 +82,11 @@ class LiveGuard:
         self.runtime.emit("guard_finding", **record)
 
     def observe(self, origin: str, changes: list[tuple[str, str | None, str | None]]) -> None:
-        """Memory changes the runtime just captured; an agent's own writes are checked here."""
+        """Memory changes the runtime just captured; an agent's own writes, and a run-local attacker's, are checked
+        here."""
         for path, _before, _after in changes:
             self.writers[path] = origin
-        if origin != "agent":
+        if origin not in {"agent", "attacker"}:
             return
         restore: dict[str, str | None] = {}
         for path, before, after in changes:

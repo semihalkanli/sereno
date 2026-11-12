@@ -388,6 +388,8 @@ class Runtime:
         self.remember_lines(e.text for e in engine.events if e.method == "memory")
         self.pending_commands: list[str] = []
         self.sent: list[str] = []
+        # The run-local attacker of an attack chain, set by the runner; None everywhere else.
+        self.run_attacker = None
         # The live memory guard, when the campaign configures one; it keeps the carried memory as its copy.
         self.guard = LiveGuard(guard, self, initial_memory) if guard else None
         self.notices = [n for n in engine.notices if session.id in n.sessions] if engine.enabled else []
@@ -476,6 +478,9 @@ class Runtime:
         self.emit("observation", messages=messages)
 
     def context_sent(self, messages: list[dict]) -> None:
+        if self.run_attacker:
+            # Before the guard takes its answers: an attacker write is checked like any write the guard sees.
+            self.run_attacker.advance(messages)
         if self.guard:
             # The judge's answers that came in while the agent worked are taken here, before the model call.
             self.guard.collect()

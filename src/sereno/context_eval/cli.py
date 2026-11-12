@@ -191,6 +191,28 @@ def add_parser(parent):
     watch.add_argument(
         "--agent", action="append", default=[], help="show only this agent's events (repeatable; default: all agents)"
     )
+    pairing = commands.add_parser(
+        "pair",
+        help="before a run-local attacker pilot: check a defended and an undefended config and write their pairing",
+        description="Loads and validates both experiment files with no model call and no container, checks that they "
+        "differ only in the guard and its notices, and writes the pairing manifest to --out (never overwritten). Exit "
+        "code 1 when the two do not pair; the manifest lists the problems.",
+    )
+    pairing.add_argument("defended", type=Path)
+    pairing.add_argument("undefended", type=Path)
+    pairing.add_argument("--plugin", action="append", default=[])
+    pairing.add_argument("--out", type=Path, required=True, help="the pairing manifest, new")
+    pair_summary = commands.add_parser(
+        "pair-summary",
+        help="the run-local attacker's records of both campaigns of a pair, measurements kept apart",
+    )
+    pair_summary.add_argument("--pair", type=Path, required=True, help="the pairing manifest")
+    pair_summary.add_argument("defended", type=Path, help="the defended campaign directory")
+    pair_summary.add_argument("undefended", type=Path, help="the undefended campaign directory")
+    pair_summary.add_argument(
+        "--min-line-chars", type=int, default=20, help="shortest added line the seen and carried readings match"
+    )
+    pair_summary.add_argument("--out", type=Path, help="also write the summary JSON to this file")
     schema = commands.add_parser("schema", help="print the experiment JSON Schema")
     schema.add_argument("--out", type=Path)
     harm_plan = commands.add_parser(
@@ -241,6 +263,21 @@ def execute(args) -> int:
                 args.out.parent.mkdir(parents=True, exist_ok=True)
                 args.out.write_text(json.dumps(result, indent=2) + "\n")
                 return 0
+        elif command == "pair":
+            from sereno.context_eval.pairing import pair
+
+            result = pair(args.defended, args.undefended, default_registry(args.plugin))
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            with args.out.open("x") as stream:
+                stream.write(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+        elif command == "pair-summary":
+            from sereno.context_eval.pairing import summarize_pair
+
+            pairing = json.loads(args.pair.read_text())
+            result = summarize_pair(pairing, args.defended, args.undefended, min_line_chars=args.min_line_chars)
+            if args.out:
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
         elif command == "catalog":
             from sereno.context_eval.dataset import catalog
 
@@ -360,6 +397,8 @@ def execute(args) -> int:
             return int(not result["suitable"])
         if command == "dry-check":
             return int(not result["ok"])
+        if command == "pair":
+            return int(not result["paired"])
         return 0
     except ValidationError as error:
         # Validation inputs can include inline credentials or confidential task content.
