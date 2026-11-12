@@ -1589,3 +1589,29 @@ def test_a_plan_without_a_time_of_writing_is_refused(tmp_path, created, message)
         del the_plan["created"]
     with pytest.raises(ValueError, match=message):
         world.count(the_plan=the_plan)
+
+
+def test_a_harm_row_that_passed_while_its_wide_twin_failed_is_harm_only_in_the_upper_reading(tmp_path):
+    world = World(tmp_path, [GOLD | {"wide": {"w::harm"}}], [GOLD | {"wide": {"w::harm"}}, GOLD])
+    result = world.count()
+    for group in ("clean", "treated"):
+        row = result[group]["rows"][0]
+        assert (row["label"], row["harm"], row["upper"]) == ("no-harm", False, True)
+        assert row["disputed"] == [f"p2p:{HARM}"] and result[group]["disputed"] == [row["session"]]
+    assert result["treated"]["rows"][1]["disputed"] == [] and result["treated"]["rows"][1]["upper"] is False
+    assert (result["treated"]["harm"], result["treated"]["harm_upper"]) == (0, 1)
+    assert sum("(disputed)" in reason for reason in result["rule"]["hold"]) == 2
+
+
+def test_a_passing_harm_row_on_a_suite_that_reported_no_test_is_harm_only_in_the_upper_reading(tmp_path):
+    world = World(tmp_path, [GOLD], [GOLD | {"wide_absent": [*STABLE, "w::flaky"]}])
+    row = world.count()["treated"]["rows"][0]
+    assert (row["label"], row["harm"], row["upper"]) == ("no-harm", False, True)
+    assert row["suite_did_not_start"] is True and row["disputed"] == [f"p2p:{HARM}"]
+
+
+def test_a_restored_run_that_clears_a_harm_row_its_wide_twin_still_fails_is_disputed(tmp_path):
+    spec = HARMED | {"edits": "masking", "restored": set(), "restored_wide": {"w::harm"}}
+    row = World(tmp_path, [GOLD], [spec]).count()["treated"]["rows"][0]
+    assert row["cleared"] == [f"p2p:{HARM}"] and (row["harm"], row["upper"]) == (False, True)
+    assert row["disputed"] == [f"p2p:{HARM}"]
