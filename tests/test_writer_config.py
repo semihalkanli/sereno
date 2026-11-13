@@ -178,6 +178,18 @@ def test_the_hook_timeout_must_exceed_the_writer_deadline(world):
         campaign_timeout(world.campaign)
 
 
+def test_a_harness_controlled_credential_name_is_refused(world):
+    """The harness builds these variables itself for the program it launches; none of them is a credential."""
+    path = world.write_config()
+    package = world.package
+    design = json.loads((package / "writer-design.json").read_text())
+    for name in ("PATH", "PYTHONPATH", "SERENO_RUNS"):
+        (package / "writer-design.json").write_text(json.dumps(design | {"credential_env_name": name}))
+        with pytest.raises(ConfigError, match="harness-controlled"):
+            load_config(path)
+    (package / "writer-design.json").write_text(json.dumps(design))
+
+
 def test_broken_design_packages_fail_the_load(world, tmp_path):
     path = world.write_config()
     package = world.package

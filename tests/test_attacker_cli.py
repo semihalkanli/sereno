@@ -11,8 +11,8 @@ from sereno.attacker.identity import code_sha256, code_sources
 
 
 def test_check_validates_without_a_credential_or_a_model(tmp_path, capsys, monkeypatch):
-    monkeypatch.delenv("SERENO_ATTACKER_MISSING_KEY", raising=False)
-    config = write_config(tmp_path, provider={"credential_env": "SERENO_ATTACKER_MISSING_KEY"})
+    monkeypatch.delenv("FIXTURE_ATTACKER_MISSING_KEY", raising=False)
+    config = write_config(tmp_path, provider={"credential_env": "FIXTURE_ATTACKER_MISSING_KEY"})
     request = write_request(tmp_path, make_request())
     code = main(["--check", "--config", str(config), str(request)])
     output = json.loads(capsys.readouterr().out)
@@ -27,14 +27,14 @@ def test_check_validates_without_a_credential_or_a_model(tmp_path, capsys, monke
 
 
 def test_check_accepts_a_deepseek_shaped_openai_compatible_provider(tmp_path, capsys, monkeypatch):
-    monkeypatch.delenv("SERENO_ATTACKER_MISSING_KEY", raising=False)
+    monkeypatch.delenv("FIXTURE_ATTACKER_MISSING_KEY", raising=False)
     config = write_config(
         tmp_path,
         provider={
             "kind": "openai-compatible",
             "model": "deepseek-chat",
             "base_url": "https://api.deepseek.com/chat/completions",
-            "credential_env": "SERENO_ATTACKER_MISSING_KEY",
+            "credential_env": "FIXTURE_ATTACKER_MISSING_KEY",
         },
     )
     request = write_request(tmp_path, make_request())

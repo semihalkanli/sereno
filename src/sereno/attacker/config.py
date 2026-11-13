@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sereno.attacker.errors import ConfigError
 from sereno.attacker.identity import code_sha256
 from sereno.context_eval.config import fingerprint, reject_inline_credentials
+from sereno.context_eval.schema import harness_controlled
 
 SCHEMA_VERSION = "1.0"
 # Fields the runtime builds itself; a configuration that sets them would be silently overridden.
@@ -164,6 +165,11 @@ def check_settings(settings: AttackerSettings) -> None:
     check_base_url(provider.base_url)
     if provider.credential_env is not None and not ENV_NAME.match(provider.credential_env):
         raise ConfigError(f"credential_env {provider.credential_env!r} is not a variable name", "credential_env")
+    if provider.credential_env is not None and harness_controlled(provider.credential_env):
+        # Such a name would hand the program a variable the harness sets for itself, not a credential.
+        raise ConfigError(
+            f"credential_env {provider.credential_env!r} is a harness-controlled variable", "credential_env"
+        )
     if barred := sorted(set(provider.request) & BARRED_REQUEST_KEYS):
         raise ConfigError(f"provider.request carries {barred}; the runtime builds those fields", "barred_field")
     if provider.kind == "anthropic":

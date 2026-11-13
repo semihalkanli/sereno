@@ -80,13 +80,21 @@ def test_base_url_must_be_https_or_loopback(tmp_path):
 
 
 def test_the_credential_is_read_from_the_environment(tmp_path, monkeypatch):
-    monkeypatch.delenv("SERENO_ATTACKER_TEST_KEY", raising=False)
-    config = load_config(write_config(tmp_path, provider={"credential_env": "SERENO_ATTACKER_TEST_KEY"}))
+    monkeypatch.delenv("FIXTURE_ATTACKER_TEST_KEY", raising=False)
+    config = load_config(write_config(tmp_path, provider={"credential_env": "FIXTURE_ATTACKER_TEST_KEY"}))
     with pytest.raises(ConfigError) as caught:
         config.credential()
     assert caught.value.code == "missing_credential"
-    monkeypatch.setenv("SERENO_ATTACKER_TEST_KEY", "fixture-key")
+    monkeypatch.setenv("FIXTURE_ATTACKER_TEST_KEY", "fixture-key")
     assert config.credential() == "fixture-key"
+
+
+def test_a_harness_controlled_credential_name_is_refused(tmp_path):
+    """The harness builds these variables itself for the program it launches; none of them is a credential."""
+    for name in ("PATH", "PYTHONPATH", "HOME", "TMPDIR", "SERENO_RUNS", "LC_ALL", "LD_PRELOAD", "TZ"):
+        with pytest.raises(ConfigError) as caught:
+            load_config(write_config(tmp_path, provider={"credential_env": name}))
+        assert caught.value.code == "credential_env"
 
 
 def test_inline_credentials_are_refused(tmp_path):

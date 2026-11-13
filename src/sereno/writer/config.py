@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 from pydantic import Field, ValidationError
 
 from sereno.context_eval.config import fingerprint
-from sereno.context_eval.schema import AdaptiveLimits, Contract
+from sereno.context_eval.schema import AdaptiveLimits, Contract, harness_controlled
 from sereno.writer.errors import ConfigError
 
 SCHEMA_VERSION = "1.0"
@@ -303,6 +303,9 @@ def load_config(path: Path) -> WriterConfig:
     credential_env = design.get("credential_env_name")
     if not isinstance(credential_env, str) or not credential_env:
         raise ConfigError("the design names no credential variable")
+    if harness_controlled(credential_env):
+        # Such a name would hand the program a variable the harness sets for itself, not a credential.
+        raise ConfigError(f"credential_env_name {credential_env!r} is a harness-controlled variable")
     notebook_max = settings.notebook_max_utf8_bytes or (design.get("state") or {}).get(
         "proposed_notebook_max_utf8_bytes"
     )

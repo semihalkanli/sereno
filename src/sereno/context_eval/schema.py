@@ -11,6 +11,18 @@ from sereno.context_eval.memory import ROOT as MEMORY_ROOT
 
 # An environment variable name: a letter or underscore, then letters, digits and underscores.
 ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Variables the harness itself sets in the program's environment (a session's paths, the cost wrapper's meter, the
+# runtime's own switches) or fixes by policy. A campaign may not list one by name, and no configuration may name one
+# as the program's credential.
+HARNESS_ENV_NAMES = frozenset(
+    {"PATH", "HOME", "PWD", "OLDPWD", "PYTHONPATH", "PYTHONHOME", "TMPDIR", "TEMP", "TMP", "LANG", "TZ"}
+)
+HARNESS_ENV_PREFIXES = ("LD_", "SERENO_", "LC_")
+
+
+def harness_controlled(name: str) -> bool:
+    """Whether the harness sets this variable itself, so a campaign entry or a credential name may not point at it."""
+    return name in HARNESS_ENV_NAMES or name.startswith(HARNESS_ENV_PREFIXES)
 
 
 class Contract(BaseModel, extra="forbid"):
@@ -333,8 +345,9 @@ class RunAttacker(Contract):
     max_index_entries: int = Field(100_000, ge=1, le=1_000_000)
     # A request over this size is an infrastructure error, never cut.
     max_input_bytes: int = Field(40_000_000, ge=1, le=50_000_000)
-    # Environment variables the program needs beside the harness's allowlist (PATH, HOME, LANG, LC_*, TZ and the
-    # credential variable its own configuration names); names only, values come from the harness's environment.
+    # Environment variables the program needs beside the harness's allowlist (PATH, HOME, LANG, LC_*, TZ, the live-mode
+    # proxy and CA variables and the credential variable its own configuration names); names only, values come from
+    # the harness's environment. A harness-controlled name is refused.
     env: list[str] = Field(default_factory=list, max_length=32)
 
     @model_validator(mode="after")
@@ -344,6 +357,8 @@ class RunAttacker(Contract):
         for name in self.env:
             if not ENV_NAME.match(name):
                 raise ValueError(f"env: {name!r} is not an environment variable name")
+            if harness_controlled(name):
+                raise ValueError(f"env: {name} is a harness-controlled variable")
         if len(set(self.env)) != len(self.env):
             raise ValueError("env: a variable is listed twice")
         if self.code_root != "/app":

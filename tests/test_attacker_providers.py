@@ -219,8 +219,8 @@ def test_build_provider_chooses_the_configured_kind(tmp_path):
 
 
 def test_a_missing_credential_is_refused_before_a_call(tmp_path, monkeypatch):
-    monkeypatch.delenv("SERENO_ATTACKER_MISSING_KEY", raising=False)
-    config = make_config(tmp_path, credential_env="SERENO_ATTACKER_MISSING_KEY")
+    monkeypatch.delenv("FIXTURE_ATTACKER_MISSING_KEY", raising=False)
+    config = make_config(tmp_path, credential_env="FIXTURE_ATTACKER_MISSING_KEY")
     with pytest.raises(ConfigError) as caught:
         build_provider(config, Deadline(60))
     assert caught.value.code == "missing_credential"
