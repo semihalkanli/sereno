@@ -15,7 +15,7 @@ import test_context_eval as base
 import yaml
 from attacker_world import write_config as write_attacker_config
 from pydantic import ValidationError
-from writer_world import KEY_ENV, World
+from writer_world import KEY_ENV, OPENCODE_API, OPENCODE_ENDPOINT, World
 
 from sereno.attacker.config import AttackerConfig, LoopSettings
 from sereno.attacker.config import load_config as load_attacker_config
@@ -25,7 +25,7 @@ from sereno.context_eval import run_attacker
 from sereno.context_eval.cli import main
 from sereno.context_eval.config import default_registry, fingerprint, load_config, validate
 from sereno.context_eval.engine import EventLog, InterventionEngine, Runtime
-from sereno.context_eval.pairing import campaign_summary, chain_summary, pair, summarize_pair
+from sereno.context_eval.pairing import campaign_summary, chain_summary, inactivity_counts, pair, summarize_pair
 from sereno.context_eval.runner import complete, run_campaign
 from sereno.context_eval.schema import ExperimentConfig, MemoryConfig, RunAttacker, Session
 from sereno.writer.config import code_sha256 as writer_code_sha256
@@ -229,6 +229,42 @@ def test_private_state_carries_within_a_chain_and_never_across(tmp_path, fixture
         for r in writer.requests[count:]
         if r["contract"]["session_call"] == 1 and r["observation"]["session"]["id"] == "exposure"
     )
+
+
+def test_the_request_names_the_chain_so_providers_never_share_a_conversation(tmp_path, fixture_world, monkeypatch):
+    """The request's contract carries the chain as names only: the run tree's own name, the case, the arm, the repeat
+    and the target agent. Two repeats of one campaign name different chains, and no path enters the identity."""
+    writer = FakeWriter(counting)
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    run(tmp_path, fixture_world, raw_config(fixture_world[0]))
+    starts = {
+        json.dumps(request["contract"]["chain"], sort_keys=True)
+        for request in writer.requests
+        if request["contract"]["session_call"] == 1
+    }
+    chains = [json.loads(item) for item in starts]
+    assert len(chains) == 2
+    assert {chain["repeat"] for chain in chains} == {1, 2}
+    for chain in chains:
+        assert chain["campaign"] == "campaign" and chain["arm"] == "attack_carry"
+        assert chain["target"] == "first" and chain["agent_id"] == "main"
+        assert chain["case"] == f"first--default--r{chain['repeat']:03d}"
+        assert all("/" not in str(value) for value in chain.values())
+
+
+def test_a_resumed_session_rebuilds_the_same_chain_identity(tmp_path, fixture_world, monkeypatch):
+    """A resume runs the same session again: its request names the same chain, so a provider that routes by
+    conversation resumes the same one."""
+    writer = FakeWriter(counting)
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    raw = raw_config(fixture_world[0]) | {"repeats": 1}
+    root = run(tmp_path, fixture_world, raw)
+    first = [request["contract"]["chain"] for request in writer.requests]
+    # A session without its checkpoint is incomplete, so the resume runs it again.
+    (chain(root) / "002-probe" / run_attacker.STATE_FILE).unlink()
+    run(tmp_path, fixture_world, raw, resume=True)
+    resumed = [request["contract"]["chain"] for request in writer.requests[len(first) :]]
+    assert resumed and all(chain in first for chain in resumed)
 
 
 def test_transcript_is_visible_only_and_writes_do_not_rewrite_prepared_messages(tmp_path, fixture_world, monkeypatch):
@@ -655,7 +691,44 @@ def test_a_ledger_append_failure_after_a_launched_call_keeps_its_usage(
     record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
     assert record["status"] == "infrastructure_error" and record["error"]["code"] == "audit_copy"
     assert record["program"]["exit_code"] == 0 and record["seconds"] >= 0
-    assert record["usage"] == {"tokens": 10, "cost_usd": 0.001, "unreported_completions": 0}
+    # The program reported no billing marker or allowance, so the record says so rather than inventing a cash charge.
+    assert record["usage"] == {
+        "tokens": 10,
+        "cost_usd": 0.001,
+        "unreported_completions": 0,
+        "billing": None,
+        "allowance_usd": None,
+    }
+
+
+def test_an_application_failure_keeps_the_launched_call_in_the_chain_summary(tmp_path, fixture_world, monkeypatch):
+    """A write the environment refuses after the program answered is a `write_failed` infrastructure error. The call
+    ran, so its record carries `program`, its seconds and its usage, and the chain summary counts it as a call with
+    nothing left in `incomplete_calls`, never as the pre-launch skeleton."""
+    dataset, factory, _, _ = fixture_world
+    monkeypatch.setattr(run_attacker, "run_program", FakeWriter(counting))
+
+    class Unwritable(factory):
+        def write(self, path, text):
+            if text is not None:
+                raise OSError("fixture memory write failure")
+            return super().write(path, text)
+
+    config = ExperimentConfig.model_validate(raw_config(dataset) | {"repeats": 1})
+    root = tmp_path / "campaign"
+    run_campaign(config, root, default_registry(), env_factory=Unwritable, identities=IDS)
+    folder = chain(root) / "001-exposure"
+    result = json.loads((folder / "result.json").read_text())
+    assert result["status"] == "invalid" and result["infrastructure_error"]["code"] == "write_failed"
+    [record] = records(folder)
+    assert record["status"] == "infrastructure_error" and record["error"]["code"] == "write_failed"
+    assert record["program"]["exit_code"] == 0 and record["seconds"] >= 0
+    assert record["usage"]["tokens"] == 10
+    summary = campaign_summary(root, 20)["chains"]["first--default--r001"]
+    exposure = next(row for row in summary["sessions"] if row["session"] == "001-exposure")
+    assert exposure["calls"] == {"in_task": 1} and exposure["results"] == {"infrastructure_error": 1}
+    assert exposure["incomplete_calls"] == 0
+    assert summary["realized_usage"]["tokens"] == 10 and summary["realized_usage"]["calls"] == 1
 
 
 def test_a_capture_start_failure_is_classified_as_writer_failed(tmp_path, fixture_world, monkeypatch):
@@ -730,6 +803,38 @@ def test_an_argv_value_mixing_a_relative_and_an_absolute_entry_is_refused(tmp_pa
     _, runtime = runtime_for(tmp_path, fixture_world)
     inside = tmp_path / "data"
     command = [sys.executable, f"--path=lib{os.pathsep}{inside}"]
+    attacker = run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings(command=command)), runtime, "fixture task", "first"
+    )
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="run_tree"):
+        attacker.advance([])
+    record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
+    assert record["error"]["code"] == "run_tree" and writer.requests == []
+
+
+def test_a_value_carrying_a_separator_is_read_as_a_list_even_behind_an_empty_entry(tmp_path):
+    """A single absolute entry behind a separator is a list of one path, not one relative value: `:<abs>` and
+    `--path=:<abs>` reach the run-tree check like `lib:<abs>` does."""
+    root = tmp_path / "run"
+    inside = root / "data"
+    for value in (os.pathsep + str(inside), "lib" + os.pathsep + str(inside)):
+        with pytest.raises(run_attacker.AttackerInfrastructureError, match="run_tree"):
+            run_attacker.refuse_inside_run_tree("command[1]", value, root)
+    # A value without a separator is one whole entry, and a relative one names no absolute path.
+    assert run_attacker.forwarded_paths("PLAIN", "/one/path") == ["/one/path"]
+    assert run_attacker.forwarded_paths("PLAIN", "one/path") == ["one/path"]
+
+
+@pytest.mark.parametrize("word", ["{sep}{inside}", "--path={sep}{inside}"])
+def test_an_argv_value_with_only_a_separator_before_an_absolute_entry_is_refused(
+    tmp_path, fixture_world, monkeypatch, word
+):
+    """The end-to-end form of the same probe: `--path=:<run tree>` names the campaign, so the call fails closed as
+    `run_tree` before the program runs."""
+    writer = FakeWriter()
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    command = [sys.executable, word.format(sep=os.pathsep, inside=tmp_path / "data")]
     attacker = run_attacker.RunLocalAttacker(
         RunAttacker(**attacker_settings(command=command)), runtime, "fixture task", "first"
     )
@@ -1015,6 +1120,87 @@ def test_a_credential_configuration_that_cannot_be_read_in_bounded_form_adds_no_
         assert run_attacker.credential_variables([sys.executable, "--config", str(path)]) == []
 
 
+def test_a_symlinked_credential_configuration_adds_no_name(tmp_path):
+    """The configuration is read without following a symlink, so a link to a valid file adds no name. The previous
+    stat-then-read reader followed the link and returned the name, so reverting to it fails here."""
+    real = tmp_path / "real.yaml"
+    real.write_text(yaml.safe_dump({"provider": {"credential_env": "FIXTURE_ATTACKER_KEY"}}))
+    linked = tmp_path / "linked.yaml"
+    linked.symlink_to(real)
+    assert run_attacker.credential_variables([sys.executable, "--config", str(linked)]) == []
+    # The same bytes read directly do name the variable, so the refusal is the link and not the file.
+    assert run_attacker.credential_variables([sys.executable, "--config", str(real)]) == ["FIXTURE_ATTACKER_KEY"]
+
+
+def test_a_fifo_swapped_in_after_the_credential_check_is_refused_without_hanging(tmp_path, monkeypatch):
+    """A configuration swapped for a FIFO between the reader's first look and its open is opened without blocking and
+    refused on its own type, so reading a credential at call time never waits for a writer."""
+    config = tmp_path / "attacker.yaml"
+    config.write_text(yaml.safe_dump({"provider": {"credential_env": "FIXTURE_ATTACKER_KEY"}}))
+    real_lstat = os.lstat
+    swapped = []
+
+    def lstat_then_fifo(path, *args, **kwargs):
+        info = real_lstat(path, *args, **kwargs)
+        if Path(path) == config and not swapped:
+            swapped.append(path)
+            config.unlink()
+            os.mkfifo(config)
+        return info
+
+    monkeypatch.setattr(run_attacker.os, "lstat", lstat_then_fifo)
+    outcome = {}
+
+    def attempt():
+        try:
+            outcome["names"] = run_attacker.credential_variables([sys.executable, "--config", str(config)])
+        except BaseException as error:
+            outcome["error"] = error
+
+    thread = threading.Thread(target=attempt, daemon=True)
+    thread.start()
+    thread.join(10)
+    assert not thread.is_alive(), "the credential read blocked on a FIFO"
+    assert "error" not in outcome and outcome.get("names") == []
+
+
+def test_the_writer_credential_name_is_read_from_the_design_the_configuration_points_at(tmp_path):
+    """A `writer.json` only points at its design package; the credential name lives in the design, so the harness
+    follows `design` one level under the same bounded read and forwards the name it finds."""
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "writer-design.json").write_text(json.dumps({"credential_env_name": "OPENCODE_API_KEY"}))
+    writer = tmp_path / "writer.json"
+    writer.write_text(json.dumps({"design": "package/writer-design.json"}))
+    command = [sys.executable, "-m", "sereno.writer", "--live", "--config", str(writer)]
+    assert run_attacker.credential_variables(command) == ["OPENCODE_API_KEY"]
+    # A design the configuration cannot reach, and a design naming a harness-controlled variable, add or forward none.
+    writer.write_text(json.dumps({"design": "package/missing.json"}))
+    assert run_attacker.credential_variables(command) == []
+    (package / "writer-design.json").write_text(json.dumps({"credential_env_name": "PYTHONPATH"}))
+    writer.write_text(json.dumps({"design": "package/writer-design.json"}))
+    assert run_attacker.credential_variables(command) == ["PYTHONPATH"]
+    assert "PYTHONPATH" not in run_attacker.child_environment(
+        RunAttacker(**attacker_settings(command=command)), tmp_path / "scratch", None
+    )
+
+
+def test_the_opencode_writer_design_supplies_the_credential_name(tmp_path, monkeypatch):
+    """The real opencode shape: a `writer.json` from the examples points at the design package, which names
+    `OPENCODE_API_KEY`; the harness forwards that variable and not one the harness sets itself."""
+    world = World(tmp_path)
+    config = world.write_config(api=OPENCODE_API, endpoint=OPENCODE_ENDPOINT)
+    design = json.loads((world.package / "writer-design.json").read_text())
+    (world.package / "writer-design.json").write_text(json.dumps(design | {"credential_env_name": "OPENCODE_API_KEY"}))
+    monkeypatch.setenv("OPENCODE_API_KEY", "fixture-go-key")
+    command = [sys.executable, "-m", "sereno.writer", "--live", "--config", str(config)]
+    assert run_attacker.credential_variables(command) == ["OPENCODE_API_KEY"]
+    environment = run_attacker.child_environment(
+        RunAttacker(**attacker_settings(command=command)), tmp_path / "scratch", None
+    )
+    assert environment["OPENCODE_API_KEY"] == "fixture-go-key"
+
+
 def test_a_scratch_root_that_cannot_be_created_is_a_temp_base_error(tmp_path, fixture_world, monkeypatch):
     def failing_mkdtemp(*args, **kwargs):
         raise OSError("fixture mkdtemp failure")
@@ -1240,8 +1426,7 @@ def test_infrastructure_error_is_not_an_attack_outcome(tmp_path, fixture_world, 
     ("failure", "code"),
     [
         ("file_index", "code_index"),
-        ("read_code", "read_code"),
-        ("read_bridge", "read_code"),
+        ("code_read", "read_code"),
         ("load_response", "response_read"),
         ("file_sha256", "response_hash"),
         ("encode", "request_encoding"),
@@ -1255,14 +1440,9 @@ def test_container_and_response_failures_are_infrastructure_errors(tmp_path, fix
         def execute(self, command):
             if failure == "file_index" and "ls-files" in command:
                 raise RuntimeError("fixture container timeout")
-            return super().execute(command)
-
-        def read(self, path):
-            if failure == "read_code" and path == "/app/README.md":
+            if failure == "code_read" and "SERENO_CODE_READS" in command:
                 raise subprocess.TimeoutExpired("read", 30)
-            if failure == "read_bridge" and path == "/app/README.md":
-                raise RuntimeError("bridge read failed: fixture")
-            return super().read(path)
+            return super().execute(command)
 
     if failure == "load_response":
         original_read = Path.read_bytes
@@ -1430,8 +1610,87 @@ def test_realized_usage_includes_invalid_and_superseded_attempts_without_copies(
     assert chain["realized_usage"]["unreported_completions"] == 1
     assert chain["realized_cost_usd"] == summary["realized_cost_usd"] == 0.6
     assert chain["declined_calls"] == 1 and chain["declined_attempts"] == 6
-    assert summary["declines_by_arm"]["attack_carry"] == {"declined_calls": 1, "declined_attempts": 6}
-    assert summary["declines_by_arm"]["attack_reset"] == {"declined_calls": 0, "declined_attempts": 0}
+    assert summary["declines_by_arm"]["attack_carry"] == {
+        "declined_calls": 1,
+        "declined_applied_calls": 0,
+        "declined_unapplied_calls": 1,
+        "declined_attempts": 6,
+    }
+    assert summary["declines_by_arm"]["attack_reset"] == {
+        "declined_calls": 0,
+        "declined_applied_calls": 0,
+        "declined_unapplied_calls": 0,
+        "declined_attempts": 0,
+    }
+
+
+def test_a_torn_final_event_line_is_counted_and_the_rest_is_read(tmp_path):
+    """A session interrupted while appending leaves one unparsable final line. The summary reads every complete event
+    before it and reports the torn line, per session and per chain, instead of failing the whole pair summary."""
+    session = tmp_path / "sessions" / "001-exposure"
+    session.mkdir(parents=True)
+    (session / "result.json").write_text(json.dumps({"status": "complete", "exposure_phase": True}))
+    events = [
+        {"kind": "memory_change", "step": 1, "origin": "attacker", "path": NOTE, "before": "", "after": "x"},
+        {"kind": "memory_change", "step": 2, "origin": "attacker", "path": NOTE, "before": "x", "after": "x\ny"},
+    ]
+    (session / "events.jsonl").write_text("".join(json.dumps(event) + "\n" for event in events) + '{"kind": "memory_')
+    summary = chain_summary(tmp_path, BUDGET, 20)
+    assert summary["sessions"][0]["torn_event_lines"] == 1
+    assert summary["torn_event_lines"] == 1
+    assert [write["step"] for write in summary["writes"]] == [1, 2]
+    # A summary of a chain whose log is intact reports none.
+    (session / "events.jsonl").write_text("".join(json.dumps(event) + "\n" for event in events))
+    assert chain_summary(tmp_path, BUDGET, 20)["torn_event_lines"] == 0
+
+
+def test_a_torn_middle_event_line_fails_loudly(tmp_path):
+    """Only the final line may be torn: an unreadable line before it is a broken log, not an interrupted append."""
+    session = tmp_path / "sessions" / "001-exposure"
+    session.mkdir(parents=True)
+    (session / "result.json").write_text(json.dumps({"status": "complete", "exposure_phase": True}))
+    lines = [
+        json.dumps(
+            {"kind": "memory_change", "step": 1, "origin": "attacker", "path": NOTE, "before": "", "after": "x"}
+        ),
+        '{"kind": "memory_',
+        json.dumps(
+            {"kind": "memory_change", "step": 3, "origin": "attacker", "path": NOTE, "before": "", "after": "y"}
+        ),
+    ]
+    (session / "events.jsonl").write_text("\n".join(lines) + "\n")
+    with pytest.raises(ValueError):
+        chain_summary(tmp_path, BUDGET, 20)
+
+
+def test_inactivity_reports_open_write_probe_and_error_sessions_apart(tmp_path):
+    """`sessions_without_applied_actions` keeps counting every attempt with a zero count, probe and infrastructure-error
+    sessions included. Beside it, the exposure attempts with nothing applied and the attempts that ended on an
+    infrastructure error are reported as their own counts, so neither narrows the old field."""
+
+    def session(name, **result):
+        folder = tmp_path / "sessions" / name
+        folder.mkdir(parents=True)
+        (folder / "result.json").write_text(json.dumps({"status": "complete"} | result))
+
+    session("001-exposure", exposure_phase=True, applied_attack_actions=0)
+    session("002-probe", applied_attack_actions=0)
+    session("003-exposure", exposure_phase=True, applied_attack_actions=2)
+    session(
+        "004-exposure",
+        exposure_phase=True,
+        applied_attack_actions=None,
+        infrastructure_error={"source": "run_attacker", "code": "write_failed"},
+    )
+    session(
+        "005-probe",
+        applied_attack_actions=0,
+        infrastructure_error={"source": "run_attacker", "code": "read_code"},
+    )
+    counts = inactivity_counts([tmp_path])
+    assert counts["sessions_without_applied_actions"] == 3
+    assert counts["sessions_writes_open_without_applied_actions"] == 1
+    assert counts["sessions_infrastructure_error"] == 2
 
 
 def test_realized_usage_includes_a_case_with_only_archived_attempts(tmp_path):
@@ -1453,6 +1712,37 @@ def test_realized_usage_includes_a_case_with_only_archived_attempts(tmp_path):
     assert summary["cost_usd"] == 0
     assert chain["realized_usage"]["calls"] == 1
     assert chain["realized_cost_usd"] == summary["realized_cost_usd"] == 0.1
+
+
+@pytest.mark.parametrize("staged", [True, False])
+def test_a_declined_call_records_whether_actions_were_staged_before_it(tmp_path, fixture_world, monkeypatch, staged):
+    """A decline can end a call whose earlier steps staged actions. The actions are still applied under the same rules,
+    and the record and the summaries state the two facts separately: `declined` keeps its meaning, and the declined
+    calls with and without applied actions are counted apart."""
+    first = [True]
+
+    def policy(request):
+        answer: dict[str, object] = {"status": "declined"}
+        if staged and first and request["contract"]["kind"] == "in_task" and request["contract"]["writes_open"]:
+            first.clear()
+            answer["actions"] = [{"op": "write", "path": NOTE, "content": LINE + "\n"}]
+        return answer
+
+    monkeypatch.setattr(run_attacker, "run_program", FakeWriter(policy))
+    root = run(tmp_path, fixture_world, raw_config(fixture_world[0]) | {"repeats": 1})
+    assert all(json.loads(path.read_bytes())["status"] == "complete" for path in chain(root).glob("*/result.json"))
+    exposure = records(chain(root) / "001-exposure")
+    assert exposure[0]["declined"] is True and exposure[0]["declined_after_actions"] is staged
+    assert exposure[0]["status"] == ("applied" if staged else "no_action")
+    assert exposure[0]["applied"] is staged
+    summary = campaign_summary(root, 20)
+    chain_result = summary["chains"]["first--default--r001"]
+    declined = chain_result["declined_calls"]
+    assert chain_result["declined_applied_calls"] == (1 if staged else 0)
+    assert chain_result["declined_unapplied_calls"] == declined - (1 if staged else 0)
+    by_arm = summary["declines_by_arm"]["attack_carry"]
+    assert by_arm["declined_applied_calls"] == (1 if staged else 0)
+    assert by_arm["declined_unapplied_calls"] == by_arm["declined_calls"] - (1 if staged else 0)
 
 
 @pytest.mark.parametrize("terminal", [True, False])
@@ -1477,9 +1767,16 @@ def test_declined_calls_are_valid_and_reported_per_arm(tmp_path, fixture_world, 
     assert chain_result["declined_attempts"] == 14
     assert summary["declines_by_arm"]["attack_carry"] == {
         "declined_calls": 7 if terminal else 0,
+        "declined_applied_calls": 0,
+        "declined_unapplied_calls": 7 if terminal else 0,
         "declined_attempts": 14,
     }
-    assert summary["declines_by_arm"]["clean"] == {"declined_calls": 0, "declined_attempts": 0}
+    assert summary["declines_by_arm"]["clean"] == {
+        "declined_calls": 0,
+        "declined_applied_calls": 0,
+        "declined_unapplied_calls": 0,
+        "declined_attempts": 0,
+    }
 
 
 @pytest.mark.parametrize("counter", [1, "invalid", -1, True])
@@ -1588,33 +1885,64 @@ def test_code_reads_follow_in_root_symlinks_and_deny_escapes(tmp_path, fixture_w
 
 
 def test_an_oversized_file_is_named_without_being_read(tmp_path, fixture_world):
+    """The size is measured before the file is opened, so a file over the limit is named with its size and never
+    transferred: the record carries no text and no `undecodable` verdict for bytes that were never read."""
     env, runtime = runtime_for(tmp_path, fixture_world)
     env.write("/app/large.py", "x" * 64)
-
-    def read(path):
-        raise AssertionError(f"an oversized file must not be read: {path}")
-
-    env.read = read
     attacker = run_attacker.RunLocalAttacker(
         RunAttacker(**attacker_settings(max_read_bytes=40)), runtime, "fixture task", "first"
     )
     assert attacker.read_code("/app/large.py") == {"status": "too_large", "bytes": 64, "limit": 40}
 
 
+def test_one_container_read_serves_every_configured_view(tmp_path, fixture_world, monkeypatch):
+    """The configured views are read in one container exec, not three per file: the call's request costs one read
+    command whatever the number of code paths, and each view keeps its own record."""
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    env.write("/app/pkg/core.py", "def alpha():\n    return 1\n")
+    commands = []
+    original = env.execute
+
+    def execute(command):
+        if run_attacker.CODE_READS_MARKER in command or "SERENO_CODE_READS" in command:
+            commands.append(command)
+        return original(command)
+
+    env.execute = execute
+    attacker = run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings(code_paths=["/app/README.md", "/app/pkg/core.py", "/app/missing.py"])),
+        runtime,
+        "fixture task",
+        "first",
+    )
+    views = attacker.request("in_task", 1, [], None, True)["observation"]["code_views"]
+    assert len(commands) == 1
+    assert [views[path]["status"] for path in ("/app/README.md", "/app/pkg/core.py", "/app/missing.py")] == [
+        "ok",
+        "ok",
+        "missing",
+    ]
+    # The one command carries every relative path as an argument, so no absolute path of the code root travels twice.
+    assert commands[0].endswith(" README.md pkg/core.py missing.py")
+
+
 @pytest.mark.parametrize(
     "failure",
     [
-        RuntimeError("fixture realpath timeout"),
+        RuntimeError("fixture read timeout"),
         {"output": "", "returncode": -1, "exception_info": "Command timed out after 300 seconds"},
         {"output": "", "returncode": 128 + 9, "exception_info": ""},
+        {"output": "", "returncode": 127, "exception_info": ""},
     ],
 )
-def test_a_realpath_execution_failure_is_not_a_missing_file(tmp_path, fixture_world, failure):
+def test_a_code_read_the_container_does_not_finish_is_an_infrastructure_error(tmp_path, fixture_world, failure):
+    """A read command that cannot run, was killed or timed out says nothing about the file: it is a `read_code`
+    infrastructure error, never a refused or missing view."""
     env, runtime = runtime_for(tmp_path, fixture_world)
     original = env.execute
 
     def execute(command):
-        if "realpath -e" in command:
+        if "SERENO_CODE_READS" in command:
             if isinstance(failure, Exception):
                 raise failure
             return failure
@@ -1622,44 +1950,87 @@ def test_a_realpath_execution_failure_is_not_a_missing_file(tmp_path, fixture_wo
 
     env.execute = execute
     attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
-    with pytest.raises(run_attacker.AttackerInfrastructureError, match="code_realpath"):
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="read_code"):
         attacker.read_code("/app/README.md")
 
 
 @pytest.mark.parametrize(
-    "failure",
+    "answer",
     [
-        RuntimeError("fixture stat timeout"),
-        {"output": "", "returncode": 128 + 9, "exception_info": ""},
+        {"output": "no marker here", "returncode": 0, "exception_info": ""},
+        {"output": 'SERENO_CODE_READS {"status": "ok"}', "returncode": 0, "exception_info": ""},
+        {"output": 'SERENO_CODE_READS [{"status": "nonsense"}]', "returncode": 0, "exception_info": ""},
+        {"output": 'SERENO_CODE_READS [{"status": "ok", "real": "README.md"}]', "returncode": 0, "exception_info": ""},
+        {
+            "output": 'SERENO_CODE_READS [{"status": "too_large", "bytes": "big"}]',
+            "returncode": 0,
+            "exception_info": "",
+        },
     ],
 )
-def test_a_size_check_execution_failure_is_an_infrastructure_error(tmp_path, fixture_world, failure):
+def test_a_code_read_answer_that_is_not_a_record_is_an_infrastructure_error(tmp_path, fixture_world, answer):
+    """The batched answer is checked entry by entry; anything that is not the reader's record is refused whole."""
     env, runtime = runtime_for(tmp_path, fixture_world)
-    original = env.execute
-
-    def execute(command):
-        if "stat -c" in command:
-            if isinstance(failure, Exception):
-                raise failure
-            return failure
-        return original(command)
-
-    env.execute = execute
+    env.execute = lambda command: answer
     attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
-    with pytest.raises(run_attacker.AttackerInfrastructureError, match="code_size"):
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="read_code"):
         attacker.read_code("/app/README.md")
 
 
-def test_a_symlink_alias_is_read_through_its_resolved_path(tmp_path, fixture_world):
+def test_a_resolved_path_outside_the_root_is_denied_even_when_the_reader_says_ok(tmp_path, fixture_world):
+    """The host repeats the containment check on every resolved path: a reader answer naming a path outside the code
+    root is a denied view, never a served file."""
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    env.execute = lambda command: {
+        "output": 'SERENO_CODE_READS [{"status": "ok", "real": "../outside", "text": "x"}]',
+        "returncode": 0,
+        "exception_info": "",
+    }
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    assert attacker.read_code("/app/README.md") == {
+        "status": "denied",
+        "reason": "the path resolves outside /app or into .git",
+    }
+
+
+def test_a_permission_denied_resolution_is_an_infrastructure_error(tmp_path, fixture_world):
+    """A path the container cannot stat for a reason other than absence (permission denied) is not a missing file."""
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    env.execute = lambda command: {
+        "output": 'SERENO_CODE_READS [{"status": "realpath_failed", "reason": "denied"}]',
+        "returncode": 0,
+        "exception_info": "",
+    }
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="read_code"):
+        attacker.read_code("/app/README.md")
+
+
+def test_a_non_utf8_file_is_named_unreadable_and_not_cut(tmp_path, fixture_world):
+    """A file that is not UTF-8 text is named in its record; the session stays valid and the other views of the same
+    read are still served."""
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    (env.local_path("/app/binary.bin")).write_bytes(b"\xff\xfe\x00data")
+    attacker = run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings(code_paths=["/app/binary.bin", "/app/README.md"])),
+        runtime,
+        "fixture task",
+        "first",
+    )
+    views = attacker.request("in_task", 1, [], None, True)["observation"]["code_views"]
+    assert views["/app/binary.bin"] == {"status": "unreadable", "reason": "UnicodeDecodeError"}
+    assert views["/app/README.md"]["status"] == "ok"
+
+
+def test_code_reads_do_not_use_the_memory_bridge(tmp_path, fixture_world):
+    """The code view is the container reader's, not the memory bridge's: a bridge that refuses symlinks never sees a
+    code path, so a symlinked alias resolves through the reader like any other file."""
     env, runtime = runtime_for(tmp_path, fixture_world)
     env.write("/app/pkg/core.py", "def alpha():\n    return 1\n")
     (env.local_path("/app/pkg/alias.py")).symlink_to("core.py")
-    original = env.read
 
     def bridge_read(path):
-        if path == "/app/pkg/alias.py":
-            raise RuntimeError("bridge read failed: ValueError: symlink paths are unsupported")
-        return original(path)
+        raise AssertionError(f"a code read must not use the memory bridge: {path}")
 
     env.read = bridge_read
     attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
@@ -2097,7 +2468,7 @@ def test_summary_refuses_a_campaign_whose_attacker_differs_from_the_pairing(tmp_
         summarize_pair(pairing, roots["defended"], roots["undefended"])
 
 
-@pytest.mark.parametrize("operation", ["pair", "pair-summary", "resume"])
+@pytest.mark.parametrize("operation", ["pair", "resume"])
 def test_paired_workflows_refuse_a_stale_brief_pin(tmp_path, fixture_world, monkeypatch, operation):
     runtime_dir = tmp_path / "runtime"
     runtime_dir.mkdir()
@@ -2120,8 +2491,6 @@ def test_paired_workflows_refuse_a_stale_brief_pin(tmp_path, fixture_world, monk
     with pytest.raises(ValueError, match="identity_mismatch"):
         if operation == "pair":
             pair(files["defended"], files["undefended"], default_registry())
-        elif operation == "pair-summary":
-            summarize_pair(pairing, roots["defended"], roots["undefended"])
         else:
             run_campaign(
                 load_config(files["defended"]),
@@ -2131,6 +2500,9 @@ def test_paired_workflows_refuse_a_stale_brief_pin(tmp_path, fixture_world, monk
                 identities=IDS,
                 resume=True,
             )
+    # A read-only summary of the finished campaigns does not recompute the identity from today's code: the campaigns'
+    # recorded pins still match the pairing, so the summary reads them and never breaks on a later change.
+    assert summarize_pair(pairing, roots["defended"], roots["undefended"])["campaigns"]
 
 
 def test_summary_names_a_missing_manifest(tmp_path, fixture_world, monkeypatch, capsys):
@@ -2181,6 +2553,7 @@ def test_the_stub_program_runs_through_the_real_subprocess_path(tmp_path, fixtur
         "seconds": 0,
         "writes": 1,
         "cost_usd": 0.0,
+        "allowance_usd": 0.0,
         "unreported_usage_calls": 0,
         "skipped_calls": 0,
     }

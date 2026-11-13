@@ -70,10 +70,25 @@ STATE_SCHEMA = "1.0"
 STATE_FILE = "run_attacker_state.json"
 AUDIT_DIR = "run_attacker"
 RESPONSE_KEYS = frozenset(
-    {"schema_version", "actions", "strategy", "notebook", "reads", "writer_usage", "status", "loop_ending"}
+    {
+        "schema_version",
+        "actions",
+        "strategy",
+        "notebook",
+        "reads",
+        "writer_usage",
+        "status",
+        "loop_ending",
+        "declined_after_actions",
+    }
 )
 # What a call's actions came to. Only `applied` changes memory.
 ACTION_RESULTS = ("applied", "no_change", "no_action", "rejected", "not_applied")
+# The target agent a session runs, as the event log names it: one agent until the orchestration arm exists.
+AGENT_ID = "main"
+# What a call's record reports the program spent: its tokens and charge, whether that charge was cash or a
+# subscription allowance, and how much of it was the allowance.
+USAGE_KEYS = ("tokens", "cost_usd", "unreported_completions", "billing", "allowance_usd")
 # Message fields a recorded transcript shows; provider metadata stays out except the readable thinking text, which
 # `visible_transcript` copies into `thinking`.
 VISIBLE_KEYS = ("role", "content", "tool_calls", "tool_call_id", "name")
@@ -81,6 +96,71 @@ HIDDEN_BLOCKS = frozenset({"thinking", "redacted_thinking"})
 EVENT_OWN = frozenset({"schema_version", "kind", "step", "session_id"})
 # What a call's scratch directory can hold and the audit folder receives once the program has exited.
 CALL_FILES = ("response.json", "failure_usage.json", "writer.stdout", "writer.stderr")
+# One container read serves every file a call needs: the script runs with the code root as its working directory and
+# one path relative to it per argument, and prints one JSON list under this marker. Every check the per-file reader
+# made stays: the real path is resolved, a path leaving the root, entering `.git` or naming anything but a regular
+# file is refused, the size is measured before the read and the read stops one byte past the limit.
+CODE_READS_MARKER = "SERENO_CODE_READS"
+CODE_READER = r"""
+import json, os, stat, sys
+limit = int(sys.argv[1])
+root = os.getcwd()
+records = []
+for raw in sys.argv[2:]:
+    record = {"path": raw}
+    try:
+        real = os.path.realpath(raw)
+        info = os.stat(real)
+    except PermissionError as error:
+        record["status"] = "realpath_failed"
+        record["reason"] = str(error)
+        records.append(record)
+        continue
+    except OSError:
+        record["status"] = "missing"
+        records.append(record)
+        continue
+    relative = os.path.relpath(real, root)
+    if (relative == os.pardir or relative.startswith(os.pardir + os.sep)
+            or relative == ".git" or relative.startswith(".git" + os.sep)):
+        record["status"] = "denied"
+        records.append(record)
+        continue
+    if not stat.S_ISREG(info.st_mode):
+        record["status"] = "missing"
+        records.append(record)
+        continue
+    if info.st_size > limit:
+        record["status"] = "too_large"
+        record["bytes"] = info.st_size
+        records.append(record)
+        continue
+    try:
+        with open(real, "rb") as stream:
+            data = stream.read(limit + 1)
+    except OSError as error:
+        record["status"] = "unreadable"
+        record["reason"] = type(error).__name__
+        records.append(record)
+        continue
+    if len(data) > limit:
+        record["status"] = "too_large"
+        record["bytes"] = max(info.st_size, len(data))
+        records.append(record)
+        continue
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        record["status"] = "undecodable"
+        record["reason"] = "UnicodeDecodeError"
+        records.append(record)
+        continue
+    record["status"] = "ok"
+    record["real"] = relative
+    record["text"] = text
+    records.append(record)
+print("SERENO_CODE_READS " + json.dumps(records))
+"""
 
 
 class AttackerInfrastructureError(RuntimeError):
@@ -107,6 +187,8 @@ def initial_state(config) -> dict:
             "seconds": 0.0,
             "writes": 0,
             "cost_usd": 0.0,
+            # The part of `cost_usd` a subscription allowance covered rather than cash.
+            "allowance_usd": 0.0,
             "unreported_usage_calls": 0,
             "skipped_calls": 0,
         },
@@ -211,6 +293,17 @@ def reported_count(usage: object, key: str) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
+def reported_amount(usage: object, key: str) -> float | None:
+    value = usage.get(key) if isinstance(usage, dict) else None
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def reported_billing(usage: object) -> str | None:
+    """Whether the program's charge was cash or a subscription allowance, as its own usage record names it."""
+    value = usage.get("billing") if isinstance(usage, dict) else None
+    return value if value in ("cash", "allowance") else None
+
+
 # The shell's own statuses: 126 cannot execute, 127 not found, and 128 + the signal when the command was killed.
 UNAVAILABLE = frozenset({126, 127})
 SIGNAL_BASE = 128
@@ -265,12 +358,12 @@ COPY_CHUNK = 65536
 
 
 def forwarded_paths(name: str, value: str) -> list[str]:
-    """The paths a forwarded value names: a PATH-like variable is a `os.pathsep` list, and any other value that splits
-    into more than one non-empty entry is read as one too, so a list mixing a relative and an absolute entry cannot
-    carry a path the check would skip. A single entry is one value, checked whole when it is absolute."""
-    entries = [entry for entry in value.split(os.pathsep) if entry]
-    if name in PATH_VALUE_NAMES or len(entries) > 1:
-        return entries
+    """The paths a forwarded value names: a PATH-like variable is a `os.pathsep` list, and any other value carrying a
+    separator is read as one too, so a list mixing a relative and an absolute entry, or a single absolute entry
+    behind a separator, cannot carry a path the check would skip. A value without a separator is one whole entry,
+    checked as such when it is absolute."""
+    if name in PATH_VALUE_NAMES or os.pathsep in value:
+        return [entry for entry in value.split(os.pathsep) if entry]
     return [value]
 
 
@@ -363,31 +456,52 @@ def config_argument(command: list[str]) -> str | None:
     return None
 
 
-def credential_variables(command: list[str]) -> list[str]:
-    """The credential environment variables the configuration named by the command's `--config` sets, so the program
-    still authenticates: `provider.credential_env` in the attacker runtime's configuration, `credential_env_name` in
-    the writer design's. The file is read under the same bounded, non-following rules as a staged file, so a FIFO or a
-    file swapped in after the check cannot block or overrun the call. A command without a configuration, and a file
-    that cannot be read in that form, adds no name. The name is checked against the harness's own variables where it is
-    used, not here, so validation can still refuse a configuration that names one."""
-    path = config_argument(command)
-    if path is None:
-        return []
+def configuration_object(path: Path) -> dict | None:
+    """A configuration file as an object, read under the same bounded, non-following rules as a staged file, so a
+    FIFO or a file swapped in after the check cannot block or overrun the call. None when the file is missing, is not
+    a regular file, cannot be decoded, is not an object, or is not YAML."""
     try:
-        data = read_staged(Path(path), CONFIG_BYTES)
+        data = read_staged(path, CONFIG_BYTES)
     except OSError:
-        return []
+        return None
     if data is None:
-        return []
+        return None
     try:
         raw = yaml.safe_load(data.decode("utf-8"))
     except (ValueError, RecursionError, yaml.YAMLError):
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def credential_name(value: object) -> list[str]:
+    """The variable name a configuration field holds, when it is one."""
+    return [value] if isinstance(value, str) and ENV_NAME.fullmatch(value) else []
+
+
+def credential_variables(command: list[str]) -> list[str]:
+    """The credential environment variables the configuration named by the command's `--config` sets, so the program
+    still authenticates: `provider.credential_env` in the attacker runtime's configuration, and the writer's
+    `credential_env_name`, which lives in the design package `writer.json` points at rather than in the file itself,
+    so `design` is followed one level under the same bounded, non-following read. A command without a configuration,
+    and a file that cannot be read in that form, adds no name. The name is checked against the harness's own variables
+    where it is used, not here, so validation can still refuse a configuration that names one."""
+    path = config_argument(command)
+    if path is None:
         return []
-    if not isinstance(raw, dict):
+    raw = configuration_object(Path(path))
+    if raw is None:
         return []
     provider = raw.get("provider")
-    name = provider.get("credential_env") if isinstance(provider, dict) else raw.get("credential_env_name")
-    return [name] if isinstance(name, str) and ENV_NAME.fullmatch(name) else []
+    if isinstance(provider, dict):
+        return credential_name(provider.get("credential_env"))
+    if names := credential_name(raw.get("credential_env_name")):
+        return names
+    design = raw.get("design")
+    if not isinstance(design, str) or not design:
+        return []
+    resolved = (Path(path).parent / design).resolve()
+    design_raw = configuration_object(resolved)
+    return [] if design_raw is None else credential_name(design_raw.get("credential_env_name"))
 
 
 def check_forwarded_config(config) -> None:
@@ -545,6 +659,8 @@ def program_usage(staged: Path) -> dict | None:
             "cost_usd": reported_cost(usage),
             "unreported_completions": reported_count(usage, "unreported_completions"),
             "declined_attempts": reported_count(usage, "declined_attempts"),
+            "billing": reported_billing(usage),
+            "allowance_usd": reported_amount(usage, "allowance_usd"),
         }
     return None
 
@@ -581,7 +697,8 @@ class RunLocalAttacker:
     """The attacker of one session. `state` is the checkpoint of the chain's previous completed session, or None for
     the chain's first session; it is copied, so nothing this session does reaches it until `finish` returns.
     `campaign_root` is the campaign's run tree, which the runner pins once and passes down; a session run on its own
-    uses its own directory."""
+    uses its own directory. `chain` names the chain the session belongs to, as names only, so a provider that routes
+    by conversation never confuses two chains; the run tree's own name and the target agent's id are added here."""
 
     def __init__(
         self,
@@ -592,10 +709,14 @@ class RunLocalAttacker:
         state: dict | None = None,
         *,
         campaign_root: Path | None = None,
+        chain: dict | None = None,
     ):
         self.config, self.runtime, self.instruction, self.task_id = config, runtime, instruction, task_id
         self.campaign_root = Path(campaign_root if campaign_root is not None else runtime.log.path.parent).resolve()
+        self.chain = {"campaign": self.campaign_root.name, "agent_id": AGENT_ID, **(chain or {})}
         self.state = copy.deepcopy(state) if state is not None else initial_state(config)
+        # A checkpoint written before the allowance total existed keeps its identity and starts the total at zero.
+        self.state["usage"].setdefault("allowance_usd", 0.0)
         sessions = self.state.get("sessions")
         # A checkpoint written before notices were withheld still carries them in its session transcripts.
         self.notices_withheld_in_state = without_notices(sessions) if isinstance(sessions, list) else 0
@@ -652,77 +773,102 @@ class RunLocalAttacker:
     def read_code(self, path: object) -> dict:
         """One file below the code root as it now is in the workspace, or why it is not given. A file over the size
         limit is named with its size, never cut."""
+        return self.read_code_many([path])[0]
+
+    def read_code_many(self, paths: list) -> list[dict]:
+        """One record per entry, in order: the entry that is not a path, or not a canonical path below the code root,
+        is refused without a container call, and every other entry is read in one container exec. A symlink must not
+        lead out of the code root, so the real path is resolved in the container and checked again here."""
         root = self.config.code_root
-        if not isinstance(path, str):
-            return {"status": "denied", "reason": "not a path"}
+        denied_reason = f"not a canonical file path below {root}, outside .git"
+        found: dict[int, dict] = {}
+        pending: list[tuple[int, str]] = []
+        for index, path in enumerate(paths):
+            if not isinstance(path, str):
+                found[index] = {"status": "denied", "reason": "not a path"}
+                continue
+            try:
+                validate_path(path, root)
+            except ValueError:
+                found[index] = {"status": "denied", "reason": denied_reason}
+                continue
+            pending.append((index, path.removeprefix(root + "/")))
+        if pending:
+            records = self.container_reads([relative for _, relative in pending])
+            found |= dict(zip((index for index, _ in pending), records, strict=True))
+        return [found[index] for index in range(len(paths))]
+
+    def container_reads(self, relatives: list[str]) -> list[dict]:
+        """The records of one container read: one exec for the whole list, with the containment, type and size checks
+        inside it and every resolved path checked again here. A container or host failure while reading the code is a
+        `read_code` infrastructure error, never a missing file."""
+        root, limit = self.config.code_root, self.config.max_read_bytes
+        arguments = " ".join(shlex.quote(relative) for relative in relatives)
+        command = f"cd {shlex.quote(root)} && python3 -c {shlex.quote(CODE_READER)} {limit} {arguments}"
         try:
-            validate_path(path, root)
-        except ValueError:
-            return {"status": "denied", "reason": f"not a canonical file path below {root}, outside .git"}
-        # A symlink must not lead out of the code root, so the real path is resolved in the container.
-        relative = path.removeprefix(root + "/")
-        try:
-            resolved = self.runtime.env.execute(
-                f"cd {shlex.quote(root)} && LC_ALL=C realpath -e --relative-to=. -- {shlex.quote(relative)}"
-            )
-        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-            raise AttackerInfrastructureError("code_realpath", f"{type(error).__name__}: {error}") from error
-        # Only realpath's own failure (a missing file, a symlink loop) means the file is absent; a command that was
-        # killed or could not run says nothing about the file.
-        if did_not_finish(resolved):
-            raise AttackerInfrastructureError("code_realpath", "the container did not finish resolving the path")
-        if resolved["returncode"]:
-            if "Permission denied" in resolved["output"]:
-                raise AttackerInfrastructureError("code_realpath", "the path cannot be resolved in the container")
-            return {"status": "missing"}
-        real = resolved["output"].strip()
-        if real == ".." or real.startswith("../") or real == ".git" or real.startswith(".git/"):
-            return {"status": "denied", "reason": f"the path resolves outside {root} or into .git"}
-        absolute = f"{root}/{real}"
-        try:
-            validate_path(absolute, root)
-        except ValueError:
-            return {"status": "denied", "reason": f"the path resolves outside {root} or into .git"}
-        # The size is measured before the file is read, so a large file costs no host memory; the read keeps its own
-        # size check because the file can grow between the two.
-        try:
-            measured = self.runtime.env.execute(
-                f"cd {shlex.quote(root)} && [ -f {shlex.quote(real)} ] && LC_ALL=C stat -c %s -- {shlex.quote(real)}"
-            )
-        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-            raise AttackerInfrastructureError("code_size", f"{type(error).__name__}: {error}") from error
-        if did_not_finish(measured):
-            raise AttackerInfrastructureError("code_size", "the container did not finish measuring the file")
-        if measured["returncode"]:
-            return {"status": "missing"}
-        size_text = measured["output"].strip()
-        if not size_text.isdigit():
-            raise AttackerInfrastructureError("code_size", "the file size is not a number")
-        size = int(size_text)
-        if size > self.config.max_read_bytes:
-            return {"status": "too_large", "bytes": size, "limit": self.config.max_read_bytes}
-        try:
-            text = self.runtime.env.read(absolute)
-        except ValueError as error:
-            return {"status": "unreadable", "reason": type(error).__name__}
+            result = self.runtime.env.execute(command)
         except (OSError, RuntimeError, subprocess.SubprocessError) as error:
             raise AttackerInfrastructureError("read_code", f"{type(error).__name__}: {error}") from error
-        if text is None:
+        if did_not_finish(result):
+            raise AttackerInfrastructureError("read_code", "the container did not finish reading the code")
+        if result["returncode"]:
+            raise AttackerInfrastructureError("read_code", "the container could not read the code")
+        lines = [line for line in result["output"].splitlines() if line.startswith(CODE_READS_MARKER)]
+        try:
+            entries = json.loads(lines[-1][len(CODE_READS_MARKER) + 1 :]) if lines else None
+        except ValueError:
+            entries = None
+        if not isinstance(entries, list) or len(entries) != len(relatives):
+            raise AttackerInfrastructureError("read_code", "the container's answer is not a read record")
+        return [self.read_record(entry) for entry in entries]
+
+    def read_record(self, entry: object) -> dict:
+        """One file's record from the container's answer, with the containment and size checks repeated here: a resolved
+        path outside the code root or into `.git` is denied, and a file over the limit is named, never cut."""
+        root, limit = self.config.code_root, self.config.max_read_bytes
+        if not isinstance(entry, dict):
+            raise AttackerInfrastructureError("read_code", "the container's answer is not a read record")
+        status = entry.get("status")
+        if status == "realpath_failed":
+            raise AttackerInfrastructureError("read_code", "the path cannot be resolved in the container")
+        if status == "denied":
+            return {"status": "denied", "reason": f"the path resolves outside {root} or into .git"}
+        if status == "missing":
             return {"status": "missing"}
+        if status in ("unreadable", "undecodable"):
+            reason = entry.get("reason")
+            return {"status": "unreadable", "reason": reason if isinstance(reason, str) else "unreadable"}
+        if status == "too_large":
+            size = entry.get("bytes")
+            if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+                raise AttackerInfrastructureError("read_code", "the file size is not a number")
+            return {"status": "too_large", "bytes": size, "limit": limit}
+        real, text = entry.get("real"), entry.get("text")
+        if status != "ok" or not isinstance(real, str) or not isinstance(text, str):
+            raise AttackerInfrastructureError("read_code", "the container's answer is not a read record")
+        try:
+            validate_path(f"{root}/{real}", root)
+        except ValueError:
+            return {"status": "denied", "reason": f"the path resolves outside {root} or into .git"}
         size = len(text.encode())
-        if size > self.config.max_read_bytes:
-            return {"status": "too_large", "bytes": size, "limit": self.config.max_read_bytes}
+        if size > limit:
+            return {"status": "too_large", "bytes": size, "limit": limit}
         return {"status": "ok", "bytes": size, "text": text}
 
     def serve_reads(self) -> dict:
-        """The files the previous call asked for, read now; asks over the per-call budget are named, not served."""
-        served = {}
+        """The files the previous call asked for, read now in one container read; asks over the per-call budget are
+        named, not served."""
+        served: dict[str, dict] = {}
+        within: list[tuple[str, object]] = []
         for number, path in enumerate(self.state.get("pending_reads", [])):
             key = path if isinstance(path, str) else f"#{number}"
             if number >= self.config.max_reads_per_call:
                 served[key] = {"status": "denied", "reason": "over max_reads_per_call"}
             else:
-                served[key] = self.read_code(path)
+                within.append((key, path))
+        if within:
+            records = self.read_code_many([path for _, path in within])
+            served |= dict(zip((key for key, _ in within), records, strict=True))
         self.state["pending_reads"] = []
         return served
 
@@ -888,7 +1034,7 @@ class RunLocalAttacker:
                 key: outcome.get(key) for key in ("exit_code", "timed_out", "error", "stdout_bytes", "stderr_bytes")
             }
             if usage := program_usage(staged):
-                base["usage"] = {key: usage[key] for key in ("tokens", "cost_usd", "unreported_completions")}
+                base["usage"] = {key: usage[key] for key in USAGE_KEYS}
                 base["declined_attempts"] = usage["declined_attempts"]
             if meter is not None:
                 try:
@@ -922,12 +1068,31 @@ class RunLocalAttacker:
         self.state["usage"]["tokens"] += tokens or 0
         self.state["usage"]["unreported_usage_calls"] += tokens is None or missing > 0
         self.state["usage"]["cost_usd"] += reported_cost(usage)
-        base["usage"] = {"tokens": tokens, "cost_usd": reported_cost(usage), "unreported_completions": missing}
+        allowance = reported_amount(usage, "allowance_usd")
+        self.state["usage"]["allowance_usd"] = round(self.state["usage"]["allowance_usd"] + (allowance or 0.0), 8)
+        base["usage"] = {
+            "tokens": tokens,
+            "cost_usd": reported_cost(usage),
+            "unreported_completions": missing,
+            "billing": reported_billing(usage),
+            "allowance_usd": allowance,
+        }
         base["declined"] = response.get("status") == "declined" or (
             isinstance(usage, dict) and usage.get("finish") == "declined"
         )
+        # A decline can end a call whose earlier steps already staged actions; that fact is recorded beside the
+        # outcome label, never folded into it, so `declined` keeps its meaning.
+        base["declined_after_actions"] = base["declined"] and bool(actions)
         base["declined_attempts"] = reported_count(usage, "declined_attempts")
-        status, reason, violations, changes = self.apply(actions, kind, writes_open)
+        # The program ran and its usage is in `base`: an application or capture failure still records the launched
+        # call (program, seconds, usage, its code) instead of leaving the pre-launch skeleton on disk.
+        try:
+            status, reason, violations, changes = self.apply(actions, kind, writes_open)
+        except AttackerInfrastructureError as error:
+            self.fail(audit, base, error.code, error.message)
+        except Exception as error:
+            # A rollback that failed too leaves the memory state unknown; the call itself still happened.
+            self.fail(audit, base, "write_failed", f"{type(error).__name__}: {error}")
         applied_attack_actions = sum(change.real for change in changes) if status == "applied" else 0
         # The private state follows every valid answer, the rejected or unapplied actions included. A lone surrogate
         # in the program's JSON becomes an escape, so the checkpoint stays writable UTF-8.
@@ -986,6 +1151,9 @@ class RunLocalAttacker:
                 "kind": kind,
                 "stage": self.stage,
                 "writes_open": writes_open,
+                # The chain the session belongs to, as names only: a provider that routes or caches by conversation
+                # derives its id from these, so two campaigns, cases, arms or repeats never share one.
+                "chain": dict(self.chain),
                 "project": project,
                 "memory_root": memory_dir(project) if project else None,
                 "limits": config.limits.model_dump(),
@@ -1010,7 +1178,8 @@ class RunLocalAttacker:
                     "step": runtime.step,
                 },
                 "code_index": self.index,
-                "code_views": {path: self.read_code(path) for path in config.code_paths},
+                # One container read serves every configured view, not one exec per file.
+                "code_views": dict(zip(config.code_paths, self.read_code_many(list(config.code_paths)), strict=True)),
                 "requested_files": self.serve_reads(),
                 "transcript": transcript,
                 "completed_sessions": self.state["sessions"],
@@ -1049,6 +1218,8 @@ class RunLocalAttacker:
             not isinstance(data["loop_ending"], str) or data["loop_ending"] not in LOOP_ENDINGS
         ):
             raise ResponseError(f"loop_ending must be one of {sorted(LOOP_ENDINGS)}")
+        if "declined_after_actions" in data and not isinstance(data["declined_after_actions"], bool):
+            raise ResponseError("declined_after_actions must be a boolean")
         if "actions" not in data:
             raise ResponseError("actions is missing")
         for key, limit in (("strategy", config.strategy_max_bytes), ("notebook", config.notebook_max_bytes)):

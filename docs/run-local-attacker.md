@@ -84,7 +84,9 @@ The program's environment is built from an allowlist instead of being inherited:
 `TZ`, the live-mode network variables `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY` (and their lowercase
 forms), `SSL_CERT_FILE` and `SSL_CERT_DIR` (which `httpx` and OpenSSL read) and `REQUESTS_CA_BUNDLE` (which
 `requests`-based programs read), the credential variable its own configuration names (`provider.credential_env` in the
-attacker runtime's configuration, `credential_env_name` in the writer design's) and any name `run_attacker.env` lists.
+attacker runtime's configuration; for the built-in writer, the `credential_env_name` of the design package its
+`writer.json` points at, which the harness follows one level from `design` under the same bounded read) and any name
+`run_attacker.env` lists.
 `TMPDIR`, `TEMP` and `TMP` are pinned to the scratch directory.
 `PWD`, `OLDPWD` and every other variable of the harness stay out. A credential variable name, or a `run_attacker.env`
 entry, that names a harness-controlled variable (`PATH`, `HOME`, `PWD`, `OLDPWD`, `PYTHONPATH`, `PYTHONHOME`,
@@ -220,7 +222,8 @@ and after, request and response hashes, the number of guard notices withheld fro
 violations, changes by hash and size, reported tokens and cost, seconds) and adds a `run_attacker` event.
 `response.json` (a copy made after the program exited) exists whenever the program wrote one, with the usage sidecar
 and the captured stdout and stderr beside it; a program that wrote no response leaves none. A call whose response was
-valid but whose application then failed keeps the response and the skeleton, never a record that claims an outcome. If
+valid but whose application or memory capture then failed keeps the response and records the launched call with
+`status: infrastructure_error` and its code, never a record that claims an outcome and never the bare skeleton. If
 the audit record itself cannot be written, the infrastructure error is raised without retrying that write, so the
 session still records an `infrastructure_error` and no record claims an outcome. A completed session also writes
 `run_attacker_state.json`, the chain's checkpoint, after the session-end call; an attack session counts as complete
@@ -233,23 +236,31 @@ The optional protocol 1.0 response field `loop_ending` reports control flow: `pl
 runtime contract's nudge and the call continues while steps remain. `plain_text` reports a stop at a bound the loop
 already has (the step or the token limit) whose last reply carried text and no tool call; `empty_reply` is the same
 stop with no text. A call that ends through the `finish` tool reports `finish`. No text is classified as a decline.
-The existing explicit-decline resampling policy is unchanged. This follows the existing optional-field extension
+The explicit-decline resampling policy is untouched by this field: a declined answer is resampled with the identical
+request, as before. This follows the existing optional-field extension
 pattern rather than bumping the protocol version: older programs may omit the field, and the runtime omits it when an
 older request does not advertise it. A missing ending is recorded as unknown, without inference from reply text or
 older usage fields.
+
+Code views and requested files are read in one container exec per model call, not one per file: the reader resolves
+each path below the code root, refuses a path that leaves the root or enters `.git`, measures the size before the read,
+stops one byte past the read limit, and the harness repeats the containment and size checks on every resolved path. A
+file that is not UTF-8 text is named `unreadable` in its record, so one binary file never invalidates a session.
 
 The call's `applied_attack_actions` counts actions that actually changed memory, excluding rejected, closed-write
 and no-change actions. Each run-local attack session records the accumulated count in `result.json` and its
 checkpoint metadata. A successful write remains counted in the session total if subsequent memory capture fails.
 If rollback fails and the resulting application count cannot be established, the session records `null`, rather
-than zero. An application failure leaves `response.json` and the `incomplete` skeleton, never a completed record. Only
+than zero. An application or capture failure keeps `response.json` and writes the launched call's record as
+`status: infrastructure_error` with its code, so the call and what it spent stay in the record. Only
 a record carrying a `program` entry counts as a call, in usage aggregation and in the per-session call and result
 counts of the chain summary alike. That entry is written as soon as the program returns, with the call's seconds and,
 where the program reported it, its usage, so a call that ran still counts with its usage when a later step fails,
-the cost-ledger append or the audit copy included. A record whose `status` is `incomplete` is a call interrupted or
-host-killed between launch and outcome; the session's `incomplete_calls` field counts exactly those and no others,
-so it shifts no call, result or outcome label. A call refused before the launch writes `status: infrastructure_error`
-with its code instead, which the session's `infrastructure_error` reports.
+the cost-ledger append or the audit copy included. A record whose `status` is `incomplete` is one that never reached
+a final record: the program was launched and the host was interrupted or killed before the outcome, the
+infrastructure error or the record itself was written. The session's `incomplete_calls` field counts exactly those
+skeletons and no others, so it shifts no call, result or outcome label. A call refused before the launch writes
+`status: infrastructure_error` with its code instead, which the session's `infrastructure_error` reports.
 
 A program, configuration or provider problem (exit status, program timeout, a temporary base or a cost-meter path
 inside the run tree, a command word or forwarded variable naming the run tree, a cost wrapper whose hook cannot be
@@ -257,12 +268,15 @@ found, a container or host failure while reading the code or the response, a scr
 cost calls file or audit record that cannot be created, written, copied or read, an answer not in the protocol's form,
 an input over the limit, a request that cannot be encoded as UTF-8) is not an attack failure: the session ends invalid
 with `result.json`'s `infrastructure_error`, the call's record holds `status: infrastructure_error` where one was
-written, and a resume runs the session again from the last checkpoint. The codes are `writer_failed` (exit status),
-`timeout`, `temp_base` (the temporary base, the run's private scratch root or the call's scratch directory cannot be
-used), `cost_meter`, `run_tree` (an argv word or an environment value names a path inside the campaign's run tree),
-`code_index`, `code_realpath`, `code_size`, `read_code`, `response_read`, `response_hash`, `invalid_response`,
-`input_over_limit`, `request_encoding`, `audit_copy` (a staged file, the private cost calls file or an audit file that
-cannot be created, written, copied or read, is not a regular file, or is over its byte limit) and `write_failed`.
+written, and a resume runs the session again from the last checkpoint. The codes are `writer_failed` (a non-zero
+exit status, a program that cannot be started, or a capture that cannot start), `timeout`, `temp_base` (the temporary
+base, the run's private scratch root or the call's scratch directory cannot be used), `cost_meter`, `run_tree` (an
+argv word or an environment value names a path inside the campaign's run tree), `code_index`, `read_code` (the one
+container read of the code views and requested files: it could not run or finish, answered something that is not a
+read record, or could not resolve a path for a reason other than absence), `response_read`, `response_hash`,
+`invalid_response`, `input_over_limit`, `request_encoding`, `audit_copy` (a staged file, the private cost calls file
+or an audit file that cannot be created, written, copied or read, is not a regular file, or is over its byte limit)
+and `write_failed`.
 
 ## Measurement
 
@@ -451,9 +465,10 @@ decline_retries: 2                    # plain resamples after the initial declin
 back by configuration alone. OpenRouter names `expected_provider` and its routing block and bills `usage.cost`; the
 opencode Go API adds no routing block, takes only the models it serves, and reports its charge as
 `usage.opencode.allowance` with a `billing_source`. The runtime records the returned model and that allowance in
-`writer_usage` (`billing: allowance`, `allowance_usd`, `cost`), so a response never hides which build served it or which
-allowance it spent. The opencode model id is an undated alias, so the returned model of every call is the record of the
-build that ran.
+`writer_usage` (`billing: allowance`, `allowance_usd`, an unreported count, `cost`), so a response never hides what it
+spent or which allowance was missing. The opencode model id is an undated alias and the live API answered with that
+alias itself on 2026-11-14, so `returned_model` is recorded as the API returned it and does not by itself name a dated
+build.
 
 Another model of the same API is a change to `model` and the provider's `request` block. The runtime sets no model
 parameters itself: `provider.request` passes through unchanged, so every parameter stays at the provider's default. An
@@ -501,9 +516,12 @@ non-empty message `refusal`; the live writer additionally treats `status: unable
 and live-writer settings accept `decline_retries` (default 2: at most one initial attempt plus two plain resamples).
 Every resample sends the identical model request, without adding a message, modifying the brief or replaying the
 declined answer. Successful later steps may evolve the request normally. Decline attempts consume the runtime's
-`agent.max_steps` or the writer's existing `repairs + 1` generation-call cap, so fewer retries may fit after earlier
-calls. They also share the invocation deadline and remaining reported chain token budget; retries stop when either
-has no room. All reported attempt usage and cost are retained, including partial reports.
+`agent.max_steps`. The live writer keeps the decline resamples and the design's structural repairs as two separate
+budgets: `decline_retries` resamples after the declined attempts and `structural_repair_calls` repairs of an answer
+that is not in the required form, each spent only by its own kind of answer, so neither is capped by the other. A
+writer call therefore makes at most `1 + structural_repair_calls + decline_retries` generation calls. They also share
+the invocation deadline and remaining reported chain token budget; retries stop when either has no room. All reported
+attempt usage and cost are retained, including partial reports.
 
 After exhausted declines, the runtime returns its staged actions with `writer_usage.finish: declined`; the live
 writer returns no actions. Both may return optional top-level `status: declined`, the sole added status in protocol
@@ -514,10 +532,22 @@ configuration failures remain infrastructure errors. If a real provider error fo
 still invalidates the session. The failed provider attempt is flagged as unreported rather than assigned zero use.
 
 Per-call audits record `declined` (terminal exhaustion) and `declined_attempts` (all declines, including recovered
-ones). Chain summaries expose scalar `declined_calls` and `declined_attempts`; campaign summaries expose both in
+ones). A call the harness rejects as `invalid_response` can carry a non-zero `declined_attempts`: the program's
+reported usage is read before its answer is validated, so the declines it already paid for stay charged, while
+`declined` needs a valid answer and is false there. Chain summaries expose scalar `declined_calls` and
+`declined_attempts`; campaign summaries expose both in
 `declines_by_arm`, separately for each actual arm. Each defended and undefended campaign in `pair-summary` carries
 these fields. Counts include active and superseded launched calls and exclude copied sessions marked by
 `branch.json`; clean-arm counts are zero. A call that recovers contributes declined attempts and no declined call.
+
+A declined answer can still carry actions that earlier steps of the same call staged. They are applied under the same
+rules as any other action (an exposure session's in-task call, within the write budget, passing the memory rules), and
+the call's record carries `declined: true` and `declined_after_actions: true` beside its action result; the response
+carries the same `declined_after_actions` flag, and a program that does not know it simply omits it. The two facts stay
+apart on purpose: `declined` says how the answer ended, `declined_after_actions` says whether that answer's staged
+actions were applied, and neither changes the other's count. Chain, campaign and pair summaries report
+`declined_applied_calls` and `declined_unapplied_calls` beside `declined_calls`, so a declined call with applied
+actions is visible as its own count rather than folded into either label.
 
 Inactivity is reported separately from declines. Each chain exposes the following scalars, and each campaign
 exposes them per arm in `inactivity_by_arm`, alongside `declines_by_arm`:
@@ -528,7 +558,22 @@ exposes them per arm in `inactivity_by_arm`, alongside `declines_by_arm`:
   structural observation about the last reply, not a classification of what it says.
 - `unknown_ending_calls`: accepted responses without a recognized `loop_ending`, including legacy responses.
 - `sessions_without_applied_actions`: run-local attack session attempts whose recorded `applied_attack_actions`
-  is exactly zero. Missing legacy counts and unknown counts are not assumed to be zero.
+  is exactly zero. Missing legacy counts and unknown counts are not assumed to be zero. Probe attempts, where attack
+  writes are closed by design, and attempts that ended on an infrastructure error are counted here too.
+- `sessions_writes_open_without_applied_actions`: the exposure attempts, where attack writes are open, whose recorded
+  applied count is exactly zero.
+- `sessions_infrastructure_error`: attempts whose `result.json` carries an `infrastructure_error`.
+
+Every chain row also carries `torn_event_lines`, and so does the chain as a whole: the event-log lines that could not
+be parsed. Only the final non-empty line of a log may be torn, as an interrupted append leaves it; that line is not
+read and is counted, so a session cut short does not fail the pair summary, while an unreadable line before it still
+fails loudly.
+
+Realized spend is reported so that an allowance never reads as cash: `realized_usage` keeps `cost_usd` as the whole
+reported charge and adds `allowance_usd` (the part a subscription allowance covered), `cash_usd` (the rest) and
+`allowance_calls`; each chain and each campaign exposes `realized_allowance_usd`, `realized_cash_usd` and
+`allowance_calls` beside `realized_cost_usd`. A call's record carries `usage.billing` and `usage.allowance_usd` as its
+program's own `writer_usage` reported them.
 
 Call counts require a launched program and an accepted response; skipped calls and errors without an accepted
 response do not become empty responses or unknown endings. Like decline totals, these counts include invalid and

@@ -102,12 +102,15 @@ def test_bound_endings_are_reported_without_becoming_plain_text(tmp_path, ending
 
 
 def test_old_response_key_contract_remains_supported(tmp_path):
-    result = run_agent(
-        make_config(tmp_path), make_request(), ScriptedProvider(completion(call("finish"))), Deadline(120)
-    )
+    """A request written before the optional fields existed advertises fewer response keys; the program adds neither
+    field and the response still validates against that older contract."""
+    request = make_request()
+    optional = {"loop_ending", "declined_after_actions"}
+    request["contract"]["response_keys"] = [key for key in request["contract"]["response_keys"] if key not in optional]
+    result = run_agent(make_config(tmp_path), request, ScriptedProvider(completion(call("finish"))), Deadline(120))
     assert result.response["schema_version"] == "1.0"
-    assert "loop_ending" not in result.response
-    validate_response(result.response, make_request()["contract"])
+    assert not optional & set(result.response)
+    validate_response(result.response, request["contract"])
 
 
 @pytest.mark.parametrize("ending", [None, "plain_text", "finish", "declined"])
@@ -200,10 +203,13 @@ def test_application_failure_preserves_known_or_unknown_action_counts(
     attacker = run_attacker.RunLocalAttacker(
         RunAttacker.model_validate(attacker_settings()), runtime, "fixture", "first"
     )
-    with pytest.raises(RuntimeError):
+    with pytest.raises(run_attacker.AttackerInfrastructureError) as caught:
         attacker.advance([])
-    # The record written before the launch stays as it was: the call never reached an outcome.
-    assert [record["status"] for record in records(tmp_path)] == ["incomplete"]
+    # The call ran: its record says so and carries the failure's code, never the bare pre-launch skeleton.
+    [record] = records(tmp_path)
+    assert record["status"] == "infrastructure_error" and record["error"]["code"] == caught.value.code
+    assert record["program"]["exit_code"] == 0 and record["seconds"] >= 0
+    assert record["usage"]["tokens"] == 10
     response = json.loads((tmp_path / "run_attacker" / "0001" / "response.json").read_text())
     assert response["loop_ending"] == "finish"
     assert len(response["actions"]) == 2

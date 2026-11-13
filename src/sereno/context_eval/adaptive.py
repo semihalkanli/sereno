@@ -381,7 +381,9 @@ def run_program(argv: list[str], cwd: Path, timeout: int, folder: Path, *, env: 
     """Run the program with `env` (None inherits the harness's own environment), stdin closed, stdout and stderr
     captured into `folder`. A program that outlives `timeout`, or a harness interrupt during the wait, is killed with
     everything it started, so no child outlives the call whose scratch is removed next. A spawn or capture failure is
-    returned as an `error` outcome, so the caller classifies it as infrastructure; an interrupt keeps propagating."""
+    returned as an `error` outcome; each caller decides what that is: the run-local attacker records it as an
+    infrastructure error (`writer_failed`), while the adaptive writer's `decide` reports a step status
+    `writer_failed`. An interrupt keeps propagating."""
     started = time.monotonic()
     outcome = {"exit_code": None, "timed_out": False, "error": None}
     try:

@@ -159,10 +159,12 @@ def run_session(
     *,
     lineage_start,
     campaign_root: Path | None = None,
+    chain: dict | None = None,
 ):
     """Run one session in a fresh container. `opening` holds events (kind and fields) to log right after the session
     starts, such as the step of the adaptive hook that planted part of its memory. `campaign_root` is the campaign's
     output directory, pinned once by the caller as the run tree the attacker's program must stay outside of;
+    `chain` names the chain the session belongs to, as names only, and reaches the run-local attacker's request;
     `lineage_start` says that the session starts its memory's lineage, for the live guard."""
     project = project_key(task.repository)
     # Configured memory names the project folder as {project}; carried memory already holds this session's paths.
@@ -274,6 +276,7 @@ def run_session(
                     task.id,
                     getattr(engine, "run_attacker_state", None),
                     campaign_root=campaign_root,
+                    chain=chain,
                 )
         # Read after session_start interventions, so a planted instruction file loads as the repository's own.
         repo = repo_instructions(env.read_instructions(REPO_INSTRUCTIONS))
@@ -843,7 +846,13 @@ def run_campaign(
                 raise ValueError(f"cannot resume: {last / ATTACKER_STATE} is missing or unreadable")
         return restored
 
-    def run(target, engine):
+    def chain_of(target, repeat, arm, case=None) -> dict:
+        """What names one chain of the campaign, as names only: its target, repeat, arm and case. The run-local
+        attacker derives a provider conversation id from these, so two campaigns, cases, arms and repeats never send
+        the same id for different conversations."""
+        return {"case": case, "arm": arm, "repeat": repeat + 1, "target": target.task_id}
+
+    def run(target, engine, chain=None):
         """A step that runs the session in a fresh container. A chain's first session starts its memory's lineage, and
         so does a `reset` probe, which starts from the configured memory."""
 
@@ -864,6 +873,7 @@ def run_campaign(
                     opening,
                     lineage_start=number == 0 or reset,
                     campaign_root=output,
+                    chain=chain,
                 )
             except NotStarted:
                 raise
@@ -973,7 +983,9 @@ def run_campaign(
                     write_json(skipped_dir / "memory_end.json", memory)
                 break
 
-    def branch(arm_dir: Path, target, source: Path, source_arm: str, source_start: int, events, ablated, **options):
+    def branch(
+        arm_dir: Path, target, source: Path, source_arm: str, source_start: int, events, ablated, chain=None, **options
+    ):
         """Run an arm that shares the exposure sessions of `source`, then starts its first probe from the initial
         memory or, `ablated`, from the carried memory without the interventions' content. It re-runs from its own
         first incomplete session, or from the first copy whose source this run re-runs; returns where it began."""
@@ -982,7 +994,7 @@ def run_campaign(
             source_start if source_start < exposures else len(sessions),
         )
         exposure = share(source, source_arm)
-        probe = run(target, engine_for(events, arm_dir, start, **options))
+        probe = run(target, engine_for(events, arm_dir, start, **options), chain)
 
         def step(number, session, directory, memory):
             if session.exposure:
@@ -1007,11 +1019,26 @@ def run_campaign(
         # Without interventions the clean arms are identical across variants: one run per target and repeat.
         arm_dir = origin(target, repeat)
         start = first_incomplete(arm_dir)
-        advance(arm_dir, target, run(target, engine_for([], arm_dir, start, enabled=False)), start)
+        advance(
+            arm_dir,
+            target,
+            run(target, engine_for([], arm_dir, start, enabled=False), chain_of(target, repeat, "clean")),
+            start,
+        )
         starts = {"clean": start}
         if "clean_reset" in config.arms:
             reset_dir = origin(target, repeat, "clean_reset")
-            starts["clean_reset"] = branch(reset_dir, target, arm_dir, "clean", start, [], False, enabled=False)
+            starts["clean_reset"] = branch(
+                reset_dir,
+                target,
+                arm_dir,
+                "clean",
+                start,
+                [],
+                False,
+                enabled=False,
+                chain=chain_of(target, repeat, "clean_reset"),
+            )
         return starts
 
     def run_case(item):
@@ -1049,14 +1076,27 @@ def run_campaign(
             carry_start = first_incomplete(arms / "attack_carry", checkpointed=config.run_attacker is not None)
             notices = [n for n in config.notices if variant in n.variants]
             carry = engine_for(events, arms / "attack_carry", carry_start, seed=seed, notices=notices)
-            advance(arms / "attack_carry", target, run(target, carry), carry_start)
+            advance(
+                arms / "attack_carry",
+                target,
+                run(target, carry, chain_of(target, repeat, "attack_carry", case_id)),
+                carry_start,
+            )
         # Reset and ablation share carry's exact exposure artifacts rather than resampling them, so re-running a
         # carry exposure session replaces their copy of it and every session after it.
         for arm in ("attack_reset", "attack_ablate"):
             if arm in config.arms:
                 ablated = arm == "attack_ablate"
                 branch(
-                    arms / arm, target, arms / "attack_carry", "attack_carry", carry_start, events, ablated, seed=seed
+                    arms / arm,
+                    target,
+                    arms / "attack_carry",
+                    "attack_carry",
+                    carry_start,
+                    events,
+                    ablated,
+                    seed=seed,
+                    chain=chain_of(target, repeat, arm, case_id),
                 )
         # The clean copies come last: the case's attack arms run beside its origin, and the copies wait for it.
         for arm in ("clean", "clean_reset"):
