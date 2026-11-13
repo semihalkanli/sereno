@@ -11,6 +11,7 @@ import pytest
 import test_context_eval as base
 import yaml
 from attacker_world import write_config as write_attacker_config
+from writer_world import KEY_ENV, World
 
 from sereno.attacker.config import AttackerConfig, LoopSettings
 from sereno.attacker.config import load_config as load_attacker_config
@@ -22,6 +23,7 @@ from sereno.context_eval.engine import EventLog, InterventionEngine, Runtime
 from sereno.context_eval.pairing import campaign_summary, pair, summarize_pair
 from sereno.context_eval.runner import complete, run_campaign
 from sereno.context_eval.schema import ExperimentConfig, MemoryConfig, RunAttacker, Session
+from sereno.writer.config import code_sha256 as writer_code_sha256
 
 fixture_world = base.fixture_world
 
@@ -860,6 +862,82 @@ def test_pairing_and_summary_keep_the_measurements_apart(tmp_path, fixture_world
         == 1
     )
     assert json.loads(unpaired.read_text())["problems"] == ["repeats differs"]
+
+
+def built_writer(tmp_path):
+    root = tmp_path / "writer-world"
+    root.mkdir()
+    writer = World(root).config()
+    command = [
+        sys.executable,
+        "-m",
+        "sereno.writer",
+        "--config",
+        str(root / "writer.json"),
+        "--config-sha256",
+        writer.config_sha256,
+        "--code-sha256",
+        writer_code_sha256(),
+        "--live",
+        "--request",
+        "request.json",
+        "--response",
+        "response.json",
+    ]
+    return writer, command
+
+
+def writer_pair_files(tmp_path, dataset, writer, command, *, patterns=None):
+    limits = {
+        "max_files_touched": 2,
+        "max_file_bytes": 2000,
+        "forbidden_patterns": list(writer.forbidden_patterns if patterns is None else patterns),
+    }
+    files = {}
+    for side, guard in (("defended", True), ("undefended", False)):
+        raw = raw_config(dataset, guard=guard, command=command, limits=limits)
+        files[side] = tmp_path / f"{side}.yaml"
+        files[side].write_text(yaml.safe_dump(raw))
+    return files
+
+
+def test_pair_checks_the_live_writer_design_without_a_key(tmp_path, fixture_world, monkeypatch):
+    monkeypatch.delenv(KEY_ENV, raising=False)
+    writer, command = built_writer(tmp_path)
+    files = writer_pair_files(tmp_path, fixture_world[0], writer, command)
+    pairing = pair(files["defended"], files["undefended"], default_registry())
+    assert pairing["paired"] is True and pairing["problems"] == []
+
+
+def test_pair_reports_writer_pattern_drift(tmp_path, fixture_world):
+    writer, command = built_writer(tmp_path)
+    files = writer_pair_files(tmp_path, fixture_world[0], writer, command, patterns=["fixture-pattern"])
+    pairing = pair(files["defended"], files["undefended"], default_registry())
+    assert pairing["paired"] is False
+    assert any("forbidden_patterns" in problem for problem in pairing["problems"])
+    out = tmp_path / "pair.json"
+    assert main(["context-eval", "pair", str(files["defended"]), str(files["undefended"]), "--out", str(out)]) == 1
+    assert json.loads(out.read_text())["paired"] is False
+
+
+def test_pair_reports_stale_writer_pins(tmp_path, fixture_world):
+    writer, command = built_writer(tmp_path)
+    command = list(command)
+    command[command.index("--config-sha256") + 1] = "0" * 64
+    command[command.index("--code-sha256") + 1] = "1" * 64
+    files = writer_pair_files(tmp_path, fixture_world[0], writer, command)
+    pairing = pair(files["defended"], files["undefended"], default_registry())
+    problems = " ".join(pairing["problems"])
+    assert pairing["paired"] is False and "--config-sha256" in problems and "--code-sha256" in problems
+
+
+def test_pair_leaves_a_non_builtin_command_to_the_program(tmp_path, fixture_world):
+    writer, _ = built_writer(tmp_path)
+    files = writer_pair_files(
+        tmp_path, fixture_world[0], writer, [sys.executable, str(STUB)], patterns=["fixture-pattern"]
+    )
+    pairing = pair(files["defended"], files["undefended"], default_registry())
+    assert pairing["paired"] is True
 
 
 def test_summary_refuses_a_pairing_that_did_not_pair(tmp_path):

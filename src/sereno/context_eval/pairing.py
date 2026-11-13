@@ -13,6 +13,7 @@ defense effectiveness under equal-budget adaptive attack, never a comparison of 
 is the chain (one target and repeat); the sessions of a chain are not independent samples.
 """
 
+import argparse
 import json
 from collections import Counter
 from pathlib import Path
@@ -51,6 +52,46 @@ def differences(left, right, prefix: str = "") -> list[str]:
     return [] if left == right else [prefix.rstrip(".")]
 
 
+def writer_problems(config, side: str) -> list[str]:
+    """The checks a pair can run without a paid call when the run_attacker command names the built-in live writer: its
+    design's forbidden patterns and the command's configuration and code pins. A command that is not the built-in
+    writer is left to the program itself."""
+    run = config.run_attacker
+    if run is None:
+        return []
+    command = list(run.command)
+    marker = next(
+        (index for index in range(len(command) - 1) if command[index : index + 2] == ["-m", "sereno.writer"]), None
+    )
+    if marker is None:
+        return []
+    parser = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+    parser.add_argument("--config", type=Path)
+    parser.add_argument("--config-sha256")
+    parser.add_argument("--code-sha256")
+    try:
+        args, _ = parser.parse_known_args(command[marker + 2 :])
+    except argparse.ArgumentError as error:
+        return [f"the {side} writer command has invalid arguments: {error}"]
+    if args.config is None:
+        return [f"the {side} writer command needs --config"]
+    from sereno.writer.config import code_sha256 as writer_code_sha256
+    from sereno.writer.config import load_config as load_writer_config
+
+    try:
+        writer = load_writer_config(args.config)
+    except Exception as error:
+        return [f"the {side} writer config cannot be loaded: {type(error).__name__}: {error}"]
+    found = []
+    if tuple(run.limits.forbidden_patterns) != tuple(writer.forbidden_patterns):
+        found.append(f"the {side} run_attacker.limits.forbidden_patterns differ from the writer design's")
+    if args.config_sha256 != writer.config_sha256:
+        found.append(f"the {side} writer command's --config-sha256 does not match its configuration")
+    if args.code_sha256 != writer_code_sha256():
+        found.append(f"the {side} writer command's --code-sha256 does not match its code")
+    return found
+
+
 def pair(defended_path: Path, undefended_path: Path, registry) -> dict:
     """The pairing manifest of two experiment files; `paired` is false with the reasons in `problems`."""
     configs = {"defended": load_config(defended_path), "undefended": load_config(undefended_path)}
@@ -67,6 +108,8 @@ def pair(defended_path: Path, undefended_path: Path, registry) -> dict:
         problems.append("the undefended campaign has a guard or notices")
     shared = {side: shared_part(config) for side, config in configs.items()}
     problems += [f"{field} differs" for field in differences(shared["defended"], shared["undefended"])]
+    for side, config in configs.items():
+        problems += writer_problems(config, side)
     paths = {"defended": defended_path, "undefended": undefended_path}
     return {
         "schema_version": SCHEMA_VERSION,

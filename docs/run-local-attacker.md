@@ -303,6 +303,12 @@ harness rejects and the next request reports it. The adapter keeps no state of i
 returned in `writer_usage`. Calls using paid models go through the existing experiment cost wrapper; enabling or
 testing this feature offline starts no paid run.
 
+`pair` loads the writer configuration named by the command's `--config` with no API key and, before any paid call,
+checks that `run_attacker.limits.forbidden_patterns` equals the design's and that the command's `--config-sha256` and
+`--code-sha256` pins match the current identity. A mismatch becomes a pairing problem, so `paired` is false and `pair`
+exits 1; a pinned command left over from an earlier configuration or code version is caught here rather than at the
+first paid call. A command that is not recognisably `-m sereno.writer` is left to the program itself.
+
 ## The model-agnostic attacker runtime
 
 `src/sereno/attacker` is a second implementation of the same protocol: a tool-using agent loop whose model is a
