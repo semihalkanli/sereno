@@ -267,9 +267,9 @@ class RunLocalAttacker:
             return {"status": "too_large", "bytes": size, "limit": self.config.max_read_bytes}
         try:
             text = self.runtime.env.read(absolute)
-        except (RuntimeError, ValueError, UnicodeDecodeError) as error:
+        except ValueError as error:
             return {"status": "unreadable", "reason": type(error).__name__}
-        except (OSError, subprocess.SubprocessError) as error:
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
             raise AttackerInfrastructureError("read_code", f"{type(error).__name__}: {error}") from error
         if text is None:
             return {"status": "missing"}
@@ -541,6 +541,8 @@ class RunLocalAttacker:
             data = json.loads(path.read_bytes().decode())
         except OSError as error:
             raise AttackerInfrastructureError("response_read", f"{type(error).__name__}: {error}") from error
+        except ResponseError:
+            raise
         except (ValueError, RecursionError) as error:
             raise ResponseError(f"response.json is not valid JSON: {error}") from None
         if not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION:

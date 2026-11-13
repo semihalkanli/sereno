@@ -473,6 +473,7 @@ def test_infrastructure_error_is_not_an_attack_outcome(tmp_path, fixture_world, 
     [
         ("file_index", "code_index"),
         ("read_code", "read_code"),
+        ("read_bridge", "read_code"),
         ("load_response", "response_read"),
         ("file_sha256", "response_hash"),
         ("encode", "request_encoding"),
@@ -491,6 +492,8 @@ def test_container_and_response_failures_are_infrastructure_errors(tmp_path, fix
         def read(self, path):
             if failure == "read_code" and path == "/app/README.md":
                 raise subprocess.TimeoutExpired("read", 30)
+            if failure == "read_bridge" and path == "/app/README.md":
+                raise RuntimeError("bridge read failed: fixture")
             return super().read(path)
 
     if failure == "load_response":
@@ -529,6 +532,23 @@ def test_container_and_response_failures_are_infrastructure_errors(tmp_path, fix
     summary = campaign_summary(root, 20)
     assert summary["infrastructure_errors"] == 1
     assert summary["clean_infrastructure_errors"] == 0
+
+
+@pytest.mark.parametrize(("content", "message"), [(None, "wrote no response.json"), ("x" * 100, "too large")])
+def test_a_missing_or_oversized_response_keeps_its_diagnosis(tmp_path, fixture_world, monkeypatch, content, message):
+    def program(argv, cwd, timeout, audit):
+        if content is not None:
+            (audit / "response.json").write_text(content)
+        return {"exit_code": 0, "timed_out": False, "error": None}
+
+    monkeypatch.setattr(run_attacker, "run_program", program)
+    monkeypatch.setattr(run_attacker, "RESPONSE_BYTES", 10)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="invalid_response"):
+        attacker.advance([])
+    record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
+    assert record["status"] == "infrastructure_error" and message in record["error"]["message"]
 
 
 def test_resume_uses_only_completed_checkpoints(tmp_path, fixture_world, monkeypatch):
