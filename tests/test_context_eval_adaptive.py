@@ -17,6 +17,7 @@ import test_context_eval as base
 from pydantic import ValidationError
 from rich.console import Console
 
+from sereno.context_eval import adaptive
 from sereno.context_eval.adaptive import (
     AdaptiveHook,
     FailureStreak,
@@ -743,6 +744,37 @@ def test_an_interrupt_during_the_wait_kills_the_program_group(tmp_path, monkeypa
             return super().wait(timeout)
 
     monkeypatch.setattr(subprocess, "Popen", Interrupting)
+    (tmp_path / "out").mkdir()
+    with pytest.raises(KeyboardInterrupt):
+        run_program([sys.executable, "-I", str(script), str(pid_file)], tmp_path, 30, tmp_path / "out")
+    monkeypatch.undo()
+    assert pid_file.exists()
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)
+
+
+def test_an_interrupt_while_the_captures_start_kills_the_program_group(tmp_path, monkeypatch):
+    """A Ctrl-C in the window between the spawn and the wait must kill the group too: the captures start inside the
+    protected block, so no child outlives the call whose scratch is removed next."""
+    pid_file = tmp_path / "pid"
+    script = tmp_path / "sleep.py"
+    script.write_text(
+        "import os, pathlib, sys, time\npathlib.Path(sys.argv[1]).write_text(str(os.getpid()))\ntime.sleep(60)\n"
+    )
+
+    class InterruptingCapture(adaptive.Capture):
+        """The real capture, whose first start is interrupted as a Ctrl-C would."""
+
+        def start(self):
+            if not getattr(self, "interrupted", False):
+                self.interrupted = True
+                deadline = time.monotonic() + 30
+                while not pid_file.exists() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                raise KeyboardInterrupt
+            return super().start()
+
+    monkeypatch.setattr(adaptive, "Capture", InterruptingCapture)
     (tmp_path / "out").mkdir()
     with pytest.raises(KeyboardInterrupt):
         run_program([sys.executable, "-I", str(script), str(pid_file)], tmp_path, 30, tmp_path / "out")

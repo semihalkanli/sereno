@@ -22,7 +22,13 @@ from sereno.attacker.protocol import LOOP_ENDINGS
 from sereno.context_eval.config import fingerprint, load_config, validate
 from sereno.context_eval.engine import decoded, renderings, sent_contexts
 from sereno.context_eval.memory import instructions
-from sereno.context_eval.run_attacker import STATE_FILE, check_command_identity, read_state, writer_manifest
+from sereno.context_eval.run_attacker import (
+    STATE_FILE,
+    campaign_identity,
+    check_command_identity,
+    read_state,
+    writer_manifest,
+)
 
 SCHEMA_VERSION = "1.0"
 RESULT_NAME = "defense effectiveness under equal-budget adaptive attack"
@@ -121,7 +127,7 @@ def pair(defended_path: Path, undefended_path: Path, registry) -> dict:
         "campaigns": {
             side: {
                 "config": str(Path(paths[side]).resolve()),
-                "config_sha256": fingerprint(config.model_dump(mode="json")),
+                "config_sha256": fingerprint(campaign_identity(config)),
                 "defense": {
                     "guard": config.guard.model_dump(mode="json", exclude={"test_facts"}) if config.guard else None,
                     "notices": [notice.id for notice in config.notices],
@@ -273,6 +279,9 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
         result = read_json(folder / "result.json") or {}
         records = [read_json(path) for path in sorted(folder.glob("run_attacker/*/record.json"))]
         records = [record for record in records if record]
+        # Only a launched call, a record carrying its `program` entry, counts as a call; an `incomplete` skeleton (an
+        # interrupted call, or an application failure after a valid response) is reported beside them.
+        calls = [record for record in records if "program" in record]
         state = read_state(folder / STATE_FILE)
         last_state = state or last_state
         events = events_of(folder)
@@ -294,8 +303,9 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
                 "status": result.get("status"),
                 "infrastructure_error": result.get("infrastructure_error"),
                 "checkpoint": state is not None,
-                "calls": dict(Counter(record["kind"] for record in records)),
-                "results": dict(Counter(record["status"] for record in records)),
+                "calls": dict(Counter(record["kind"] for record in calls)),
+                "results": dict(Counter(record["status"] for record in calls)),
+                "incomplete_calls": len(records) - len(calls),
                 "applied_attack_actions": result.get("applied_attack_actions"),
                 "strategy_version_end": state["strategy"]["version"] if state else None,
             }

@@ -61,6 +61,7 @@ from sereno.context_eval.run_attacker import (
 from sereno.context_eval.run_attacker import (
     AttackerInfrastructureError,
     RunLocalAttacker,
+    campaign_identity,
     read_state,
     writer_manifest,
 )
@@ -157,10 +158,12 @@ def run_session(
     opening=(),
     *,
     lineage_start,
+    campaign_root: Path | None = None,
 ):
     """Run one session in a fresh container. `opening` holds events (kind and fields) to log right after the session
-    starts, such as the step of the adaptive hook that planted part of its memory. `lineage_start` says that the session
-    starts its memory's lineage, for the live guard."""
+    starts, such as the step of the adaptive hook that planted part of its memory. `campaign_root` is the campaign's
+    output directory, pinned once by the caller as the run tree the attacker's program must stay outside of;
+    `lineage_start` says that the session starts its memory's lineage, for the live guard."""
     project = project_key(task.repository)
     # Configured memory names the project folder as {project}; carried memory already holds this session's paths.
     memory = resolve_files(memory, project)
@@ -265,7 +268,12 @@ def run_session(
             # The attack arm's engine holds the chain's checkpoint; the clean arm's engine is disabled.
             with runtime.attacker_call():
                 runtime.run_attacker = RunLocalAttacker(
-                    config.run_attacker, runtime, instruction, task.id, getattr(engine, "run_attacker_state", None)
+                    config.run_attacker,
+                    runtime,
+                    instruction,
+                    task.id,
+                    getattr(engine, "run_attacker_state", None),
+                    campaign_root=campaign_root,
                 )
         # Read after session_start interventions, so a planted instruction file loads as the repository's own.
         repo = repo_instructions(env.read_instructions(REPO_INSTRUCTIONS))
@@ -675,7 +683,7 @@ def run_campaign(
                 f"{item['task']} at {item['path'] or 'command output'}: {item['reason']}"
             )
     output = output.resolve()
-    frozen_config = config.model_dump(mode="json")
+    frozen_config = campaign_identity(config)
     instructions_snapshot = output / "memory-instructions.md"
     if resume and config.memory.instructions_file:
         # Resumed sessions read the frozen copy, so it, not the source file, must match the manifest.
@@ -855,6 +863,7 @@ def run_campaign(
                     env_factory,
                     opening,
                     lineage_start=number == 0 or reset,
+                    campaign_root=output,
                 )
             except NotStarted:
                 raise

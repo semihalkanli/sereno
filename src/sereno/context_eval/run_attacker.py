@@ -17,15 +17,18 @@ notebook never reach the agent's memory. The state lives on the arm's engine, so
 a completed session checkpoints it; a resume starts from the last checkpoint, never from a half-finished session.
 
 The external command is trusted host code, as the transition writer is, not a sandbox. The harness enforces the part
-of the boundary it can: the program's argv, its working directory and an environment built from an allowlist, a fresh
-scratch directory under a checked temporary base outside the run tree, and a bounded, non-following copy of what the
-program wrote. What remains is the trusted-host contract: the program runs as the same user as the harness, the host's
-process metadata still names the run tree, and a program that walks the filesystem by absolute path can reach it. It
-must use the request it is given and keep no state of its own between calls or runs. A program, configuration or
-provider problem raises AttackerInfrastructureError: the session ends invalid with the error recorded as
-infrastructure, never as an attack outcome.
+of the boundary it can: the program's argv, its working directory and an environment built from an allowlist, with
+every forwarded absolute path refused inside the campaign's run tree; a fresh scratch directory under a checked
+temporary base outside the run tree; a bounded, non-following copy of what the program wrote; and a private cost
+ledger file per call, whose rows the harness appends to the wrapper's own ledger after the call. What remains is the
+trusted-host contract: the program runs as the same user as the harness, the host's process metadata still names the
+run tree, and a program that walks the filesystem by absolute path can reach it. It must use the request it is given
+and keep no state of its own between calls or runs. A program, configuration or provider problem raises
+AttackerInfrastructureError: the session ends invalid with the error recorded as infrastructure, never as an attack
+outcome.
 """
 
+import contextlib
 import copy
 import hashlib
 import json
@@ -37,10 +40,11 @@ import subprocess
 import tempfile
 import time
 import weakref
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import NoReturn
+from typing import IO, NoReturn
 
 import yaml
 
@@ -59,7 +63,7 @@ from sereno.context_eval.adaptive import (
 from sereno.context_eval.config import fingerprint
 from sereno.context_eval.engine import reasoning_text, write_atomic
 from sereno.context_eval.memory import USER, is_index, loaded_by, memory_dir
-from sereno.context_eval.schema import ENV_NAME, validate_path
+from sereno.context_eval.schema import ENV_NAME, harness_controlled, validate_path
 
 SCHEMA_VERSION = "1.0"
 STATE_SCHEMA = "1.0"
@@ -221,35 +225,84 @@ def did_not_finish(result: dict) -> bool:
     return code < 0 or code in UNAVAILABLE or SIGNAL_BASE < code <= SIGNAL_BASE + SIGNAL_MAX
 
 
-# The campaign's manifest marks the run tree's root, which the scratch must stay outside of.
-CAMPAIGN_MANIFEST = "manifest.json"
-# What the program's environment may carry: these names, the LC_* family, the provider credential variables the
-# attacker configuration names and the variables the campaign lists. Nothing else is inherited, PWD and OLDPWD
-# included, and the temporary-directory variables point at the call's scratch.
+# What the program's environment may carry: these names, the live-mode proxy and CA variables, the LC_* family, the
+# provider credential variables the attacker configuration names and the variables the campaign lists. Nothing else is
+# inherited, PWD and OLDPWD included, and the temporary-directory variables point at the call's scratch.
 CHILD_ENV_NAMES = ("PATH", "HOME", "LANG", "TZ")
 CHILD_ENV_PREFIXES = ("LC_",)
+# A live program reaches its provider through `httpx`, which reads a proxy or a private CA from these; neither case
+# needs a campaign entry, and all of them cross the same containment check as every other forwarded value.
+LIVE_ENV_NAMES = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE",
+)
 CHILD_TEMP_NAMES = ("TMPDIR", "TEMP", "TMP")
+# Variables whose value is a list of paths rather than one; each entry is checked against the run tree on its own.
+PATH_VALUE_NAMES = frozenset({"PATH", "PYTHONPATH", "LD_LIBRARY_PATH", "MANPATH", "CDPATH", "PKG_CONFIG_PATH"})
 # The cost wrapper's meter: the ledger it appends each paid call to and the hook directory that records it. A harness
-# running under `scripts/cost.py run` has both in its own environment, and the program inherits them from here.
+# running under `scripts/cost.py run` has both in its own environment. The program is given neither path: it writes a
+# private file in its scratch, and the harness appends that file's rows to the ledger after the call.
 COST_CALLS_NAME = "SERENO_COST_CALLS"
+COST_CALLS_FILE = "cost_calls.jsonl"
 COST_HOOK_MODULE = "sitecustomize.py"
 COST_HOOK_MARKER = "SERENO_COST_CALLS"
 COST_HOOK_DIR = Path(__file__).resolve().parents[3] / "scripts" / "cost_hook"
+# The most the credential configuration is read for: an attacker configuration or a writer design is far smaller.
+CONFIG_BYTES = 1_000_000
+# How much of a staged file one read returns; the copy stops once `limit + 1` bytes have been read.
+COPY_CHUNK = 65536
 
 
-def run_tree(directory: Path) -> Path:
-    """The campaign's run tree above a session directory: the nearest ancestor holding the campaign's manifest, or the
-    session directory itself when no campaign is above it (a session run on its own)."""
-    for candidate in (directory, *directory.parents):
-        if (candidate / CAMPAIGN_MANIFEST).is_file():
-            return candidate
-    return directory
+def forwarded_paths(name: str, value: str) -> list[str]:
+    """The paths a forwarded value names: a PATH-like variable is a `os.pathsep` list, and any other value holding a
+    list of absolute paths is read as one too, so a campaign cannot pass a path list under another name. Anything else
+    is one value."""
+    entries = [entry for entry in value.split(os.pathsep) if entry]
+    if name in PATH_VALUE_NAMES or (len(entries) > 1 and all(os.path.isabs(entry) for entry in entries)):
+        return entries
+    return [value]
 
 
-def checked_temp_base(directory: Path) -> Path:
+def refuse_inside_run_tree(name: str, value: str, root: Path) -> None:
+    """Refuse a forwarded value that resolves inside the campaign's run tree (decision 409): every absolute path the
+    value names is checked after symlinks are resolved, a PATH-like value entry by entry. A value that names no
+    absolute path is left to the program."""
+    for entry in forwarded_paths(name, value):
+        if not entry or not os.path.isabs(entry):
+            continue
+        resolved = Path(entry).resolve()
+        if resolved.is_relative_to(root):
+            raise AttackerInfrastructureError("run_tree", f"{name} names {resolved}, inside the run tree {root}")
+
+
+def check_forwarded_command(command: list[str], root: Path) -> None:
+    """Check every argv word, and the value of a `key=value` word, against the run tree: a command word is the
+    program's input, and one that names the campaign hands it what the boundary withholds."""
+    for index, word in enumerate(command):
+        refuse_inside_run_tree(f"command[{index}]", word, root)
+        if "=" in word:
+            refuse_inside_run_tree(f"command[{index}]", word.split("=", 1)[1], root)
+
+
+def check_forwarded_environment(environment: dict[str, str], root: Path) -> None:
+    """Check every forwarded environment value against the run tree, PATH-like values entry by entry."""
+    for name, value in environment.items():
+        refuse_inside_run_tree(name, value, root)
+
+
+def checked_temp_base(root: Path) -> Path:
     """The temporary base the call's scratch is created under, with symlinks resolved, refused when it is inside the
-    run tree: a scratch there would hand the program the campaign it must not see (decision 409)."""
-    base, root = Path(tempfile.gettempdir()).resolve(), run_tree(directory).resolve()
+    campaign's run tree: a scratch there would hand the program the campaign it must not see (decision 409)."""
+    base = Path(tempfile.gettempdir()).resolve()
     if base.is_relative_to(root):
         raise AttackerInfrastructureError("temp_base", f"the temporary directory {base} is inside the run tree {root}")
     return base
@@ -269,11 +322,20 @@ def cost_hook_directory() -> Path | None:
     return COST_HOOK_DIR if (COST_HOOK_DIR / COST_HOOK_MODULE).is_file() else None
 
 
-def cost_meter(directory: Path) -> tuple[str, str] | None:
-    """The cost wrapper's meter as the program must receive it: the ledger path and the hook directory, or None when
-    the harness does not run under the wrapper. Both resolved values are refused inside the run tree, as the
-    temporary base is: a ledger or a hook there would name the campaign the program must not see. A wrapper whose
-    hook cannot be found fails closed too, since a ledger alone would collect nothing."""
+@dataclass(frozen=True)
+class CostMeter:
+    """The cost wrapper's meter: the ledger the harness appends the call's rows to and the hook directory the program
+    needs to write them. The program receives neither path, only a private calls file in its own scratch."""
+
+    ledger: Path
+    hook: Path
+
+
+def cost_meter(root: Path) -> CostMeter | None:
+    """The cost wrapper's meter, or None when the harness does not run under the wrapper. The ledger and the hook
+    directory are resolved and refused inside the campaign's run tree, as the temporary base is: either would name the
+    campaign the program must not see. A wrapper whose hook cannot be found fails closed too, since a ledger alone
+    would collect nothing."""
     calls = os.environ.get(COST_CALLS_NAME)
     if not calls:
         return None
@@ -282,11 +344,11 @@ def cost_meter(directory: Path) -> tuple[str, str] | None:
         raise AttackerInfrastructureError(
             "cost_meter", f"{COST_CALLS_NAME} is set but the cost hook's {COST_HOOK_MODULE} was not found"
         )
-    ledger, root = Path(calls).resolve(), run_tree(directory).resolve()
+    ledger = Path(calls).resolve()
     for name, path in ((COST_CALLS_NAME, ledger), ("PYTHONPATH", hook)):
         if path.is_relative_to(root):
             raise AttackerInfrastructureError("cost_meter", f"{name} names {path}, inside the run tree {root}")
-    return str(ledger), str(hook)
+    return CostMeter(ledger, hook)
 
 
 def config_argument(command: list[str]) -> str | None:
@@ -302,13 +364,18 @@ def config_argument(command: list[str]) -> str | None:
 def credential_variables(command: list[str]) -> list[str]:
     """The credential environment variables the configuration named by the command's `--config` sets, so the program
     still authenticates: `provider.credential_env` in the attacker runtime's configuration, `credential_env_name` in
-    the writer design's. A command without a configuration, and a file that cannot be read, adds no name."""
+    the writer design's. A command without a configuration, and a file that cannot be read in bounded form, adds no
+    name: the read is refused for anything but a regular file of at most `CONFIG_BYTES`, and an unreadable, undecodable
+    or too deeply nested file is the same as a missing one."""
     path = config_argument(command)
     if path is None:
         return []
     try:
-        raw = yaml.safe_load(Path(path).read_text())
-    except (OSError, yaml.YAMLError):
+        info = os.stat(path)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > CONFIG_BYTES:
+            return []
+        raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError, yaml.YAMLError):
         return []
     if not isinstance(raw, dict):
         return []
@@ -317,22 +384,35 @@ def credential_variables(command: list[str]) -> list[str]:
     return [name] if isinstance(name, str) and ENV_NAME.fullmatch(name) else []
 
 
-def child_environment(config, scratch: Path, directory: Path) -> dict[str, str]:
-    """The program's environment, built from an allowlist instead of inherited: the fixed names above, the LC_* family,
-    the credential variables the attacker configuration names and the variables the campaign config lists, and the
-    temporary-directory variables pinned to the call's scratch. A harness running under the cost wrapper forwards its
-    meter without a campaign entry: the ledger path and the hook directory once on `PYTHONPATH`, ahead of a
-    `PYTHONPATH` the campaign lists. PWD, OLDPWD and every other inherited variable are left out."""
-    names = [*CHILD_ENV_NAMES, *credential_variables(config.command), *config.env]
+def check_forwarded_config(config) -> None:
+    """Refuse at config validation what the campaign may not forward: an `env` entry naming a harness-controlled
+    variable, and a credential variable the command's configuration names that the harness itself sets. The schema
+    refuses the first as well; the second needs the configuration file, which only validation reads before a run."""
+    controlled = sorted(name for name in config.env if harness_controlled(name))
+    if controlled:
+        raise ValueError(f"run_attacker.env names harness-controlled variables: {', '.join(controlled)}")
+    for name in credential_variables(config.command):
+        if harness_controlled(name):
+            raise ValueError(
+                f"the attacker configuration names the harness-controlled variable {name} as its credential"
+            )
+
+
+def child_environment(config, scratch: Path, meter: CostMeter | None) -> dict[str, str]:
+    """The program's environment, built from an allowlist instead of inherited: the fixed names above, the live-mode
+    proxy and CA variables, the LC_* family, the credential variables the attacker configuration names and the
+    variables the campaign config lists, and the temporary-directory variables pinned to the call's scratch. A harness
+    running under the cost wrapper forwards its meter without a campaign entry: the hook directory as the only
+    `PYTHONPATH` entry, and a private calls file in the scratch as the ledger the program writes, never the wrapper's
+    own. PWD, OLDPWD and every other inherited variable are left out."""
+    names = [*CHILD_ENV_NAMES, *LIVE_ENV_NAMES, *credential_variables(config.command), *config.env]
     environment = {name: os.environ[name] for name in names if name in os.environ}
     environment |= {name: value for name, value in os.environ.items() if name.startswith(CHILD_ENV_PREFIXES)}
     environment |= {name: str(scratch) for name in CHILD_TEMP_NAMES}
-    meter = cost_meter(directory)
     if meter is not None:
-        calls, hook = meter
-        entries = [hook, *(environment.get("PYTHONPATH") or "").split(os.pathsep)]
-        environment[COST_CALLS_NAME] = calls
-        environment["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(p for p in entries if p))
+        entries = [str(meter.hook), *(environment.get("PYTHONPATH") or "").split(os.pathsep)]
+        environment[COST_CALLS_NAME] = str(scratch / COST_CALLS_FILE)
+        environment["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(entry for entry in entries if entry))
     return environment
 
 
@@ -353,36 +433,101 @@ def file_limit(name: str) -> int:
     return CAPTURE_BYTES if name in ("writer.stdout", "writer.stderr") else RESPONSE_BYTES
 
 
-def copy_staged(source: Path, target: Path, limit: int) -> None:
-    """Copy one staged file into the audit folder once the program has exited. A symlink or any other non-regular
-    source is refused, and so is a file over `limit` bytes, both before the file is read and with its size in the
-    message; the copy itself takes at most `limit` bytes. A capture thread still writing its file is tolerated: the
-    copy takes the bytes that are there and waits for nothing."""
+def open_staged(source: Path, limit: int) -> IO[bytes] | None:
+    """Open a staged file under the copy rules, or return None when it does not exist. A symlink or any other
+    non-regular file is refused before the open and again on the open descriptor, and so is a file over `limit` bytes,
+    with its size in the message; `O_NOFOLLOW` refuses a symlink swapped in after the check, and `O_NONBLOCK` keeps a
+    FIFO swapped in from blocking the open forever."""
     name = source.name
     try:
         info = os.lstat(source)
     except FileNotFoundError:
-        return
+        return None
     except OSError as error:
         raise AuditCopyError(f"{name}: {type(error).__name__}: {error}") from error
     if not stat.S_ISREG(info.st_mode):
         raise AuditCopyError(f"{name}: not a regular file, {info.st_size} bytes, {stat.filemode(info.st_mode)}")
     if info.st_size > limit:
         raise AuditCopyError(f"{name}: {info.st_size} bytes, over the {limit}-byte limit")
-    partial = target.with_name(f".{target.name}.partial")
     try:
-        # O_NOFOLLOW closes the gap between the check above and the open: a symlink swapped in is refused, not read.
-        descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
-        with os.fdopen(descriptor, "rb") as stream, partial.open("wb") as out:
-            shutil.copyfileobj(stream, out, limit + 1)
-        if partial.stat().st_size > limit:
-            raise AuditCopyError(f"{name}: grew past the {limit}-byte limit while copying")
+        descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as error:
+        raise AuditCopyError(f"{name}: {type(error).__name__}: {error}") from error
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except OSError as error:
+        os.close(descriptor)
+        raise AuditCopyError(f"{name}: {type(error).__name__}: {error}") from error
+    try:
+        opened = os.fstat(stream.fileno())
+        if not stat.S_ISREG(opened.st_mode):
+            raise AuditCopyError(f"{name}: not a regular file, {stat.filemode(opened.st_mode)}")
+        if opened.st_size > limit:
+            raise AuditCopyError(f"{name}: {opened.st_size} bytes, over the {limit}-byte limit")
+    except BaseException:
+        stream.close()
+        raise
+    return stream
+
+
+def read_staged(source: Path, limit: int) -> bytes | None:
+    """A staged file's bytes, read under `open_staged`'s rules with a remaining-bytes budget: the read stops after
+    `limit + 1` bytes, so a file that grows while it is read is refused instead of copied without bound. None means
+    the file does not exist; more than `limit` bytes is a refusal. A capture thread still writing its file is
+    tolerated: the read takes the bytes that are there and waits for nothing."""
+    stream = open_staged(source, limit)
+    if stream is None:
+        return None
+    try:
+        chunks, copied = [], 0
+        while copied <= limit:
+            chunk = stream.read(min(COPY_CHUNK, limit + 1 - copied))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            copied += len(chunk)
+        if copied > limit:
+            raise AuditCopyError(f"{source.name}: grew past the {limit}-byte limit while copying")
+        return b"".join(chunks)
+    finally:
+        stream.close()
+
+
+def copy_staged(source: Path, target: Path, limit: int) -> None:
+    """Copy one staged file into the audit folder once the program has exited. A symlink or any other non-regular
+    source is refused, and so is a file over `limit` bytes, both before the file is read and with its size in the
+    message; the copy itself reads at most `limit + 1` bytes, so it stops at the limit even when the file grows."""
+    try:
+        data = read_staged(source, limit)
+        if data is None:
+            return
+        partial = target.with_name(f".{target.name}.partial")
+        partial.write_bytes(data)
         partial.replace(target)
     except OSError as error:
-        partial.unlink(missing_ok=True)
+        target.with_name(f".{target.name}.partial").unlink(missing_ok=True)
         if isinstance(error, AuditCopyError):
             raise
-        raise AuditCopyError(f"{name}: {type(error).__name__}: {error}") from error
+        raise AuditCopyError(f"{source.name}: {type(error).__name__}: {error}") from error
+
+
+def append_cost_calls(source: Path, ledger: Path) -> None:
+    """Append the call's own cost rows to the wrapper's ledger once the program has exited: the program wrote them to a
+    private file in its scratch, so it never reads the ledger's earlier rows, the clean arm's included. The file is
+    read under the same copy rules and bounded like a response; a missing or empty file appends nothing, and a torn
+    last line is closed so the next row starts on its own line."""
+    data = read_staged(source, RESPONSE_BYTES)
+    if not data:
+        return
+    if not data.endswith(b"\n"):
+        data += b"\n"
+    try:
+        with ledger.open("ab") as out:
+            out.write(data)
+    except OSError as error:
+        raise AuditCopyError(
+            f"{COST_CALLS_NAME}: cannot append to the ledger: {type(error).__name__}: {error}"
+        ) from error
 
 
 def collect_call(staged: Path, audit: Path) -> None:
@@ -396,10 +541,22 @@ def collect_call(staged: Path, audit: Path) -> None:
 
 class RunLocalAttacker:
     """The attacker of one session. `state` is the checkpoint of the chain's previous completed session, or None for
-    the chain's first session; it is copied, so nothing this session does reaches it until `finish` returns."""
+    the chain's first session; it is copied, so nothing this session does reaches it until `finish` returns.
+    `campaign_root` is the campaign's run tree, which the runner pins once and passes down; a session run on its own
+    uses its own directory."""
 
-    def __init__(self, config, runtime, instruction: str, task_id: str, state: dict | None = None):
+    def __init__(
+        self,
+        config,
+        runtime,
+        instruction: str,
+        task_id: str,
+        state: dict | None = None,
+        *,
+        campaign_root: Path | None = None,
+    ):
         self.config, self.runtime, self.instruction, self.task_id = config, runtime, instruction, task_id
+        self.campaign_root = Path(campaign_root if campaign_root is not None else runtime.log.path.parent).resolve()
         self.state = copy.deepcopy(state) if state is not None else initial_state(config)
         sessions = self.state.get("sessions")
         # A checkpoint written before notices were withheld still carries them in its session transcripts.
@@ -416,11 +573,16 @@ class RunLocalAttacker:
         """The run's private scratch root, created on the first call with a random name and mode 0700 under the
         checked temporary base and removed when this attacker is collected. The 0700 mode and the random names narrow
         what another process can find; a process of the same user can still list the base and read a live call's
-        scratch, which no mode prevents."""
+        scratch, which no mode prevents. A base or root that cannot be created is a `temp_base` error."""
         if self._temp_root is None:
-            base = checked_temp_base(self.runtime.log.path.parent)
-            root = Path(tempfile.mkdtemp(prefix="sereno-attacker-", dir=base))
-            os.chmod(root, 0o700)
+            base = checked_temp_base(self.campaign_root)
+            try:
+                root = Path(tempfile.mkdtemp(prefix="sereno-attacker-", dir=base))
+                os.chmod(root, 0o700)
+            except OSError as error:
+                raise AttackerInfrastructureError(
+                    "temp_base", f"cannot create the run's scratch root: {type(error).__name__}: {error}"
+                ) from error
             weakref.finalize(self, shutil.rmtree, root, ignore_errors=True)
             self._temp_root = root
         return self._temp_root
@@ -596,7 +758,10 @@ class RunLocalAttacker:
                 "request_encoding", f"{type(error).__name__}: the request is not encodable as UTF-8"
             ) from error
         audit = runtime.log.path.parent / AUDIT_DIR / f"{number:04d}"
-        audit.mkdir(parents=True, exist_ok=False)
+        try:
+            audit.mkdir(parents=True, exist_ok=False)
+        except OSError as error:
+            raise AttackerInfrastructureError("audit_copy", f"cannot create the audit folder: {error}") from error
         base = {
             "schema_version": SCHEMA_VERSION,
             "call": number,
@@ -635,23 +800,52 @@ class RunLocalAttacker:
         # A fresh scratch directory on every call, under the run's private root outside the run tree: the program
         # keeps nothing between calls, and no path it is given names the session, its audit folder or its event log
         # (decision 409). Its files reach the audit folder only as copies made after it exits.
-        with TemporaryDirectory(prefix="call-", dir=scratch_root) as scratch:
-            staged = Path(scratch)
+        try:
+            scratch = TemporaryDirectory(prefix="call-", dir=scratch_root, ignore_cleanup_errors=True)
+        except OSError as error:
+            self.fail(audit, base, "temp_base", f"cannot create the call's scratch directory: {error}")
+        with scratch:
+            staged = Path(scratch.name)
             try:
                 write_bytes_atomic(staged / "request.json", encoded)
             except OSError as error:
                 self.fail(audit, base, "audit_copy", f"cannot stage the request: {error}")
+            # Every value the program receives is checked against the run tree before it is launched: a command word
+            # naming the campaign, or a forwarded variable holding one, fails the call closed as `run_tree`.
             try:
-                environment = child_environment(config, staged, runtime.log.path.parent)
+                check_forwarded_command(config.command, self.campaign_root)
+                meter = cost_meter(self.campaign_root)
+                environment = child_environment(config, staged, meter)
+                check_forwarded_environment(environment, self.campaign_root)
             except AttackerInfrastructureError as error:
                 self.fail(audit, base, error.code, error.message)
-            outcome = run_program(
-                [*config.command, str(staged / "request.json"), str(staged / "response.json")],
-                staged,
-                config.timeout_seconds,
-                staged,
-                env=environment,
-            )
+            if meter is not None:
+                # The program's ledger is its own empty file in the scratch; the wrapper's ledger is appended to
+                # below, so the program never reads the campaign's earlier rows, the clean arm's included.
+                try:
+                    (staged / COST_CALLS_FILE).write_bytes(b"")
+                except OSError as error:
+                    self.fail(audit, base, "audit_copy", f"cannot stage the cost calls file: {error}")
+            try:
+                outcome = run_program(
+                    [*config.command, str(staged / "request.json"), str(staged / "response.json")],
+                    staged,
+                    config.timeout_seconds,
+                    staged,
+                    env=environment,
+                )
+            except BaseException:
+                if meter is not None:
+                    # A paid call the interrupt killed still happened: its rows reach the ledger before the scratch is
+                    # removed, and the interrupt itself keeps propagating.
+                    with contextlib.suppress(Exception):
+                        append_cost_calls(staged / COST_CALLS_FILE, meter.ledger)
+                raise
+            if meter is not None:
+                try:
+                    append_cost_calls(staged / COST_CALLS_FILE, meter.ledger)
+                except OSError as error:
+                    self.fail(audit, base, "audit_copy", str(error))
             seconds = round(time.monotonic() - clock, 3)
             self.state["usage"]["seconds"] = round(self.state["usage"]["seconds"] + seconds, 3)
             base["seconds"] = seconds
@@ -747,7 +941,11 @@ class RunLocalAttacker:
             "reads_requested": result["reads_requested"],
             "usage_after": dict(self.state["usage"]),
         }
-        write_atomic(audit / "record.json", record)
+        try:
+            write_atomic(audit / "record.json", record)
+        except OSError as error:
+            # The call happened but its record cannot be written; that is an audit failure, not an attack outcome.
+            self.fail(audit, base, "audit_copy", f"cannot write the audit record: {error}")
         self.calls.append(record)
         # The event log stamps its own kind, schema, step and session; the record keeps the call's own.
         fields = {key: value for key, value in record.items() if key not in EVENT_OWN | {"usage_after"}}
@@ -883,18 +1081,39 @@ class RunLocalAttacker:
         return "applied", None, [], changes
 
     def fail(self, audit: Path, base: dict, code: str, message: str) -> NoReturn:
-        """Record the call as an infrastructure error, log the event and end it: never an attack outcome."""
+        """Record the call as an infrastructure error, log the event and end it: never an attack outcome. A record that
+        cannot be written is not retried, since the same write would fail the same way: the infrastructure error is
+        raised without it."""
         record = base | {"status": "infrastructure_error", "error": {"code": code, "message": printable(message)}}
-        write_atomic(audit / "record.json", record)
-        self.runtime.emit("run_attacker_error", code=code, message=printable(message), call=base["call"])
+        with contextlib.suppress(OSError):
+            write_atomic(audit / "record.json", record)
+        with contextlib.suppress(OSError):
+            self.runtime.emit("run_attacker_error", code=code, message=printable(message), call=base["call"])
         raise AttackerInfrastructureError(code, message)
+
+
+def without_empty_env(dumped: dict) -> dict:
+    """A dumped attacker configuration with `env` left out while it is empty, so a campaign written before the field
+    existed keeps its identity: its manifest entry and both config hashes."""
+    if not dumped.get("env"):
+        dumped.pop("env", None)
+    return dumped
+
+
+def campaign_identity(config) -> dict:
+    """An experiment config's dump for its manifest and hashes, with the attacker's empty `env` left out for the same
+    reason `writer_manifest` leaves it out."""
+    dumped = config.model_dump(mode="json")
+    if isinstance(dumped.get("run_attacker"), dict):
+        without_empty_env(dumped["run_attacker"])
+    return dumped
 
 
 def writer_manifest(config) -> dict:
     """The attacker as the campaign manifest records it: its settings, budgets and starting strategy, and the sha256
     of every command word that names an existing file."""
     check_command_identity(config.command)
-    return config.model_dump(mode="json") | {
+    return without_empty_env(config.model_dump(mode="json")) | {
         "strategy_sha256": fingerprint(config.strategy),
         "program_sha256": {
             word: file_sha256(Path(word))

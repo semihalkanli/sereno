@@ -60,7 +60,7 @@ def timed_session(
     calls = []
 
     class SlowAttacker:
-        def __init__(self, config, runtime, *args):
+        def __init__(self, config, runtime, *args, **kwargs):
             self.runtime = runtime
             self.delay("setup", 17)
 

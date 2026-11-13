@@ -146,6 +146,12 @@ def validate(config: ExperimentConfig, registry: Registry) -> dict:
                 raise ValueError(f"{name}.command: {word!r} names no file next to the YAML file")
         if shutil.which(writer.command[0]) is None:
             raise ValueError(f"{name}.command: cannot find the program {writer.command[0]!r}")
+    if config.run_attacker is not None:
+        # What the campaign may forward to the program: no harness-controlled name, whether listed in `env` or read as
+        # the credential variable of the configuration the command names.
+        from sereno.context_eval.run_attacker import check_forwarded_config
+
+        check_forwarded_config(config.run_attacker)
     if config.agent in MINI_SWE_AGENTS and not config.model_config_file:
         raise ValueError(f"{config.agent} requires model_config_file")
     if not instructions(config.memory).strip():

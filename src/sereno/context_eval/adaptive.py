@@ -396,9 +396,10 @@ def run_program(argv: list[str], cwd: Path, timeout: int, folder: Path, *, env: 
     except OSError as error:
         return outcome | {"error": f"cannot start the program: {error}", "seconds": 0.0}
     captures = [Capture(process.stdout, folder / "writer.stdout"), Capture(process.stderr, folder / "writer.stderr")]
-    for capture in captures:
-        capture.start()
     try:
+        # Inside the protected block: a failure or an interrupt while the captures start must kill the group too.
+        for capture in captures:
+            capture.start()
         outcome["exit_code"] = process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         # The leader is still unreaped, so its pid still names the group.
