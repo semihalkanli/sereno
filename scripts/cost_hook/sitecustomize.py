@@ -1,17 +1,22 @@
-"""Record the usage of every OpenRouter and Anthropic completion made by this process.
+"""Record the usage of every OpenRouter, Anthropic and opencode completion made by this process.
 
 `scripts/cost.py run` puts this directory on PYTHONPATH, so Python imports it at
 startup in the wrapped command and in every Python child it spawns. Each
-non-streaming response from OpenRouter or the Anthropic Messages API is appended
-as one JSON line to the file named by SERENO_COST_CALLS. Patching httpx (and
-httpx2, which openai 3.x and anthropic 1.x use) and requests covers any client built on them,
-including mini-swe's requests-based OpenRouter models, which also use the
-Responses API, litellm's Anthropic calls and the Anthropic SDK.
+non-streaming response from OpenRouter, the Anthropic Messages API or the
+opencode Go API is appended as one JSON line to the file named by
+SERENO_COST_CALLS. Patching httpx (and httpx2, which openai 3.x and anthropic 1.x use) and
+requests covers any client built on them, including mini-swe's requests-based
+OpenRouter models, which also use the Responses API, litellm's Anthropic calls and
+the Anthropic SDK.
 
 OpenRouter returns the billed cost with each response. Anthropic returns only
 token counts, so the cost is computed with the official price table in
 src/sereno/pricing.py, the one the context-eval Anthropic agent uses. A model
-missing from the table is recorded as unpriced rather than free.
+missing from the table is recorded as unpriced rather than free. The opencode Go
+API charges against a subscription allowance rather than cash: its
+`usage.opencode.allowance` is recorded as the cost with `billing: allowance` and
+`billing_source`, never as unpriced, so the ledger keeps the allowance apart from
+cash spending.
 """
 
 import importlib
@@ -45,7 +50,12 @@ def _install(calls_path: str) -> None:
             ("/chat/completions", "/responses", "/decisions")
         )
         anthropic = url.hostname == "api.anthropic.com" and url.path.endswith("/v1/messages")
-        if not (openrouter or anthropic):
+        opencode = (
+            url.hostname == "opencode.ai"
+            and "/inference/go/" in url.path
+            and url.path.endswith(("/chat/completions", "/messages"))
+        )
+        if not (openrouter or anthropic or opencode):
             return
         try:
             body = response.json()
@@ -63,6 +73,21 @@ def _install(calls_path: str) -> None:
             "completion_tokens": usage.get("completion_tokens", usage.get("output_tokens")),
             "cost": usage.get("cost"),
         }
+        if opencode:
+            # The Go API charges the subscription allowance, not cash; an answer without one is reported as
+            # unreported, never as unpriced.
+            raw = (usage.get("opencode") or {}).get("allowance")
+            reported = float(raw) if isinstance(raw, int | float) and not isinstance(raw, bool) else None
+            billed = response.status_code == 200
+            row |= {
+                "provider": "opencode",
+                "billing": "allowance",
+                "billing_source": body.get("billing_source") or usage.get("billing_source"),
+                "allowance": reported,
+                "allowance_reported": reported is not None,
+                "cost": reported if billed and reported is not None else 0.0 if billed else None,
+                "unpriced": False,
+            }
         if anthropic:
             # Anthropic's input_tokens leaves out cached tokens; prompt_tokens counts the whole prompt, as OpenRouter's.
             cached = (usage.get("cache_read_input_tokens") or 0) + (usage.get("cache_creation_input_tokens") or 0)

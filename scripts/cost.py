@@ -1,21 +1,24 @@
-"""Record what each run costs on OpenRouter and the Anthropic API.
+"""Record what each run costs on OpenRouter, the Anthropic API and the opencode Go API.
 
     uv run scripts/cost.py run --label <label> -- <command> [args...]
     uv run scripts/cost.py report [--label <label>]
 
 `run` executes the command with the hook in `scripts/cost_hook` loaded and the
 repository's `.env` in its environment (a variable already set wins). The hook
-logs the usage OpenRouter or Anthropic returns with every completion (for
+logs the usage OpenRouter, Anthropic or opencode returns with every completion (for
 Anthropic, priced from the hook's table). When the command
 exits, the calls are summed and one row is appended to the ledger
 (`runs/cost/ledger.jsonl` by default). The wrapped command may use any Python
 environment.
 
-Per-call costs are the source of truth because OpenRouter's account total lags
-by minutes. `report` prints the ledger and compares its sum with that account
-total so a gap (calls the hook could not see, such as streamed responses) shows
-up; Anthropic spending has no such check here, since its usage report needs an
-Admin API key.
+Cash spending and the opencode subscription allowance stay apart: `calls` and
+`cost_usd` are OpenRouter and Anthropic cash, `allowance_calls` and `allowance_usd`
+are the charges the Go API reports against the allowance, and an opencode call is
+never unpriced. Per-call costs are the source of truth because OpenRouter's account
+total lags by minutes. `report` prints the ledger and compares the cash sum with that
+account total so a gap (calls the hook could not see, such as streamed responses)
+shows up; Anthropic spending has no such check here, since its usage report needs an
+Admin API key, and the allowance has no dollar total to compare with.
 """
 
 import argparse
@@ -63,26 +66,50 @@ def openrouter_get(path: str) -> dict | None:
 
 
 def summarize_calls(calls_path: Path) -> dict:
+    """The run's calls, with cash spending (OpenRouter, Anthropic) kept apart from the opencode subscription allowance:
+    the allowance is a charge against the subscription, never a dollar figure to add to cash."""
     calls = read_jsonl(calls_path) if calls_path.exists() else []
-    billed = [c for c in calls if c["cost"] is not None]
-    unpriced = [c for c in calls if c.get("unpriced")]
+    allowance_rows = [c for c in calls if c.get("billing") == "allowance"]
+    cash = [c for c in calls if c.get("billing") != "allowance"]
+    billed = [c for c in cash if c.get("cost") is not None]
+    unpriced = [c for c in cash if c.get("unpriced")]
+    allowance_billed = [c for c in allowance_rows if c.get("cost") is not None]
     by_model: dict[str, dict] = defaultdict(lambda: {"calls": 0, "cost_usd": 0.0, "providers": set()})
     for call in billed:
         entry = by_model[call["model"]]
         entry["calls"] += 1
         entry["cost_usd"] += call["cost"]
         entry["providers"].add(call["provider"])
+    allowance_by_model: dict[str, dict] = defaultdict(lambda: {"calls": 0, "allowance_usd": 0.0, "sources": set()})
+    for call in allowance_billed:
+        entry = allowance_by_model[call["model"]]
+        entry["calls"] += 1
+        entry["allowance_usd"] += call["cost"]
+        entry["sources"].add(call.get("billing_source"))
     return {
         "calls": len(billed),
-        "failed_calls": len(calls) - len(billed) - len(unpriced),
+        "failed_calls": len(calls) - len(billed) - len(unpriced) - len(allowance_billed),
         "unpriced_calls": len(unpriced),
         "unpriced_models": sorted({str(c["model"]) for c in unpriced}),
         "prompt_tokens": sum(c["prompt_tokens"] or 0 for c in billed),
         "completion_tokens": sum(c["completion_tokens"] or 0 for c in billed),
         "cost_usd": round(sum(c["cost"] for c in billed), 8),
+        "allowance_calls": len(allowance_billed),
+        "allowance_usd": round(sum(c["cost"] for c in allowance_billed), 8),
+        "allowance_unreported_calls": sum(1 for c in allowance_billed if not c.get("allowance_reported", True)),
+        "allowance_prompt_tokens": sum(c["prompt_tokens"] or 0 for c in allowance_billed),
+        "allowance_completion_tokens": sum(c["completion_tokens"] or 0 for c in allowance_billed),
         "by_model": {
             model: {**entry, "cost_usd": round(entry["cost_usd"], 8), "providers": sorted(map(str, entry["providers"]))}
             for model, entry in by_model.items()
+        },
+        "allowance_by_model": {
+            model: {
+                **entry,
+                "allowance_usd": round(entry["allowance_usd"], 8),
+                "sources": sorted(str(source) for source in entry["sources"]),
+            }
+            for model, entry in allowance_by_model.items()
         },
     }
 
@@ -128,6 +155,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         f"{row['prompt_tokens']}+{row['completion_tokens']} tokens, USD {row['cost_usd']:.6f}",
         file=sys.stderr,
     )
+    if row["allowance_calls"]:
+        print(
+            f"[cost] {row['allowance_calls']} opencode calls charged USD {row['allowance_usd']:.6f} against the "
+            f"subscription allowance (not cash)",
+            file=sys.stderr,
+        )
     if row["unpriced_calls"]:
         print(
             f"[cost] {row['unpriced_calls']} calls to models without a price are not in the total: "
@@ -141,14 +174,23 @@ def cmd_report(args: argparse.Namespace) -> int:
     rows = read_jsonl(args.ledger) if args.ledger.exists() else []
     if args.label:
         rows = [r for r in rows if r["label"] == args.label]
-    print(f"{'run':<44} {'calls':>6} {'failed':>6} {'tokens in':>10} {'tokens out':>10} {'USD':>10}")
+    header = (
+        f"{'run':<44} {'calls':>6} {'failed':>6} {'tokens in':>10} {'tokens out':>10} {'USD':>10} "
+        f"{'allow calls':>11} {'allow USD':>10}"
+    )
+    print(header)
     for r in rows:
         print(
             f"{r['run_id']:<44} {r['calls']:>6} {r['failed_calls']:>6} "
-            f"{r['prompt_tokens']:>10} {r['completion_tokens']:>10} {r['cost_usd']:>10.6f}"
+            f"{r['prompt_tokens']:>10} {r['completion_tokens']:>10} {r['cost_usd']:>10.6f} "
+            f"{r.get('allowance_calls', 0):>11} {r.get('allowance_usd', 0.0):>10.6f}"
         )
     total = sum(r["cost_usd"] for r in rows)
-    print(f"{'total':<44} {sum(r['calls'] for r in rows):>6} {'':>6} {'':>10} {'':>10} {total:>10.6f}")
+    allowance_total = sum(r.get("allowance_usd", 0.0) for r in rows)
+    print(
+        f"{'total':<44} {sum(r['calls'] for r in rows):>6} {'':>6} {'':>10} {'':>10} {total:>10.6f} "
+        f"{sum(r.get('allowance_calls', 0) for r in rows):>11} {allowance_total:>10.6f}"
+    )
 
     credits = openrouter_get("/credits")
     key = openrouter_get("/key")

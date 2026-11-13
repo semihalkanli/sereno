@@ -164,6 +164,61 @@ def test_hook_records_the_anthropic_sdk_without_streaming(tmp_path: Path) -> Non
     assert row["cost"] == pytest.approx((1000 + 400) * 0.10e-6 + 200 * 0.50e-6)
 
 
+OPENCODE_CHILD = """
+import httpx
+
+def handler(request):
+    body = {
+        "id": "gen-oc-1",
+        "model": "deepseek-v4.1-flash-1018",
+        "billing_source": "subscription",
+        "usage": {"prompt_tokens": 4, "completion_tokens": 2, "opencode": {"allowance": 0.03}},
+    }
+    return httpx.Response(200, json=body)
+
+client = httpx.Client(transport=httpx.MockTransport(handler))
+client.post("https://opencode.ai/inference/go/openai/v1/chat/completions", json={})
+client.post("https://example.com/inference/go/openai/v1/chat/completions", json={})
+"""
+
+
+def test_hook_records_opencode_calls_as_a_subscription_allowance(tmp_path: Path) -> None:
+    calls = tmp_path / "calls.jsonl"
+    env = {**os.environ, "PYTHONPATH": str(SCRIPTS / "cost_hook"), "SERENO_COST_CALLS": str(calls)}
+    subprocess.run([sys.executable, "-c", OPENCODE_CHILD], env=env, check=True)
+
+    [row] = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert row["provider"] == "opencode" and row["model"] == "deepseek-v4.1-flash-1018"
+    assert row["billing"] == "allowance" and row["billing_source"] == "subscription"
+    assert (row["allowance"], row["cost"], row["unpriced"]) == (0.03, 0.03, False)
+
+
+def test_summarize_calls_keeps_the_opencode_allowance_apart_from_cash(tmp_path: Path) -> None:
+    cost = load_cost()
+    calls = tmp_path / "calls.jsonl"
+    rows = [
+        {"model": "m", "provider": "P", "prompt_tokens": 10, "completion_tokens": 2, "cost": 0.5},
+        {
+            "model": "deepseek-v4.1-flash-1018",
+            "provider": "opencode",
+            "prompt_tokens": 4,
+            "completion_tokens": 2,
+            "cost": 0.03,
+            "billing": "allowance",
+            "billing_source": "subscription",
+            "allowance_reported": True,
+            "unpriced": False,
+        },
+    ]
+    calls.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+    summary = cost.summarize_calls(calls)
+    assert (summary["calls"], summary["cost_usd"], summary["failed_calls"]) == (1, 0.5, 0)
+    assert (summary["allowance_calls"], summary["allowance_usd"]) == (1, 0.03)
+    assert summary["allowance_by_model"]["deepseek-v4.1-flash-1018"]["sources"] == ["subscription"]
+    assert summary["allowance_prompt_tokens"] == 4 and summary["allowance_unreported_calls"] == 0
+
+
 def test_summarize_calls_keeps_unpriced_calls_apart(tmp_path: Path) -> None:
     cost = load_cost()
     calls = tmp_path / "calls.jsonl"
