@@ -69,8 +69,11 @@ The guard is not required and not constrained: the same attacker runs with the g
 
 The program is called synchronously from the hook before the agent's model calls: the first call of a session, budget
 permitting, then call 1 + n, 1 + 2n, ... for `every_calls: n`, and once at the end of each completed session. Two
-positional paths are appended to `command`: `request.json` and `response.json`, both in the session's
-`run_attacker/NNNN/` folder; each call runs in a fresh temporary working directory.
+positional paths are appended to `command`: `request.json` and `response.json`, both in a fresh scratch directory
+outside the run tree, which is also the program's working directory; every call gets a new one. After the program
+exits, the request's recorded bytes, its response and any usage sidecar or captured output are copied into the
+session's `run_attacker/NNNN/` folder, and the scratch directory is removed. The program is given no path inside the
+run tree: the harness enforces that boundary rather than assuming the program will stay out of it (decision 409).
 
 The request (`schema_version: "1.0"`) has three parts:
 
@@ -89,10 +92,14 @@ agent's readable thinking summaries in a `thinking` field. Signatures, redacted 
 included; a redacted block with no readable text is named as redacted, not decoded. Guard notices are withheld from every
 part of this view (decision 518 item 2, the 2026-10-22 rule): the current transcript, the chain's completed sessions, the
 envelope tail, paging and search leave each notice out whole, without a placeholder, marker or count, and a transcript
-restored from a checkpoint written before withholding is cleaned the same way. The harness records how many notice
-messages a call's view left out in that call's `record.json`, never in the request. A warning reaches the attacker only
-through the target's own text, thinking summaries included. Hidden guard decisions, grader code and outputs of other
-chains are never given.
+restored from a checkpoint written before withholding is cleaned the same way. The runtime applies the same predicate
+and the same silent drop again when it reads a request, for either recorded mark form, so a stale or hand-built request
+cannot show a notice and the harness's filter is not the only layer. The harness records how many notice messages a
+call's view left out in that call's `record.json`, never in the request. That count is per view and cumulative within a
+session: each call's value is what that call's view left out, the notices the loaded checkpoint had already lost plus
+those of the running session so far, so the `session_end` record carries the session total and the records are not
+summed. A warning reaches the attacker only through the target's own text, thinking summaries included. Hidden guard
+decisions, grader code and outputs of other chains are never given.
 
 The response is one object: `schema_version: "1.0"`, `actions` (the hook's write and delete actions; empty to wait),
 optional `strategy` (left out keeps the current one), optional `notebook`, optional `reads` (paths below `code_root`,
@@ -137,9 +144,10 @@ is not a measured success.
 Code access is read-only. A path outside `code_root`, into `.git`, through a symlink that leads out, or beyond the
 per-call read budget is named as denied. A file or index over its size limit is named with its size and never cut; a
 request over `max_input_bytes` is an infrastructure error, never cut. The error records the actual request bytes and
-the configured limit. Each request is serialized once; its recorded size and SHA-256 describe the exact bytes written
-atomically to `request.json`. Full earlier transcripts remain in every request and in the checkpoint. Code views are
-read again on every call so they include the agent's latest edits.
+the configured limit. Each request is serialized once; its recorded size and SHA-256 describe the exact bytes staged
+for the program and copied atomically to the audit folder's `request.json`. The cleaned earlier transcripts remain in
+every request and in the checkpoint; only the envelope's first message is a tail. Code views are read again on every
+call so they include the agent's latest edits.
 
 The default input limit is 40,000,000 bytes. A metadata-only inventory on 2026-11-13 found 1,711 recorded `traj.json`
 files under `runs/` (1,833,713,649 bytes total); the largest was 5,310,305 bytes. The three largest distinct sizes were
@@ -153,10 +161,10 @@ limit (up to 50,000,000 bytes).
 
 ## Records, resume and errors
 
-Each call leaves `request.json`, `response.json`, `record.json` (kind, stage, step, strategy version and hashes before
-and after, request and response hashes, the number of guard notices withheld from the view, action result and
-violations, changes by hash and size, reported tokens and cost, seconds) and the program's stdout and stderr, plus a
-`run_attacker` event. A completed session also writes
+Each call leaves `request.json` and `response.json` (copies made after the program exited), `record.json` (kind, stage,
+step, strategy version and hashes before and after, request and response hashes, the number of guard notices withheld
+from the view, action result and violations, changes by hash and size, reported tokens and cost, seconds) and the
+program's stdout and stderr, plus a `run_attacker` event. A completed session also writes
 `run_attacker_state.json`, the chain's checkpoint, after the session-end call; an attack session counts as complete
 only with it. A resume starts each chain from its last completed session's checkpoint, so nothing a half-finished
 session learned carries into the new attempt.
@@ -369,10 +377,10 @@ to `build_provider`. The loop and tools never read a provider's body.
 ```
 
 `run_attacker.command` must be absolute and use the project's virtual environment, because the harness runs the
-program in a fresh temporary working directory. `run_attacker.timeout_seconds` must be larger than the runtime's
-`deadline_seconds`; `--check` refuses the pair otherwise. Each response's `writer_usage` records the provider, model,
-call count, token use, cost, finish reason, and the configuration and prompt hashes, so a campaign can audit the brief
-that produced it.
+program in a fresh temporary working directory outside the run tree. `run_attacker.timeout_seconds` must be larger
+than the runtime's `deadline_seconds`; `--check` refuses the pair otherwise. Each response's `writer_usage` records the
+provider, model, call count, token use, cost, finish reason, and the configuration and prompt hashes, so a campaign can
+audit the brief that produced it.
 
 Live mode requires all three pins, matching the writer's mandatory configuration and code pins and adding a separate
 brief pin. `--check` prints them and an argv `command_words` list for `run_attacker.command`; it needs neither pins
