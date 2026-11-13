@@ -333,7 +333,8 @@ included, and so is a launched call whose cost-ledger append or audit copy then 
 and reported usage are written before those steps. Audits that stopped before launching the program (such as an
 oversized request) are excluded, since only a record with a `program` entry counts; each is reported by its own
 `infrastructure_error` code, not as an incomplete call. Each chain's per-session rows likewise count only those
-records in `calls` and `results`, and carry the number of `status: incomplete` skeletons in `incomplete_calls`.
+records in `calls` and `results`, and carry the number of records that never reached a final one
+(`status: incomplete`) in `incomplete_calls`.
 Missing or partial token reports remain visible in `unreported_usage_calls` and `unreported_completions`. Only the originating
 `attack_carry` arm is scanned, so copies in reset, ablation and clean arms are not billed again. `infrastructure_errors` counts sessions whose `result.json` records an `infrastructure_error`, across active and
 superseded attempts of every attack chain; each chain carries the same attempt-inclusive scalar, while its `sessions`
