@@ -11,6 +11,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from sereno.usage import allowance_of, usage_charge
+
 
 @dataclass(frozen=True)
 class ToolSpec:
@@ -43,6 +45,8 @@ class Completion:
     provider: str | None = None
     generation_id: str | None = None
     declined: bool = False
+    # Where the API says the charge comes from, when it reports one (`billing_source` on the opencode Go API).
+    billing_source: str | None = None
 
     def record(self) -> dict:
         return {
@@ -51,8 +55,10 @@ class Completion:
             "returned_model": self.model,
             "provider": self.provider,
             "generation_id": self.generation_id,
+            "billing_source": self.billing_source,
             "usage": self.usage,
-            "cost": self.usage.get("cost"),
+            "cost": usage_charge(self.usage),
+            "allowance": allowance_of(self.usage),
             "tool_calls": len(self.tool_calls),
             "reasoning_fields": sorted(self.reasoning),
         }

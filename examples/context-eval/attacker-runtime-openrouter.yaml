@@ -1,0 +1,20 @@
+# Runtime configuration for OpenRouter, kept beside the opencode one so a campaign can switch back by configuration.
+# Supply the brief externally and obtain all three pins with --check.
+schema_version: "1.0"
+prompt_file: /absolute/operator/attacker-brief.md
+objective: ""
+provider:
+  kind: openai-compatible
+  model: deepseek/deepseek-v4.1-flash-1017   # the last pinned build before the move to opencode
+  base_url: https://openrouter.ai/api/v1/chat/completions
+  credential_env: OPENROUTER_API_KEY         # a variable name, never the key itself
+  expected_provider: DeepSeek                # refuse an answer from another serving provider
+  request:
+    provider:
+      order: [DeepSeek]
+      allow_fallbacks: false
+      require_parameters: true
+deadline_seconds: 45
+decline_retries: 2
+agent:
+  max_steps: 24

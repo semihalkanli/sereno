@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             raise InputError("a live call needs the response path", "arguments")
         check_identity(config, {name: getattr(args, name) for name in config.identity()}, required=True)
         deadline = Deadline(config.settings.deadline_seconds)
-        provider = build_provider(config, deadline)
+        provider = build_provider(config, deadline, request=request)
         try:
             result = run_agent(config, request, provider, deadline)
         finally:

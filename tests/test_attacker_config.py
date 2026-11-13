@@ -6,16 +6,44 @@ import pytest
 import yaml
 from attacker_world import PROMPT
 
-from sereno.attacker.config import AttackerSettings, load_config
+from sereno.attacker.config import AttackerSettings, check_settings, load_config
 from sereno.attacker.errors import ConfigError
+
+EXAMPLES = Path(__file__).parents[1] / "examples/context-eval"
 
 
 def test_runtime_example_configuration_is_valid():
-    path = Path(__file__).parents[1] / "examples/context-eval/attacker-runtime.yaml"
+    path = EXAMPLES / "attacker-runtime.yaml"
     settings = AttackerSettings.model_validate(yaml.safe_load(path.read_text()))
     assert settings.prompt_file.is_absolute()
     assert settings.deadline_seconds < 60
     assert settings.provider.credential_env == "DEEPSEEK_API_KEY"
+
+
+def test_runtime_opencode_example_configuration_is_valid():
+    settings = AttackerSettings.model_validate(
+        yaml.safe_load((EXAMPLES / "attacker-runtime-opencode.yaml").read_text())
+    )
+    check_settings(settings)
+    assert settings.provider.kind == "openai-compatible"
+    assert settings.provider.model == "deepseek-v4.1-flash"
+    assert settings.provider.base_url == "https://opencode.ai/inference/go/openai/v1/chat/completions"
+    assert settings.provider.credential_env == "OPENCODE_API_KEY"
+    assert settings.provider.user_agent == "sereno-attacker/1.0"
+    assert settings.provider.session_header == "x-opencode-session"
+    assert settings.provider.request == {}
+
+
+def test_runtime_openrouter_example_configuration_is_valid():
+    settings = AttackerSettings.model_validate(
+        yaml.safe_load((EXAMPLES / "attacker-runtime-openrouter.yaml").read_text())
+    )
+    check_settings(settings)
+    assert settings.provider.kind == "openai-compatible"
+    assert settings.provider.base_url == "https://openrouter.ai/api/v1/chat/completions"
+    assert settings.provider.credential_env == "OPENROUTER_API_KEY"
+    assert settings.provider.expected_provider == "DeepSeek"
+    assert settings.provider.user_agent is None and settings.provider.session_header is None
 
 
 def write_config(tmp_path: Path, **changes) -> Path:
@@ -87,6 +115,41 @@ def test_the_credential_is_read_from_the_environment(tmp_path, monkeypatch):
     assert caught.value.code == "missing_credential"
     monkeypatch.setenv("FIXTURE_ATTACKER_TEST_KEY", "fixture-key")
     assert config.credential() == "fixture-key"
+
+
+def test_a_product_user_agent_and_a_session_header_are_accepted(tmp_path):
+    config = load_config(
+        write_config(
+            tmp_path,
+            provider={"user_agent": "sereno-attacker/1.0", "session_header": "x-opencode-session"},
+        )
+    )
+    assert config.settings.provider.user_agent == "sereno-attacker/1.0"
+    assert config.settings.provider.session_header == "x-opencode-session"
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [
+        {"user_agent": "python-httpx/0.28"},
+        {"user_agent": "httpx"},
+        {"user_agent": "OpenAI/Python 3.12"},
+        {"user_agent": "no-version"},
+        {"session_header": "not a header"},
+        {"session_header": "Authorization"},
+        {"session_header": "Content-Type"},
+        {"session_header": "x-custom", "headers": {"x-custom": "value"}},
+    ],
+)
+def test_a_generic_user_agent_or_a_runtime_header_is_refused(tmp_path, provider):
+    with pytest.raises(ConfigError):
+        load_config(write_config(tmp_path, provider=provider))
+
+
+def test_the_opencode_credential_variable_is_read_and_forwardable(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENCODE_API_KEY", "fixture-go-key")
+    config = load_config(write_config(tmp_path, provider={"credential_env": "OPENCODE_API_KEY"}))
+    assert config.credential() == "fixture-go-key"
 
 
 def test_a_harness_controlled_credential_name_is_refused(tmp_path):

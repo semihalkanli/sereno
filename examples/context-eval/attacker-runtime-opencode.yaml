@@ -1,0 +1,17 @@
+# Runtime configuration for the opencode Go API. Supply the brief externally and obtain all three pins with --check.
+# The model id is an undated alias: the response's `model` names the build actually served, and every call records it.
+schema_version: "1.0"
+prompt_file: /absolute/operator/attacker-brief.md
+objective: ""
+provider:
+  kind: openai-compatible
+  model: deepseek-v4.1-flash
+  base_url: https://opencode.ai/inference/go/openai/v1/chat/completions
+  credential_env: OPENCODE_API_KEY   # a variable name, never the key itself
+  user_agent: sereno-attacker/1.0    # the client's own product token, not a generic SDK or HTTP-library name
+  session_header: x-opencode-session # the runtime fills it with one id per invocation, derived from the request
+  request: {}                        # merged into every request body; no sampling parameter is added
+deadline_seconds: 45
+decline_retries: 2
+agent:
+  max_steps: 24

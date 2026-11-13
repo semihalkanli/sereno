@@ -15,7 +15,7 @@ from sereno.attacker.errors import ConfigError, InputError, OutputError
 from sereno.attacker.observation import drop_notices, envelope
 from sereno.attacker.tools import Toolbox
 from sereno.context_eval.engine import write_atomic
-from sereno.usage import sum_usage
+from sereno.usage import allowance_of, sum_usage
 
 SCHEMA_VERSION = "1.0"
 KINDS = frozenset({"in_task", "session_end"})
@@ -104,8 +104,10 @@ def envelope_text(config: AttackerConfig, request: dict) -> str:
 
 
 def usage_record(completions: list, *, finish: str, steps: int, provider, config: AttackerConfig) -> dict:
-    """The provider use of this call, in the form the harness's `reported_tokens` and `reported_cost` read."""
+    """The provider use of this call, in the form the harness's `reported_tokens` and `reported_cost` read. `cost` is
+    the charge the API reported, the opencode allowance included; `billing` says whether it was cash or an allowance."""
     totals, missing, cost = sum_usage(completion.usage for completion in completions)
+    allowance = sum(allowance_of(completion.usage) or 0.0 for completion in completions)
     return {
         "calls": len(completions),
         "usage": totals,
@@ -115,7 +117,13 @@ def usage_record(completions: list, *, finish: str, steps: int, provider, config
         "finish": finish,
         "declined_attempts": sum(completion.declined for completion in completions),
         "provider": provider.name,
+        "provider_kind": config.settings.provider.kind,
         "model": config.settings.provider.model,
+        "requested_model": config.settings.provider.model,
+        "returned_model": next((c.model for c in reversed(completions) if c.model), None),
+        "billing": "allowance" if any(allowance_of(c.usage) is not None for c in completions) else "cash",
+        "allowance_usd": round(allowance, 8),
+        "billing_source": next((c.billing_source for c in reversed(completions) if c.billing_source), None),
         "config_sha256": config.config_sha256,
         "prompt_sha256": config.prompt_sha256,
         "completions": [completion.record() for completion in completions],

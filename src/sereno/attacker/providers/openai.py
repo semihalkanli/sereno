@@ -1,12 +1,15 @@
 """The OpenAI-compatible chat-completions adapter.
 
-It serves OpenRouter, DeepSeek's own endpoint, GLM, a local server and any other endpoint that speaks the same
-protocol. The model, the URL, the credential variable and the extra body fields are configuration; nothing here knows
-which model it talks to. Reasoning fields the API returns on an assistant turn are kept and replayed verbatim on later
-turns (decision 370).
+It serves OpenRouter, the opencode Go API, DeepSeek's own endpoint, GLM, a local server and any other endpoint that
+speaks the same protocol. The model, the URL, the credential variable, the extra headers and the user agent are
+configuration; nothing here knows which model it talks to. Reasoning fields the API returns on an assistant turn are
+kept and replayed verbatim on later turns (decision 370). When the configuration names a session header, the adapter
+fills it with one id per invocation, derived from the request: the same request always yields the same id, and no path
+enters it.
 """
 
 import copy
+import hashlib
 import json
 import time
 from collections.abc import Sequence
@@ -29,6 +32,25 @@ from sereno.attacker.providers.transport import Sink, describe, post
 
 REASONING_FIELDS = ("reasoning", "reasoning_details", "reasoning_content")
 FINISHES = frozenset({"stop", "tool_calls"})
+
+
+def conversation_id(request: dict) -> str:
+    """One stable id per invocation, for APIs that route and cache by session: the request's session, task, call kind,
+    stage and call index, hashed. The same request always yields the same id, and no path enters it."""
+    contract = request.get("contract")
+    contract = contract if isinstance(contract, dict) else {}
+    observation = request.get("observation")
+    observation = observation if isinstance(observation, dict) else {}
+    session = observation.get("session")
+    session = session if isinstance(session, dict) else {}
+    identity = {
+        "session": session.get("id"),
+        "task": session.get("task_id"),
+        "kind": contract.get("kind"),
+        "stage": contract.get("stage"),
+        "call": contract.get("session_call"),
+    }
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:32]
 
 
 def messages(turns: Sequence[Turn]) -> list[dict]:
@@ -129,16 +151,18 @@ def parse_completion(answer: bytes, expected_provider: str | None) -> Completion
     if not text.strip() and not calls and not declined:
         raise ProviderFailure("the completion is empty", "empty_completion")
     usage = body.get("usage")
+    usage = usage if isinstance(usage, dict) else {}
     return Completion(
         text=text,
         tool_calls=tuple(calls),
         reasoning={key: copy.deepcopy(message[key]) for key in REASONING_FIELDS if key in message},
         finish_reason=finish,
-        usage=usage if isinstance(usage, dict) else {},
+        usage=usage,
         model=body.get("model"),
         provider=provider if isinstance(provider, str) else None,
         generation_id=body.get("id"),
         declined=declined,
+        billing_source=body.get("billing_source") or usage.get("billing_source"),
     )
 
 
@@ -153,8 +177,11 @@ class OpenAICompatibleProvider:
         transport: httpx.BaseTransport | None = None,
         sleep=time.sleep,
         sink: Sink | None = None,
+        request: dict | None = None,
     ):
         self.config, self.deadline, self.sleep, self.sink = config, deadline, sleep, sink
+        provider = config.settings.provider
+        self.session_id = conversation_id(request) if provider.session_header and request else None
         self.key = config.credential()
         self.client = httpx.Client(transport=transport, follow_redirects=False)
 
@@ -162,9 +189,14 @@ class OpenAICompatibleProvider:
         self.client.close()
 
     def headers(self) -> dict[str, str]:
-        headers = {"Content-Type": "application/json", **self.config.settings.provider.headers}
+        provider = self.config.settings.provider
+        headers = {"Content-Type": "application/json", **provider.headers}
         if self.key:
             headers["Authorization"] = f"Bearer {self.key}"
+        if provider.user_agent:
+            headers["User-Agent"] = provider.user_agent
+        if provider.session_header and self.session_id:
+            headers[provider.session_header] = self.session_id
         return headers
 
     def complete(self, turns: Sequence[Turn], tools: Sequence[ToolSpec], call: int = 1) -> Completion:

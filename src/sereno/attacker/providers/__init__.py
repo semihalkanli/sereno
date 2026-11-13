@@ -23,10 +23,11 @@ def build_provider(
     transport: httpx.BaseTransport | None = None,
     sleep=time.sleep,
     sink: Sink | None = None,
+    request: dict | None = None,
 ) -> Provider:
     kind = config.settings.provider.kind
     if kind == "openai-compatible":
-        return OpenAICompatibleProvider(config, deadline, transport=transport, sleep=sleep, sink=sink)
+        return OpenAICompatibleProvider(config, deadline, transport=transport, sleep=sleep, sink=sink, request=request)
     if kind == "anthropic":
         return AnthropicProvider(config, deadline, transport=transport, sleep=sleep, sink=sink)
     raise ConfigError(f"unknown provider kind {kind!r}", "provider_kind")

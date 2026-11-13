@@ -26,10 +26,13 @@ def make_config(
     *,
     kind: Literal["openai-compatible", "anthropic"] = "openai-compatible",
     model: str = "fixture-model",
+    base_url: str = "https://example.test/v1",
     request: dict | None = None,
     credential_env: str | None = None,
     deadline: int = 60,
     agent: LoopSettings | None = None,
+    user_agent: str | None = None,
+    session_header: str | None = None,
 ) -> AttackerConfig:
     prompt_path = tmp_path / "brief.md"
     prompt_path.write_text(PROMPT)
@@ -40,9 +43,11 @@ def make_config(
         provider=ProviderSettings(
             kind=kind,
             model=model,
-            base_url="https://example.test/v1",
+            base_url=base_url,
             credential_env=credential_env,
             request=request or {},
+            user_agent=user_agent,
+            session_header=session_header,
         ),
         http=HttpSettings(attempts=1),
         agent=agent or LoopSettings(),

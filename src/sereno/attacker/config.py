@@ -28,6 +28,12 @@ SCHEMA_VERSION = "1.0"
 BARRED_REQUEST_KEYS = frozenset({"messages", "model", "stream", "system", "tools"})
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# A product token such as `sereno-attacker/1.0`, never a generic SDK or HTTP-library name.
+PRODUCT_AGENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
+GENERIC_AGENTS = ("python-httpx", "httpx", "openai", "litellm", "requests", "aiohttp", "urllib", "curl")
+HEADER_NAME = re.compile(r"^[A-Za-z0-9-]+$")
+# Headers the runtime sets itself; a session-header policy may not replace one of them.
+RUNTIME_HEADERS = frozenset({"authorization", "content-type"})
 
 
 class Settings(BaseModel, extra="forbid"):
@@ -57,6 +63,11 @@ class ProviderSettings(Settings):
     # Anthropic's Messages API version header; unused by the openai-compatible adapter.
     api_version: str = "2023-06-01"
     headers: dict[str, str] = Field(default_factory=dict)
+    # The client's own product token, sent as `User-Agent`; null leaves the client's default.
+    user_agent: str | None = None
+    # A header the runtime fills with one stable id per invocation (one conversation), for APIs that require a session
+    # id. The id is derived from the request, never from a path.
+    session_header: str | None = None
     # OpenRouter reports the serving provider; when this is set, another provider's answer is refused (decision 99).
     expected_provider: str | None = None
     request: dict = Field(default_factory=dict)
@@ -170,6 +181,25 @@ def check_settings(settings: AttackerSettings) -> None:
         raise ConfigError(
             f"credential_env {provider.credential_env!r} is a harness-controlled variable", "credential_env"
         )
+    if provider.user_agent is not None:
+        if not PRODUCT_AGENT.fullmatch(provider.user_agent):
+            raise ConfigError(
+                f"user_agent {provider.user_agent!r} is not a product token such as sereno-attacker/1.0", "user_agent"
+            )
+        if provider.user_agent.lower().startswith(GENERIC_AGENTS):
+            raise ConfigError(f"user_agent {provider.user_agent!r} is a generic SDK or HTTP-library name", "user_agent")
+    if provider.session_header is not None:
+        if not HEADER_NAME.fullmatch(provider.session_header):
+            raise ConfigError(f"session_header {provider.session_header!r} is not a header name", "session_header")
+        if provider.session_header.lower() in RUNTIME_HEADERS:
+            raise ConfigError(
+                f"session_header {provider.session_header!r} would replace a header the runtime sets",
+                "session_header",
+            )
+        if provider.session_header.lower() in {name.lower() for name in provider.headers}:
+            raise ConfigError(
+                f"session_header {provider.session_header!r} is also a configured header", "session_header"
+            )
     if barred := sorted(set(provider.request) & BARRED_REQUEST_KEYS):
         raise ConfigError(f"provider.request carries {barred}; the runtime builds those fields", "barred_field")
     if provider.kind == "anthropic":
