@@ -131,6 +131,28 @@ def runtime_for(tmp_path, world, exposure=True):
     return env, runtime
 
 
+@pytest.mark.parametrize(
+    ("every_calls", "expected"),
+    [(1, [True, True, True, True]), (2, [True, False, True, False]), (3, [True, False, False, True])],
+)
+def test_every_calls_schedule_starts_at_the_first_model_call(
+    tmp_path, fixture_world, monkeypatch, every_calls, expected
+):
+    """every_calls: n calls the program before model call 1, then 1 + n, 1 + 2n, ...; n=1 hits every call."""
+    writer = FakeWriter()
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings(every_calls=every_calls)), runtime, "fixture", "first"
+    )
+    observed = []
+    for _ in range(4):
+        before = len(writer.requests)
+        attacker.advance([])
+        observed.append(len(writer.requests) > before)
+    assert observed == expected
+
+
 def test_disabled_attacker_leaves_the_campaign_as_before(tmp_path, fixture_world):
     raw = raw_config(fixture_world[0])
     raw.pop("run_attacker")

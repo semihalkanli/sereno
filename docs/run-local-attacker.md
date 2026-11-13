@@ -42,7 +42,7 @@ variants:
 run_attacker:
   command: [/absolute/path/to/writer-command, --live, ...]
   strategy_file: starting-strategy.md   # optional; the writer's starting strategy, frozen into the config
-  every_calls: 1                        # call before every n-th model call of the agent
+  every_calls: 1                        # call before the first model call, then every n-th call after it
   timeout_seconds: 120                  # one call
   budget:                               # per chain; no defaults, equal in both campaigns
     max_calls: 60
@@ -67,10 +67,10 @@ The guard is not required and not constrained: the same attacker runs with the g
 
 ## Protocol
 
-The program is called synchronously from the hook before the agent's model call (every `every_calls`-th one) and once
-at the end of each completed session. Two positional paths are appended to `command`: `request.json` and
-`response.json`, both in the session's `run_attacker/NNNN/` folder; each call runs in a fresh temporary working
-directory.
+The program is called synchronously from the hook before the agent's model calls: the first call of a session always,
+then call 1 + n, 1 + 2n, ... for `every_calls: n`, and once at the end of each completed session. Two positional paths
+are appended to `command`: `request.json` and `response.json`, both in the session's `run_attacker/NNNN/` folder; each
+call runs in a fresh temporary working directory.
 
 The request (`schema_version: "1.0"`) has three parts:
 
