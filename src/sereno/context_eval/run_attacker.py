@@ -222,8 +222,13 @@ class RunLocalAttacker:
             return {"status": "missing"}
         if real == ".." or real.startswith("../") or real == ".git" or real.startswith(".git/"):
             return {"status": "denied", "reason": f"the path resolves outside {root} or into .git"}
+        absolute = f"{root}/{real}"
         try:
-            text = self.runtime.env.read(path)
+            validate_path(absolute, root)
+        except ValueError:
+            return {"status": "denied", "reason": f"the path resolves outside {root} or into .git"}
+        try:
+            text = self.runtime.env.read(absolute)
         except (RuntimeError, ValueError, UnicodeDecodeError) as error:
             return {"status": "unreadable", "reason": type(error).__name__}
         except (OSError, subprocess.SubprocessError) as error:

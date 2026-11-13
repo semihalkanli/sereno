@@ -766,6 +766,24 @@ def test_code_access_stays_in_bounds_and_is_never_cut(tmp_path, fixture_world, m
     assert not (tmp_path / "tiny" / "run_attacker/0001/request.json").exists()
 
 
+def test_code_reads_follow_in_root_symlinks_and_deny_escapes(tmp_path, fixture_world):
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    env.write("/app/pkg/core.py", "def alpha():\n    return 1\n")
+    (env.local_path("/app/.git")).mkdir(exist_ok=True)
+    (env.local_path("/app/.git/config")).write_text("[core]\n")
+    (env.root / "outside.txt").write_text("outside the code root\n")
+    (env.local_path("/app/pkg/alias.py")).symlink_to("core.py")
+    (env.local_path("/app/pkg/outside.py")).symlink_to(env.root / "outside.txt")
+    (env.local_path("/app/pkg/gitlink.py")).symlink_to(env.local_path("/app/.git/config"))
+    (env.local_path("/app/pkg/loop.py")).symlink_to("loop.py")
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    alias = attacker.read_code("/app/pkg/alias.py")
+    assert alias["status"] == "ok" and "def alpha" in alias["text"]
+    assert attacker.read_code("/app/pkg/outside.py")["status"] == "denied"
+    assert attacker.read_code("/app/pkg/gitlink.py")["status"] == "denied"
+    assert attacker.read_code("/app/pkg/loop.py")["status"] == "missing"
+
+
 def test_an_index_path_found_by_the_tools_is_served_on_the_next_call(tmp_path, fixture_world, monkeypatch):
     env, runtime = runtime_for(tmp_path, fixture_world)
     env.write("/app/pkg/core.py", "def alpha():\n    return 1\n")
