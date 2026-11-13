@@ -2,10 +2,10 @@
 
 import hashlib
 import json
-import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -87,7 +87,7 @@ class FakeWriter:
         self.requests = []
         self.policy = policy or (lambda request: {})
 
-    def __call__(self, argv, cwd, timeout, folder):
+    def __call__(self, argv, cwd, timeout, folder, *, env=None):
         request = json.loads(open(argv[-2]).read())
         self.requests.append(request)
         answer = self.policy(request)
@@ -497,46 +497,79 @@ def test_a_clean_checkpoint_reloads_with_zero_withheld_and_the_same_view(tmp_pat
     assert json.loads((resumed_dir / "run_attacker/0001/record.json").read_text())["notices_withheld"] == 0
 
 
-def test_the_program_is_given_no_path_inside_the_run_tree(tmp_path, fixture_world, monkeypatch):
-    """The request and response are staged in a scratch directory outside the session folder; the audit gets copies."""
-    seen = {}
+def child_probe(tmp_path_factory, monkeypatch, *, credential_env=None):
+    """A real program that prints its argv, working directory and whole environment to its captured stdout, then
+    answers with an empty response. The script, and the attacker configuration when one is used, live outside the run
+    tree; the credential variable it needs is set in the harness's own environment when one is named."""
+    outside = tmp_path_factory.mktemp("attacker-program")
+    script = outside / "probe.py"
+    script.write_text(
+        "import json, os, sys\n"
+        "print(json.dumps({'argv': sys.argv, 'cwd': os.getcwd(), 'env': dict(os.environ)}))\n"
+        "open(sys.argv[-1], 'w').write(json.dumps({'schema_version': '1.0', 'actions': []}))\n"
+    )
+    command = [sys.executable, str(script)]
+    if credential_env is not None:
+        monkeypatch.setenv(credential_env, "fixture-credential-value")
+        config_path = write_attacker_config(outside, provider={"credential_env": credential_env})
+        command += ["--config", str(config_path)]
+    return command
 
-    def program(argv, cwd, timeout, folder):
-        seen["argv"], seen["cwd"], seen["folder"] = list(argv), Path(cwd), Path(folder)
-        seen["request"] = json.loads(Path(argv[-2]).read_text())
-        Path(argv[-1]).write_text(json.dumps({"schema_version": "1.0", "actions": []}))
-        return {"exit_code": 0, "timed_out": False, "error": None, "seconds": 0.01}
 
-    monkeypatch.setattr(run_attacker, "run_program", program)
+def test_the_program_gets_no_path_inside_the_run_tree_and_an_allowlisted_environment(
+    tmp_path, tmp_path_factory, fixture_world, monkeypatch
+):
+    """A real child records what it was given: its argv, its working directory and its environment name nothing in
+    the run tree, the environment holds only allowlisted variables, and the audit gets the same files as copies."""
+    command = child_probe(tmp_path_factory, monkeypatch, credential_env="SERENO_FIXTURE_PROVIDER_KEY")
     _, runtime = runtime_for(tmp_path, fixture_world)
-    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    attacker = run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings(command=command)), runtime, "fixture task", "first"
+    )
     attacker.advance([{"role": "user", "content": "the task"}])
-    # No argv word, working directory or inherited environment value names a path inside the run tree.
-    given = [*seen["argv"], str(seen["cwd"]), str(seen["folder"]), *os.environ.values()]
+    recorded = json.loads((tmp_path / "run_attacker/0001/writer.stdout").read_text())
+    given = [*recorded["argv"], recorded["cwd"], *recorded["env"].values()]
     assert all(str(tmp_path) not in value for value in given)
-    # The scratch directory is gone after the call, and the audit folder holds the same files as copies.
-    assert not seen["cwd"].exists() and not seen["folder"].exists()
+    assert not Path(recorded["cwd"]).exists()
+    # Only the allowlist, the credential variable the attacker configuration names and the pinned temp variables.
+    allowed = {"PATH", "HOME", "LANG", "TZ", "TMPDIR", "TEMP", "TMP", "SERENO_FIXTURE_PROVIDER_KEY"}
+    assert {name for name in recorded["env"] if name not in allowed and not name.startswith("LC_")} == set()
+    assert recorded["env"]["SERENO_FIXTURE_PROVIDER_KEY"] == "fixture-credential-value"
+    assert "PWD" not in recorded["env"] and "OLDPWD" not in recorded["env"]
+    assert {recorded["env"][name] for name in ("TMPDIR", "TEMP", "TMP")} == {recorded["cwd"]}
+    # The audit folder holds the request's exact bytes and the response; the record describes them.
     audit = tmp_path / "run_attacker/0001"
-    assert json.loads((audit / "request.json").read_text()) == seen["request"]
+    request = json.loads((audit / "request.json").read_text())
     assert json.loads((audit / "response.json").read_text()) == {"schema_version": "1.0", "actions": []}
     record = json.loads((audit / "record.json").read_text())
+    assert record["status"] != "incomplete" and record["request_bytes"] == (audit / "request.json").stat().st_size
     assert record["request_sha256"] == hashlib.sha256((audit / "request.json").read_bytes()).hexdigest()
+    assert request["contract"]["kind"] == "in_task"
+
+
+def test_a_variable_the_config_lists_reaches_the_child(tmp_path, tmp_path_factory, fixture_world, monkeypatch):
+    """A variable the campaign lists by name reaches the child; an unlisted one stays in the harness."""
+    monkeypatch.setenv("SERENO_FIXTURE_LISTED", "listed-value")
+    monkeypatch.setenv("SERENO_FIXTURE_UNLISTED", "unlisted-value")
+    command = child_probe(tmp_path_factory, monkeypatch)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    config = RunAttacker(**attacker_settings(command=command, env=["SERENO_FIXTURE_LISTED"]))
+    run_attacker.RunLocalAttacker(config, runtime, "fixture task", "first").advance([])
+    environment = json.loads((tmp_path / "run_attacker/0001/writer.stdout").read_text())["env"]
+    assert environment["SERENO_FIXTURE_LISTED"] == "listed-value"
+    assert "SERENO_FIXTURE_UNLISTED" not in environment
 
 
 def test_an_audit_copy_failure_is_an_infrastructure_error(tmp_path, fixture_world, monkeypatch):
-    def program(argv, cwd, timeout, folder):
+    def program(argv, cwd, timeout, folder, *, env=None):
         Path(argv[-1]).write_text(json.dumps({"schema_version": "1.0", "actions": []}))
         return {"exit_code": 0, "timed_out": False, "error": None, "seconds": 0.01}
 
-    original_copy = shutil.copyfile
-
-    def failing_copy(source, target, **kwargs):
-        if Path(target).parent.parent.name == run_attacker.AUDIT_DIR:
-            raise OSError("fixture copy failure")
-        return original_copy(source, target, **kwargs)
+    def failing_copy(source, target, length=0):
+        raise OSError("fixture copy failure")
 
     monkeypatch.setattr(run_attacker, "run_program", program)
-    monkeypatch.setattr(run_attacker.shutil, "copyfile", failing_copy)
+    monkeypatch.setattr(run_attacker.shutil, "copyfileobj", failing_copy)
     _, runtime = runtime_for(tmp_path, fixture_world)
     attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
     with pytest.raises(run_attacker.AttackerInfrastructureError, match="audit_copy"):
@@ -544,6 +577,91 @@ def test_an_audit_copy_failure_is_an_infrastructure_error(tmp_path, fixture_worl
     record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
     assert record["status"] == "infrastructure_error" and record["error"]["code"] == "audit_copy"
     assert not (tmp_path / "run_attacker/0001/response.json").exists()
+    assert (tmp_path / "run_attacker/0001/request.json").exists()
+
+
+def test_a_symlinked_response_is_refused_without_being_followed(tmp_path, fixture_world, monkeypatch):
+    outside = tmp_path / "outside.json"
+    outside.write_text(json.dumps({"schema_version": "1.0", "actions": []}))
+
+    def program(argv, cwd, timeout, folder, *, env=None):
+        Path(argv[-1]).symlink_to(outside)
+        return {"exit_code": 0, "timed_out": False, "error": None, "seconds": 0.01}
+
+    monkeypatch.setattr(run_attacker, "run_program", program)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="audit_copy"):
+        attacker.advance([])
+    audit = tmp_path / "run_attacker/0001"
+    record = json.loads((audit / "record.json").read_text())
+    assert record["error"]["code"] == "audit_copy"
+    assert "not a regular file" in record["error"]["message"]
+    assert f"{len(str(outside))} bytes" in record["error"]["message"]
+    assert not (audit / "response.json").exists()
+    assert outside.exists()
+
+
+def test_an_oversized_response_is_refused_before_it_is_copied(tmp_path, fixture_world, monkeypatch):
+    def program(argv, cwd, timeout, folder, *, env=None):
+        Path(argv[-1]).write_text("x" * 100)
+        return {"exit_code": 0, "timed_out": False, "error": None, "seconds": 0.01}
+
+    monkeypatch.setattr(run_attacker, "run_program", program)
+    monkeypatch.setattr(run_attacker, "RESPONSE_BYTES", 10)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="audit_copy"):
+        attacker.advance([])
+    audit = tmp_path / "run_attacker/0001"
+    record = json.loads((audit / "record.json").read_text())
+    assert "100 bytes" in record["error"]["message"] and "10-byte limit" in record["error"]["message"]
+    assert not (audit / "response.json").exists() and not (audit / ".response.json.partial").exists()
+
+
+def test_an_interrupt_leaves_the_request_and_a_record(tmp_path, fixture_world, monkeypatch):
+    def interrupted(argv, cwd, timeout, folder, *, env=None):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(run_attacker, "run_program", interrupted)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(KeyboardInterrupt):
+        attacker.advance([])
+    audit = tmp_path / "run_attacker/0001"
+    request = json.loads((audit / "request.json").read_text())
+    record = json.loads((audit / "record.json").read_text())
+    assert record["status"] == "incomplete" and record["call"] == 1
+    assert record["request_bytes"] == (audit / "request.json").stat().st_size
+    assert request["contract"]["kind"] == "in_task"
+    # The per-call scratch is gone with the interrupted call; only the run's private root remains, to be removed.
+    root = attacker.temp_root()
+    assert root.is_dir() and root.stat().st_mode & 0o777 == 0o700 and not list(root.iterdir())
+    attacker.clean_temp_root()
+
+
+def test_the_credential_variables_come_from_the_commands_configuration(tmp_path):
+    """Both shapes of the program's configuration name their credential variable; nothing else is read out of it."""
+    attacker = tmp_path / "attacker.yaml"
+    attacker.write_text(yaml.safe_dump({"provider": {"credential_env": "SERENO_ATTACKER_KEY"}}))
+    writer = tmp_path / "writer.json"
+    writer.write_text(json.dumps({"credential_env_name": "SERENO_WRITER_KEY"}))
+    assert run_attacker.credential_variables([sys.executable, "--config", str(attacker)]) == ["SERENO_ATTACKER_KEY"]
+    assert run_attacker.credential_variables([sys.executable, f"--config={writer}"]) == ["SERENO_WRITER_KEY"]
+    assert run_attacker.credential_variables([sys.executable, "--config", str(tmp_path / "missing.yaml")]) == []
+    assert run_attacker.credential_variables([sys.executable]) == []
+
+
+def test_a_temp_base_inside_the_run_tree_is_refused(tmp_path, fixture_world, monkeypatch):
+    inside = tmp_path / "tmp"
+    inside.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(inside))
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="temp_base"):
+        attacker.advance([])
+    record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
+    assert record["error"]["code"] == "temp_base" and str(inside) in record["error"]["message"]
 
 
 def test_request_carries_a_transcript_thinking_summary(tmp_path, fixture_world):
@@ -772,21 +890,17 @@ def test_container_and_response_failures_are_infrastructure_errors(tmp_path, fix
     assert summary["clean_infrastructure_errors"] == 0
 
 
-@pytest.mark.parametrize(("content", "message"), [(None, "wrote no response.json"), ("x" * 100, "too large")])
-def test_a_missing_or_oversized_response_keeps_its_diagnosis(tmp_path, fixture_world, monkeypatch, content, message):
-    def program(argv, cwd, timeout, audit):
-        if content is not None:
-            (audit / "response.json").write_text(content)
+def test_a_missing_response_keeps_its_diagnosis(tmp_path, fixture_world, monkeypatch):
+    def program(argv, cwd, timeout, audit, *, env=None):
         return {"exit_code": 0, "timed_out": False, "error": None}
 
     monkeypatch.setattr(run_attacker, "run_program", program)
-    monkeypatch.setattr(run_attacker, "RESPONSE_BYTES", 10)
     _, runtime = runtime_for(tmp_path, fixture_world)
     attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
     with pytest.raises(run_attacker.AttackerInfrastructureError, match="invalid_response"):
         attacker.advance([])
     record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
-    assert record["status"] == "infrastructure_error" and message in record["error"]["message"]
+    assert record["status"] == "infrastructure_error" and "wrote no response.json" in record["error"]["message"]
     assert "not valid JSON" not in record["error"]["message"]
 
 
@@ -962,7 +1076,7 @@ def test_failed_program_usage_sidecar_is_charged_without_accepting_its_outcome(
 ):
     _, runtime = runtime_for(tmp_path, fixture_world)
 
-    def failed(argv, cwd, timeout, audit):
+    def failed(argv, cwd, timeout, audit, *, env=None):
         (audit / "failure_usage.json").write_text(
             json.dumps(
                 {

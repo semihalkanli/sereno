@@ -16,25 +16,37 @@ or notebook update is kept whatever happened to the actions, and the next call l
 notebook never reach the agent's memory. The state lives on the arm's engine, so it carries within one chain only, and
 a completed session checkpoints it; a resume starts from the last checkpoint, never from a half-finished session.
 
-The external command is trusted host code, as the transition writer is, not a sandbox: it must use only the request it
-is given and keep no state of its own between calls or runs. A program, configuration or provider problem raises
-AttackerInfrastructureError: the session ends invalid with the error recorded as infrastructure, never as an attack
-outcome.
+The external command is trusted host code, as the transition writer is, not a sandbox. The harness enforces the part
+of the boundary it can: the program's argv, its working directory and an environment built from an allowlist, a fresh
+scratch directory under a checked temporary base outside the run tree, and a bounded, non-following copy of what the
+program wrote. What remains is the trusted-host contract: the program runs as the same user as the harness, the host's
+process metadata still names the run tree, and a program that walks the filesystem by absolute path can reach it. It
+must use the request it is given and keep no state of its own between calls or runs. A program, configuration or
+provider problem raises AttackerInfrastructureError: the session ends invalid with the error recorded as
+infrastructure, never as an attack outcome.
 """
 
 import copy
 import hashlib
 import json
+import os
 import shlex
 import shutil
+import stat
 import subprocess
+import tempfile
 import time
+import weakref
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import NoReturn
+
+import yaml
 
 from sereno.attacker.protocol import LOOP_ENDINGS
 from sereno.context_eval.adaptive import (
+    CAPTURE_BYTES,
     RESPONSE_BYTES,
     ResponseError,
     apply_changes,
@@ -47,7 +59,7 @@ from sereno.context_eval.adaptive import (
 from sereno.context_eval.config import fingerprint
 from sereno.context_eval.engine import reasoning_text, write_atomic
 from sereno.context_eval.memory import USER, is_index, loaded_by, memory_dir
-from sereno.context_eval.schema import validate_path
+from sereno.context_eval.schema import ENV_NAME, validate_path
 
 SCHEMA_VERSION = "1.0"
 STATE_SCHEMA = "1.0"
@@ -72,7 +84,7 @@ class AttackerInfrastructureError(RuntimeError):
 
     def __init__(self, code: str, message: str):
         super().__init__(f"run_attacker {code}: {message}")
-        self.code = code
+        self.code, self.message = code, message
 
 
 def initial_state(config) -> dict:
@@ -209,20 +221,130 @@ def did_not_finish(result: dict) -> bool:
     return code < 0 or code in UNAVAILABLE or SIGNAL_BASE < code <= SIGNAL_BASE + SIGNAL_MAX
 
 
-def collect_call(staged: Path, audit: Path, encoded: bytes) -> None:
-    """Copy a call's files out of its scratch directory into the audit folder once the program has exited: the
-    request's recorded bytes and, when the program wrote them, its response, usage sidecar and captured output.
-    The program is never given a path in the audit folder, so the run tree stays outside its reach."""
+# The campaign's manifest marks the run tree's root, which the scratch must stay outside of.
+CAMPAIGN_MANIFEST = "manifest.json"
+# What the program's environment may carry: these names, the LC_* family, the provider credential variables the
+# attacker configuration names and the variables the campaign lists. Nothing else is inherited, PWD and OLDPWD
+# included, and the temporary-directory variables point at the call's scratch.
+CHILD_ENV_NAMES = ("PATH", "HOME", "LANG", "TZ")
+CHILD_ENV_PREFIXES = ("LC_",)
+CHILD_TEMP_NAMES = ("TMPDIR", "TEMP", "TMP")
+
+
+def run_tree(directory: Path) -> Path:
+    """The campaign's run tree above a session directory: the nearest ancestor holding the campaign's manifest, or the
+    session directory itself when no campaign is above it (a session run on its own)."""
+    for candidate in (directory, *directory.parents):
+        if (candidate / CAMPAIGN_MANIFEST).is_file():
+            return candidate
+    return directory
+
+
+def checked_temp_base(directory: Path) -> Path:
+    """The temporary base the call's scratch is created under, with symlinks resolved, refused when it is inside the
+    run tree: a scratch there would hand the program the campaign it must not see (decision 409)."""
+    base, root = Path(tempfile.gettempdir()).resolve(), run_tree(directory).resolve()
+    if base.is_relative_to(root):
+        raise AttackerInfrastructureError("temp_base", f"the temporary directory {base} is inside the run tree {root}")
+    return base
+
+
+def config_argument(command: list[str]) -> str | None:
+    """The path a `--config` word of the command names, when it carries one."""
+    for index, word in enumerate(command):
+        if word == "--config" and index + 1 < len(command):
+            return command[index + 1]
+        if word.startswith("--config="):
+            return word.partition("=")[2]
+    return None
+
+
+def credential_variables(command: list[str]) -> list[str]:
+    """The credential environment variables the configuration named by the command's `--config` sets, so the program
+    still authenticates: `provider.credential_env` in the attacker runtime's configuration, `credential_env_name` in
+    the writer design's. A command without a configuration, and a file that cannot be read, adds no name."""
+    path = config_argument(command)
+    if path is None:
+        return []
     try:
-        partial = audit / ".request.json.partial"
-        partial.write_bytes(encoded)
-        partial.replace(audit / "request.json")
-        for name in CALL_FILES:
-            source = staged / name
-            if source.is_file():
-                shutil.copyfile(source, audit / name)
+        raw = yaml.safe_load(Path(path).read_text())
+    except (OSError, yaml.YAMLError):
+        return []
+    if not isinstance(raw, dict):
+        return []
+    provider = raw.get("provider")
+    name = provider.get("credential_env") if isinstance(provider, dict) else raw.get("credential_env_name")
+    return [name] if isinstance(name, str) and ENV_NAME.fullmatch(name) else []
+
+
+def child_environment(config, scratch: Path) -> dict[str, str]:
+    """The program's environment, built from an allowlist instead of inherited: the fixed names above, the LC_* family,
+    the credential variables the attacker configuration names and the variables the campaign config lists, and the
+    temporary-directory variables pinned to the call's scratch. PWD, OLDPWD and every other inherited variable are
+    left out."""
+    names = [*CHILD_ENV_NAMES, *credential_variables(config.command), *config.env]
+    environment = {name: os.environ[name] for name in names if name in os.environ}
+    environment |= {name: value for name, value in os.environ.items() if name.startswith(CHILD_ENV_PREFIXES)}
+    environment |= {name: str(scratch) for name in CHILD_TEMP_NAMES}
+    return environment
+
+
+def write_bytes_atomic(path: Path, data: bytes) -> None:
+    """Write bytes so an interruption leaves the old file or none, never a truncated one."""
+    partial = path.with_name(f".{path.name}.partial")
+    partial.write_bytes(data)
+    partial.replace(path)
+
+
+class AuditCopyError(OSError):
+    """A staged file cannot enter the audit folder: not a regular file, over its limit, or unreadable."""
+
+
+def file_limit(name: str) -> int:
+    """The largest byte count a staged file may have: a captured output is bounded like a capture, and every other
+    file like a response."""
+    return CAPTURE_BYTES if name in ("writer.stdout", "writer.stderr") else RESPONSE_BYTES
+
+
+def copy_staged(source: Path, target: Path, limit: int) -> None:
+    """Copy one staged file into the audit folder once the program has exited. A symlink or any other non-regular
+    source is refused, and so is a file over `limit` bytes, both before the file is read and with its size in the
+    message; the copy itself takes at most `limit` bytes. A capture thread still writing its file is tolerated: the
+    copy takes the bytes that are there and waits for nothing."""
+    name = source.name
+    try:
+        info = os.lstat(source)
+    except FileNotFoundError:
+        return
     except OSError as error:
-        raise OSError(f"cannot collect the call's files: {error}") from error
+        raise AuditCopyError(f"{name}: {type(error).__name__}: {error}") from error
+    if not stat.S_ISREG(info.st_mode):
+        raise AuditCopyError(f"{name}: not a regular file, {info.st_size} bytes, {stat.filemode(info.st_mode)}")
+    if info.st_size > limit:
+        raise AuditCopyError(f"{name}: {info.st_size} bytes, over the {limit}-byte limit")
+    partial = target.with_name(f".{target.name}.partial")
+    try:
+        # O_NOFOLLOW closes the gap between the check above and the open: a symlink swapped in is refused, not read.
+        descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "rb") as stream, partial.open("wb") as out:
+            shutil.copyfileobj(stream, out, limit + 1)
+        if partial.stat().st_size > limit:
+            raise AuditCopyError(f"{name}: grew past the {limit}-byte limit while copying")
+        partial.replace(target)
+    except OSError as error:
+        partial.unlink(missing_ok=True)
+        if isinstance(error, AuditCopyError):
+            raise
+        raise AuditCopyError(f"{name}: {type(error).__name__}: {error}") from error
+
+
+def collect_call(staged: Path, audit: Path) -> None:
+    """Copy a call's files out of its scratch directory into the audit folder once the program has exited: its
+    response, usage sidecar and captured output. The request's recorded bytes are already there, written before the
+    program was launched. The program is never given a path in the audit folder, so the run tree stays outside its
+    reach."""
+    for name in CALL_FILES:
+        copy_staged(staged / name, audit / name, file_limit(name))
 
 
 class RunLocalAttacker:
@@ -240,7 +362,27 @@ class RunLocalAttacker:
         self.session_calls = 0
         self.skipped: set[str] = set()
         self.calls: list[dict] = []
+        self._temp_root: Path | None = None
         self.index = self.file_index()
+
+    def temp_root(self) -> Path:
+        """The run's private scratch root, created on the first call with a random name and mode 0700 under the
+        checked temporary base and removed when this attacker is collected. The 0700 mode and the random names narrow
+        what another process can find; a process of the same user can still list the base and read a live call's
+        scratch, which no mode prevents."""
+        if self._temp_root is None:
+            base = checked_temp_base(self.runtime.log.path.parent)
+            root = Path(tempfile.mkdtemp(prefix="sereno-attacker-", dir=base))
+            os.chmod(root, 0o700)
+            weakref.finalize(self, shutil.rmtree, root, ignore_errors=True)
+            self._temp_root = root
+        return self._temp_root
+
+    def clean_temp_root(self) -> None:
+        """Remove the run's private scratch root, if one was created."""
+        if self._temp_root is not None:
+            shutil.rmtree(self._temp_root, ignore_errors=True)
+            self._temp_root = None
 
     def file_index(self) -> dict:
         """The files Git tracks below the code root at task start as absolute paths, the form `read_code` serves, or
@@ -369,7 +511,10 @@ class RunLocalAttacker:
         """At the end of a completed session: one evaluation call that may update only the private state, then the
         checkpoint the next session of the chain starts from."""
         transcript = visible_transcript(messages)
-        self.call("session_end", transcript, summary, withheld=self.withheld_notices(messages))
+        try:
+            self.call("session_end", transcript, summary, withheld=self.withheld_notices(messages))
+        finally:
+            self.clean_temp_root()
         self.state["sessions"].append(
             {
                 "session_id": self.runtime.session.id,
@@ -428,20 +573,33 @@ class RunLocalAttacker:
                 "input_over_limit",
                 f"the request is {len(encoded)} bytes, over max_input_bytes={config.max_input_bytes}",
             )
+        try:
+            scratch_root = self.temp_root()
+        except AttackerInfrastructureError as error:
+            self.fail(audit, base, error.code, error.message)
+        # The audit's request copy and a record skeleton exist before the program starts: an interrupt or a host kill
+        # during the call leaves the request and a record behind, not an empty audit folder.
+        try:
+            write_bytes_atomic(audit / "request.json", encoded)
+            write_atomic(audit / "record.json", base | {"status": "incomplete"})
+        except OSError as error:
+            self.fail(audit, base, "audit_copy", f"cannot write the audit record: {error}")
         clock = time.monotonic()
-        # A fresh scratch directory on every call, outside the run tree: the program keeps nothing between calls,
-        # and no path it is given names the session, its audit folder or its event log (decision 409). Its files
-        # reach the audit folder only as copies made after it exits.
-        with TemporaryDirectory(prefix="sereno-run-attacker-") as scratch:
+        # A fresh scratch directory on every call, under the run's private root outside the run tree: the program
+        # keeps nothing between calls, and no path it is given names the session, its audit folder or its event log
+        # (decision 409). Its files reach the audit folder only as copies made after it exits.
+        with TemporaryDirectory(prefix="call-", dir=scratch_root) as scratch:
             staged = Path(scratch)
-            partial = staged / ".request.json.partial"
-            partial.write_bytes(encoded)
-            partial.replace(staged / "request.json")
+            try:
+                write_bytes_atomic(staged / "request.json", encoded)
+            except OSError as error:
+                self.fail(audit, base, "audit_copy", f"cannot stage the request: {error}")
             outcome = run_program(
                 [*config.command, str(staged / "request.json"), str(staged / "response.json")],
                 staged,
                 config.timeout_seconds,
                 staged,
+                env=child_environment(config, staged),
             )
             seconds = round(time.monotonic() - clock, 3)
             self.state["usage"]["seconds"] = round(self.state["usage"]["seconds"] + seconds, 3)
@@ -450,7 +608,7 @@ class RunLocalAttacker:
                 key: outcome.get(key) for key in ("exit_code", "timed_out", "error", "stdout_bytes", "stderr_bytes")
             }
             try:
-                collect_call(staged, audit, encoded)
+                collect_call(staged, audit)
             except OSError as error:
                 self.fail(audit, base, "audit_copy", str(error))
         if outcome["timed_out"] or outcome["error"] or outcome["exit_code"] != 0:
@@ -458,7 +616,7 @@ class RunLocalAttacker:
             try:
                 readable = failure.is_file() and failure.stat().st_size <= RESPONSE_BYTES
             except OSError as error:
-                raise AttackerInfrastructureError("response_read", f"{type(error).__name__}: {error}") from error
+                self.fail(audit, base, "response_read", f"{type(error).__name__}: {error}")
             if readable:
                 try:
                     usage = json.loads(failure.read_bytes())
@@ -478,12 +636,14 @@ class RunLocalAttacker:
         try:
             response = self.load_response(audit / "response.json")
             actions = parse_actions(response["actions"], runtime.project)
+        except AttackerInfrastructureError as error:
+            self.fail(audit, base, error.code, error.message)
         except ResponseError as error:
             self.fail(audit, base, "invalid_response", str(error))
         try:
             base["response_sha256"] = file_sha256(audit / "response.json")
         except OSError as error:
-            raise AttackerInfrastructureError("response_hash", f"{type(error).__name__}: {error}") from error
+            self.fail(audit, base, "response_hash", f"{type(error).__name__}: {error}")
         base["loop_ending"] = response.get("loop_ending")
         base["actions"] = len(actions)
         usage = response.get("writer_usage")
@@ -671,7 +831,8 @@ class RunLocalAttacker:
         self.state["owned"] = sorted(set(self.state["owned"]) | created)
         return "applied", None, [], changes
 
-    def fail(self, audit: Path, base: dict, code: str, message: str):
+    def fail(self, audit: Path, base: dict, code: str, message: str) -> NoReturn:
+        """Record the call as an infrastructure error, log the event and end it: never an attack outcome."""
         record = base | {"status": "infrastructure_error", "error": {"code": code, "message": printable(message)}}
         write_atomic(audit / "record.json", record)
         self.runtime.emit("run_attacker_error", code=code, message=printable(message), call=base["call"])

@@ -202,7 +202,8 @@ def test_application_failure_preserves_known_or_unknown_action_counts(
     )
     with pytest.raises(RuntimeError):
         attacker.advance([])
-    assert records(tmp_path) == []
+    # The record written before the launch stays as it was: the call never reached an outcome.
+    assert [record["status"] for record in records(tmp_path)] == ["incomplete"]
     response = json.loads((tmp_path / "run_attacker" / "0001" / "response.json").read_text())
     assert response["loop_ending"] == "finish"
     assert len(response["actions"]) == 2

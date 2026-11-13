@@ -722,6 +722,36 @@ def test_a_program_that_exits_takes_what_it_started_with_it(tmp_path):
     assert not late.exists()
 
 
+def test_an_interrupt_during_the_wait_kills_the_program_group(tmp_path, monkeypatch):
+    """A Ctrl-C while the program runs must not leave it alive: the group is killed before the interrupt propagates."""
+    pid_file = tmp_path / "pid"
+    script = tmp_path / "sleep.py"
+    script.write_text(
+        "import os, pathlib, sys, time\npathlib.Path(sys.argv[1]).write_text(str(os.getpid()))\ntime.sleep(60)\n"
+    )
+
+    class Interrupting(subprocess.Popen):
+        """The real spawn, with its first wait interrupted as a Ctrl-C would."""
+
+        def wait(self, timeout=None):
+            if not getattr(self, "interrupted", False):
+                self.interrupted = True
+                deadline = time.monotonic() + 30
+                while not pid_file.exists() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                raise KeyboardInterrupt
+            return super().wait(timeout)
+
+    monkeypatch.setattr(subprocess, "Popen", Interrupting)
+    (tmp_path / "out").mkdir()
+    with pytest.raises(KeyboardInterrupt):
+        run_program([sys.executable, "-I", str(script), str(pid_file)], tmp_path, 30, tmp_path / "out")
+    monkeypatch.undo()
+    assert pid_file.exists()
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)
+
+
 def test_a_grade_cut_off_before_its_second_pass_is_completed_without_a_second_official_run(tmp_path, monkeypatch):
     calls = []
 

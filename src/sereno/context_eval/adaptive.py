@@ -377,15 +377,17 @@ class Capture(threading.Thread):
                 self.size += len(chunk)
 
 
-def run_program(argv: list[str], cwd: Path, timeout: int, folder: Path) -> dict:
-    """Run the program with the campaign's environment, stdin closed, stdout and stderr captured into `folder`. A
-    program that outlives `timeout` is killed with everything it started."""
+def run_program(argv: list[str], cwd: Path, timeout: int, folder: Path, *, env: dict[str, str] | None = None) -> dict:
+    """Run the program with `env` (None inherits the harness's own environment), stdin closed, stdout and stderr
+    captured into `folder`. A program that outlives `timeout`, or a harness interrupt during the wait, is killed with
+    everything it started, so no child outlives the call whose scratch is removed next."""
     started = time.monotonic()
     outcome = {"exit_code": None, "timed_out": False, "error": None}
     try:
         process = subprocess.Popen(
             argv,
             cwd=cwd,
+            env=env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -404,6 +406,12 @@ def run_program(argv: list[str], cwd: Path, timeout: int, folder: Path) -> dict:
             os.killpg(process.pid, signal.SIGKILL)
         process.wait()
         outcome["timed_out"] = True
+    except BaseException:
+        # An interrupt must not leave the program running while the caller removes the scratch it works in.
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+        raise
     # What a program that exited left running dies with it; Linux keeps a pid unused while its group has members.
     with contextlib.suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGKILL)

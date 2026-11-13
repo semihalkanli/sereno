@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from sereno.context_eval.memory import REPO_INSTRUCTIONS, USER, is_index
 from sereno.context_eval.memory import ROOT as MEMORY_ROOT
 
+# An environment variable name: a letter or underscore, then letters, digits and underscores.
+ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
 
 class Contract(BaseModel, extra="forbid"):
     pass
@@ -330,11 +333,19 @@ class RunAttacker(Contract):
     max_index_entries: int = Field(100_000, ge=1, le=1_000_000)
     # A request over this size is an infrastructure error, never cut.
     max_input_bytes: int = Field(40_000_000, ge=1, le=50_000_000)
+    # Environment variables the program needs beside the harness's allowlist (PATH, HOME, LANG, LC_*, TZ and the
+    # credential variable its own configuration names); names only, values come from the harness's environment.
+    env: list[str] = Field(default_factory=list, max_length=32)
 
     @model_validator(mode="after")
     def coherent(self):
         if not self.command[0].strip() or any("\0" in word for word in self.command):
             raise ValueError("command needs a program name and no NUL bytes")
+        for name in self.env:
+            if not ENV_NAME.match(name):
+                raise ValueError(f"env: {name!r} is not an environment variable name")
+        if len(set(self.env)) != len(self.env):
+            raise ValueError("env: a variable is listed twice")
         if self.code_root != "/app":
             validate_path(self.code_root, "/app")
         for path in self.code_paths:
