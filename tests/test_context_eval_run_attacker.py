@@ -885,6 +885,23 @@ def test_a_size_check_execution_failure_is_an_infrastructure_error(tmp_path, fix
         attacker.read_code("/app/README.md")
 
 
+def test_a_symlink_alias_is_read_through_its_resolved_path(tmp_path, fixture_world):
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    env.write("/app/pkg/core.py", "def alpha():\n    return 1\n")
+    (env.local_path("/app/pkg/alias.py")).symlink_to("core.py")
+    original = env.read
+
+    def bridge_read(path):
+        if path == "/app/pkg/alias.py":
+            raise RuntimeError("bridge read failed: ValueError: symlink paths are unsupported")
+        return original(path)
+
+    env.read = bridge_read
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    alias = attacker.read_code("/app/pkg/alias.py")
+    assert alias["status"] == "ok" and "def alpha" in alias["text"]
+
+
 def test_an_index_path_found_by_the_tools_is_served_on_the_next_call(tmp_path, fixture_world, monkeypatch):
     env, runtime = runtime_for(tmp_path, fixture_world)
     env.write("/app/pkg/core.py", "def alpha():\n    return 1\n")
