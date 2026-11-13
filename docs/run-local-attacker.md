@@ -64,6 +64,9 @@ run_attacker:
   env: []                               # extra environment variable names for the program; see Protocol
 ```
 
+The runner pins the campaign's run tree once, as the `output` directory it was given, and every session of the
+campaign uses it; a session run on its own uses its own directory. The boundary below is checked against that root.
+
 The guard is not required and not constrained: the same attacker runs with the guard on and off.
 
 ## Protocol
@@ -73,32 +76,46 @@ permitting, then call 1 + n, 1 + 2n, ... for `every_calls: n`, and once at the e
 positional paths are appended to `command`: `request.json` and `response.json`, both in a fresh scratch directory,
 which is also the program's working directory; every call gets a new one. The scratch is a directory with a random
 name and mode 0700 under a private per-run root, itself created under the system temporary directory once that
-directory's resolved path has been checked not to lie inside the run tree; a temporary base inside the run tree fails
-the call closed with an infrastructure error (`temp_base`).
+directory's resolved path has been checked not to lie inside the campaign's run tree; a temporary base inside the run
+tree, or a private root or call scratch that cannot be created, fails the call closed with an infrastructure error
+(`temp_base`).
 
 The program's environment is built from an allowlist instead of being inherited: `PATH`, `HOME`, `LANG`, `LC_*` and
-`TZ`, the credential variable its own configuration names (`provider.credential_env` in the attacker runtime's
-configuration, `credential_env_name` in the writer design's) and any name `run_attacker.env` lists. `TMPDIR`, `TEMP`
-and `TMP` are pinned to the scratch directory. `PWD`, `OLDPWD` and every other variable of the harness stay out. A
-harness running under the cost wrapper forwards its meter with no campaign entry: when `SERENO_COST_CALLS` is set, the
-program receives that ledger path and, on its `PYTHONPATH`, the hook directory — the parent's `PYTHONPATH` entry
-holding the cost hook's `sitecustomize.py`, or this checkout's `scripts/cost_hook` — as its only `PYTHONPATH` entry
-unless the campaign lists `PYTHONPATH` itself, whose entries are then kept behind the hook.
-Both forwarded values are resolved and refused when they name a path inside the run tree, as the temporary base is: a
-`cost_meter` infrastructure error. A wrapper whose hook cannot be found fails closed the same way, since a ledger
-without the hook would collect nothing.
+`TZ`, the live-mode network variables `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY` (and their lowercase
+forms) and `SSL_CERT_FILE`, `SSL_CERT_DIR` and `REQUESTS_CA_BUNDLE`, the credential variable its own configuration
+names (`provider.credential_env` in the attacker runtime's configuration, `credential_env_name` in the writer
+design's) and any name `run_attacker.env` lists. `TMPDIR`, `TEMP` and `TMP` are pinned to the scratch directory.
+`PWD`, `OLDPWD` and every other variable of the harness stay out. A credential variable name, or a `run_attacker.env`
+entry, that names a harness-controlled variable (`PATH`, `HOME`, `PWD`, `OLDPWD`, `PYTHONPATH`, `PYTHONHOME`,
+`TMPDIR`, `TEMP`, `TMP`, `LANG`, `TZ`, and the `LD_*`, `LC_*` and `SERENO_*` families) is refused at configuration
+validation, by the schema or by the validation that reads the program's configuration, before a session starts.
+
+Every value the program receives is checked against the campaign's run tree before it is launched: each `command`
+word, the value of a `key=value` word, and every environment value. An absolute path that resolves (symlinks
+included) inside the run tree is refused, and a PATH-like value is checked entry by entry; a path list passed under
+another name is read as one when every entry is absolute. A refusal is a `run_tree` infrastructure error. A harness
+running under the cost wrapper forwards its meter with no campaign entry: the hook directory is the program's only
+`PYTHONPATH` entry, and the program's `SERENO_COST_CALLS` names a fresh empty calls file in its own scratch, never the
+wrapper's ledger (see below). The hook directory and the wrapper's ledger are resolved and
+refused when they name a path inside the run tree, as the temporary base is: a `cost_meter` infrastructure error. A
+wrapper whose hook cannot be found fails closed the same way, since a ledger without the hook would collect nothing.
 
 After the program exits, its response, usage sidecar and captured output are copied into the session's
 `run_attacker/NNNN/` folder, and the scratch directory is removed. The copy refuses a symlink or any other non-regular
-source, and refuses a file over its byte limit (`RESPONSE_BYTES` for the response and the sidecar, `CAPTURE_BYTES` for
-the captured output), both before reading it with the size in the message, and copies at most the limit. A refusal is
-an `audit_copy` infrastructure error.
+source before the open and again on the open descriptor, and refuses a file over its byte limit (`RESPONSE_BYTES` for
+the response and the sidecar, `CAPTURE_BYTES` for the captured output), with its size in the message; the read uses a
+remaining-bytes budget and stops after `limit + 1` bytes, so a file that grows after the check is refused rather than
+copied without bound. A refusal is an `audit_copy` infrastructure error. The program's cost rows are read from its
+private calls file under the same rules (bounded like a response) and appended to the wrapper's ledger after the
+call, also when an interrupt killed the program; the program therefore never reads the ledger's earlier rows, the
+clean arm's included.
 
 What the harness enforces is that boundary. What it does not enforce is the rest (decision 409): the program runs as
 the same user as the harness, so another process of that user can list the temporary base and read a live call's
 scratch, and the host's process metadata still names the run tree, which a program that walks the filesystem by
 absolute path can reach. The command remains trusted host code under the contract in `run_attacker.py`'s module
-docstring: it uses the request it is given and keeps no state of its own between calls or runs.
+docstring: it uses the request it is given and keeps no state of its own between calls or runs. The boundary narrows
+what the program is handed, not what the same user can reach.
 
 The request (`schema_version: "1.0"`) has three parts:
 
@@ -187,15 +204,19 @@ limit (up to 50,000,000 bytes).
 ## Records, resume and errors
 
 Every launched call leaves `request.json` in `run_attacker/NNNN/` before the program starts, holding the exact bytes
-staged for it; a call refused before staging (`input_over_limit`) has no copy. A `record.json` skeleton with the base
-fields and `status: incomplete` is written beside it before the launch, so an interrupt or a host kill during the call
-still leaves the request and a record; a call that reaches its outcome replaces the skeleton with the full record
-(kind, stage, step, strategy version and hashes before and after, request and response hashes, the number of guard
-notices withheld from the view, action result and violations, changes by hash and size, reported tokens and cost,
-seconds) and adds a `run_attacker` event. `response.json` (a copy made after the program exited) exists whenever the
-program wrote one, with the usage sidecar and the captured stdout and stderr beside it; a program that wrote no
-response leaves none. A call whose response was valid but whose application then failed keeps the response and the
-skeleton, never a record that claims an outcome. A completed session also writes
+staged for it. A call refused before staging has no copy: the request-sized `input_over_limit` refusal and the
+`temp_base` refusal of the run's private scratch root, which is created after the request is serialized and before it
+is staged. The per-call scratch directory is created after the request copy and the skeleton, so a `temp_base` refusal
+there leaves both. A `record.json` skeleton with the base fields and `status: incomplete` is written beside the request
+before the launch, so an interrupt or a host kill during the call still leaves the request and a record; a call that
+reaches its outcome replaces the skeleton with the full record (kind, stage, step, strategy version and hashes before
+and after, request and response hashes, the number of guard notices withheld from the view, action result and
+violations, changes by hash and size, reported tokens and cost, seconds) and adds a `run_attacker` event.
+`response.json` (a copy made after the program exited) exists whenever the program wrote one, with the usage sidecar
+and the captured stdout and stderr beside it; a program that wrote no response leaves none. A call whose response was
+valid but whose application then failed keeps the response and the skeleton, never a record that claims an outcome. If
+the audit record itself cannot be written, the infrastructure error is raised without retrying that write, so the
+session still records an `infrastructure_error` and no record claims an outcome. A completed session also writes
 `run_attacker_state.json`, the chain's checkpoint, after the session-end call; an attack session counts as complete
 only with it. A resume starts each chain from its last completed session's checkpoint, so nothing a half-finished
 session learned carries into the new attempt.
@@ -215,18 +236,23 @@ The call's `applied_attack_actions` counts actions that actually changed memory,
 and no-change actions. Each run-local attack session records the accumulated count in `result.json` and its
 checkpoint metadata. A successful write remains counted in the session total if subsequent memory capture fails.
 If rollback fails and the resulting application count cannot be established, the session records `null`, rather
-than zero. An application failure leaves `response.json` and the `incomplete` skeleton, never a completed record;
-existing call and usage aggregation is unchanged, because only a record with a `program` entry counts as a call.
+than zero. An application failure leaves `response.json` and the `incomplete` skeleton, never a completed record. Only
+a record carrying a `program` entry counts as a call, in usage aggregation and in the per-session call and result
+counts of the chain summary alike; an `incomplete` skeleton is reported beside them in the session's
+`incomplete_calls` field, so it shifts no call, result or outcome label.
 
 A program, configuration or provider problem (exit status, program timeout, a temporary base or a cost-meter path
-inside the run tree, a cost wrapper whose hook cannot be found, a container or host failure while reading the code or
-the response, a staged or audit file that cannot be written, copied or read, an answer not in the protocol's form, an
-input over the limit, a request that cannot be encoded as UTF-8) is not an attack failure: the session ends invalid
+inside the run tree, a command word or forwarded variable naming the run tree, a cost wrapper whose hook cannot be
+found, a container or host failure while reading the code or the response, a scratch root, call scratch, staged file,
+cost calls file or audit record that cannot be created, written, copied or read, an answer not in the protocol's form,
+an input over the limit, a request that cannot be encoded as UTF-8) is not an attack failure: the session ends invalid
 with `result.json`'s `infrastructure_error`, the call's record holds `status: infrastructure_error` where one was
 written, and a resume runs the session again from the last checkpoint. The codes are `writer_failed` (exit status),
-`timeout`, `temp_base`, `cost_meter`, `code_index`, `code_realpath`, `code_size`, `read_code`, `response_read`,
-`response_hash`, `invalid_response`, `input_over_limit`, `request_encoding`, `audit_copy` (a staged or audit file that
-cannot be written, copied or read, is not a regular file, or is over its byte limit) and `write_failed`.
+`timeout`, `temp_base` (the temporary base, the run's private scratch root or the call's scratch directory cannot be
+used), `cost_meter`, `run_tree` (an argv word or an environment value names a path inside the campaign's run tree),
+`code_index`, `code_realpath`, `code_size`, `read_code`, `response_read`, `response_hash`, `invalid_response`,
+`input_over_limit`, `request_encoding`, `audit_copy` (a staged file, the private cost calls file or an audit file that
+cannot be created, written, copied or read, is not a regular file, or is over its byte limit) and `write_failed`.
 
 ## Measurement
 
@@ -276,7 +302,9 @@ that do not report cost; zero recorded cost in that case does not mean the call 
 Chain and campaign summaries add `realized_usage` and `realized_cost_usd`. They sum each launched call's
 `run_attacker/*/record.json` in active sessions and every matching attempt under
 `superseded/<timestamp>/cases/<case>/arms/attack_carry/`. Invalid sessions and failed or timed-out program calls are
-included; audits that stopped before launching the program (such as an oversized request) are excluded. Missing or
+included; audits that stopped before launching the program (such as an oversized request) are excluded, since only a
+record with a `program` entry counts. Each chain's per-session rows likewise count only those records in `calls` and
+`results`, and carry the skeletons' number in `incomplete_calls`. Missing or
 partial token reports remain visible in `unreported_usage_calls` and `unreported_completions`. Only the originating
 `attack_carry` arm is scanned, so copies in reset, ablation and clean arms are not billed again. `infrastructure_errors` counts sessions whose `result.json` records an `infrastructure_error`, across active and
 superseded attempts of every attack chain; each chain carries the same attempt-inclusive scalar, while its `sessions`
@@ -349,8 +377,10 @@ frozen design's system prompt, objective, provider and limits; the hashes come f
 call makes one author call and at most the design's structural repairs; a harness rule is never repaired there, the
 harness rejects and the next request reports it. The adapter keeps no state of its own, and its provider usage is
 returned in `writer_usage`. Calls using paid models go through the existing experiment cost wrapper, which the harness
-recognises from its own environment and forwards to the program: the wrapper's ledger and hook reach the command with
-no `run_attacker.env` entry (see Protocol). Enabling or testing this feature offline starts no paid run.
+recognises from its own environment and forwards to the program: with no `run_attacker.env` entry, the hook directory
+reaches the command on `PYTHONPATH` and the program's ledger is a private file in its scratch, whose rows the harness
+appends to the wrapper's ledger after each call (see Protocol). Enabling or testing this feature offline starts no
+paid run.
 
 `pair` loads the writer configuration named by the command's `--config` with no API key and, before any paid call,
 checks that `run_attacker.limits.forbidden_patterns` equals the design's and that the command's `--config-sha256` and

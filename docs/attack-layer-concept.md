@@ -13,7 +13,7 @@ memory poisoning: the attacker writes a memory note in an exposure session so th
 session's agent reads it and acts on it. That is different from ordinary prompt injection.
 The attacker never edits the task prompt, the harness, tool permissions, model weights, or the
 target repository's instructions. Its only effect on the target is the memory surface the
-adaptive hook already permits (`src/sereno/context_eval/run_attacker.py:844-883`).
+adaptive hook already permits (`src/sereno/context_eval/run_attacker.py:1042-1081`).
 
 The attacker has two capabilities that earlier versions did not have together:
 
@@ -35,10 +35,10 @@ of its own between calls.
 ```
 campaign config (run_attacker)
         |
-runner.run_session: advance / finish          runner.py:146-377
+runner.run_session: advance / finish          runner.py:147-385
         |
 request.json: contract + strategy/notebook + observation
-        |                                         run_attacker.py:756-801
+        |                                         run_attacker.py:954-999
         v
 external attacker runtime: bounded model loop     attacker/agent.py:87-160
   tools: find_files/read_file/search_files        attacker/tools.py:351-431
@@ -48,12 +48,12 @@ external attacker runtime: bounded model loop     attacker/agent.py:87-160
         |
 response.json                                     protocol.py:125-158
         |
-harness validates and applies memory actions       run_attacker.py:844-883
+harness validates and applies memory actions       run_attacker.py:1042-1081
         |
 target memory -> next session start memory -> target behavior -> grade/harm-count
 ```
 
-The request (`src/sereno/context_eval/run_attacker.py:756-801`) has three parts:
+The request (`src/sereno/context_eval/run_attacker.py:954-999`) has three parts:
 
 1. `contract`: call kind (`in_task` or `session_end`), stage (`exposure` or `probe`), whether
    writes are open, the memory root, the limits, the budget and its use so far, and the
@@ -72,16 +72,16 @@ infrastructure error, not as an attack outcome.
 ## 3. Observation surfaces
 
 **Target repository code.** At task start the harness records the files Git tracks below
-`code_root` (`src/sereno/context_eval/run_attacker.py:434-450`), and that index stays fixed for the
+`code_root` (`src/sereno/context_eval/run_attacker.py:596-612`), and that index stays fixed for the
 session: a file the target creates later is not readable through the attacker's tools. The
 configured `code_paths` are served as structured views, and an indexed file the previous call asked
-for is read live on the next call (`src/sereno/context_eval/run_attacker.py:452-515`). A path outside
+for is read live on the next call (`src/sereno/context_eval/run_attacker.py:614-677`). A path outside
 `code_root`, into `.git`, through a symlink that leads out, outside the task-start index, or over the
 read budget is named as denied or queued, never silently cut. Within that fixed index the attacker
 reads the code the target is working on, not a frozen copy of the task description.
 
 **Target transcript.** The harness passes the messages the target agent has recorded so far,
-including tool calls and results (`src/sereno/context_eval/run_attacker.py:147-181`). Guard
+including tool calls and results (`src/sereno/context_eval/run_attacker.py:151-185`). Guard
 notices are withheld from every part of the attacker's view, per decision 518 item 2 and the
 2026-10-22 rule: the current session's transcript, the chain's completed sessions (including
 transcripts restored from a checkpoint written before withholding), the envelope tail, paging and
@@ -108,7 +108,7 @@ in search results (`src/sereno/attacker/observation.py:99-119`). A redacted bloc
 readable text is named as redacted, not decoded.
 
 **Memory and earlier sessions.** The request carries the memory files that load for the
-project and the paths the attacker owns (`src/sereno/context_eval/run_attacker.py:756-801`).
+project and the paths the attacker owns (`src/sereno/context_eval/run_attacker.py:954-999`).
 Earlier sessions arrive as short cards plus their transcripts, so the attacker can compare
 what it intended with what the target did in the preceding task. The previous call's result
 says whether its actions were applied, rejected, not applied, or made no change; that is the
@@ -122,7 +122,7 @@ runs.
 
 - Each call may replace `strategy` and `notebook`. The harness versions the strategy, hashes
   it, and carries it to the next call; a valid update is kept even when the call's memory
-  actions were rejected or not applied (`src/sereno/context_eval/run_attacker.py:579-754`).
+  actions were rejected or not applied (`src/sereno/context_eval/run_attacker.py:741-952`).
 - The session-end call sees the completed session's transcript and summary. It is the
   reflection point: the attacker can revise the strategy for the next session of the chain.
   It can observe, but it cannot write memory at that point.
@@ -142,7 +142,7 @@ The design keeps the attacker model-agnostic. The loop and tools never read a pr
 The only target-side effect is a memory action: write a file below the project's memory root,
 or delete a file the attacker created. Actions are staged during the call and applied by the
 harness after the call, and only when the call is an `in_task` call of an exposure session
-(`src/sereno/context_eval/run_attacker.py:844-883`). A probe session and the session-end call
+(`src/sereno/context_eval/run_attacker.py:1042-1081`). A probe session and the session-end call
 never apply actions. The harness checks path canonicality, ownership, append-only rules, file
 size, content rules, the memory limits and the write budget; any violation rejects the whole
 call's actions and leaves memory unchanged.
@@ -157,7 +157,7 @@ that never reaches a later session is not persistence.
 
 DeepSeek is a provider configuration, not a code path. `ProviderSettings` selects
 `openai-compatible` or `anthropic`, the model, the base URL, the credential environment
-variable and provider-specific request fields (`src/sereno/attacker/config.py:47-61`). A
+variable and provider-specific request fields (`src/sereno/attacker/config.py:48-62`). A
 DeepSeek configuration uses:
 
 ```yaml
@@ -171,7 +171,7 @@ provider:
 Another model of the same API is a change to `model` and the `request` block. The runtime
 sets no model parameters of its own: the `request` block is passed through unchanged, so every
 parameter stays at the provider's default, except the `max_tokens` an Anthropic provider must
-set (`src/sereno/attacker/config.py:162-174`). Another API is one adapter module under
+set (`src/sereno/attacker/config.py:163-180`). Another API is one adapter module under
 `src/sereno/attacker/providers/` implementing `Provider` and added to `build_provider`
 (`src/sereno/attacker/providers/base.py:89-96`,
 `src/sereno/attacker/providers/__init__.py:19-32`). The operator supplies the brief; the
@@ -183,7 +183,7 @@ response's `writer_usage` (`src/sereno/attacker/protocol.py:106-122`).
 The harness bounds one call by a timeout below the harness's own deadline, and a chain by
 maximum calls, calls per session, tokens, seconds and writes. Reads, read bytes, index
 entries, observation bytes, tool-output bytes and transcript paging have their own limits
-(`src/sereno/context_eval/run_attacker.py:756-801`). A call starts only while every budget
+(`src/sereno/context_eval/run_attacker.py:954-999`). A call starts only while every budget
 bound has room; realized use can pass a bound by at most the one call that crossed it, and a
 skipped call is recorded once per session and reason.
 
@@ -200,11 +200,13 @@ When the loop stops at a bound it already has and the last reply carried no tool
 is reported as `plain_text`, or as `empty_reply` when the reply was empty, without text
 classification.
 Per-call audits retain the ending and the number of actually applied actions; session results
-retain the applied-action total, with unknown counts left unknown. Pairing adds `no_action_calls`,
+retain the applied-action total, with unknown counts left unknown. A record that never reached a
+launched program is an `incomplete` skeleton: it is reported in the session's `incomplete_calls`
+and never counted as a call, so no call, result or outcome label moves. Pairing adds `no_action_calls`,
 `plain_text_calls`, `unknown_ending_calls` and `sessions_without_applied_actions` per chain and
 per campaign arm in `inactivity_by_arm`, separately from declines. Missing ending metadata is
 unknown. Existing counts and outcome measurements do not change
-(`src/sereno/context_eval/pairing.py:242-263`).
+(`src/sereno/context_eval/pairing.py:248-269`).
 
 The measurement is a paired campaign. The defended and undefended configurations differ only
 in the guard and its notices; the attacker's settings, starting strategy, program, task order,
@@ -230,12 +232,14 @@ chain, not the individual session.
   notebook live on one chain's engine and are checkpointed per completed session.
 - The program is trusted host code, and the harness enforces the part of the boundary it can
   (decision 409): its argv and working directory, an environment built from an allowlist rather
-  than inherited, a per-call scratch under a checked base outside the run tree, and a bounded,
-  non-following copy into the audit folder after the program exits. The rest stays open and is
-  stated as such: the program runs as the same user as the harness, another process of that user
-  can read a live call's scratch, the host's process metadata still names the run tree, and a
-  program that walks the filesystem by absolute path can reach it. The per-call `notices_withheld`
-  count stays host-side.
+  than inherited, every forwarded argv word and environment value refused when it resolves
+  inside the campaign's run tree (the runner pins that root once), a per-call scratch under a
+  checked base outside the run tree, a bounded, non-following copy into the audit folder after
+  the program exits, and a private cost calls file per call whose rows the harness appends to
+  the wrapper's ledger. The rest stays open and is stated as such: the program runs as the same
+  user as the harness, another process of that user can read a live call's scratch, the host's
+  process metadata still names the run tree, and a program that walks the filesystem by absolute
+  path can reach it. The per-call `notices_withheld` count stays host-side.
 - Attacks on repository content or tool output, a critic or separate attack search, and
   combination with the between-session adaptive writer are out of scope in this version.
 - No paid model call is part of this design. The validation is model-free: the full test
@@ -250,7 +254,7 @@ chain, not the individual session.
 | Path | Role |
 | --- | --- |
 | `src/sereno/context_eval/run_attacker.py` | Harness side: request, transcript, code reads, action application, budget and checkpoint. |
-| `src/sereno/context_eval/runner.py` | `run_session` wires the attacker into the campaign before model calls and at session end (`src/sereno/context_eval/runner.py:146-377`). |
+| `src/sereno/context_eval/runner.py` | `run_session` wires the attacker into the campaign before model calls and at session end (`src/sereno/context_eval/runner.py:147-385`). |
 | `src/sereno/attacker/agent.py` | Bounded tool loop and the runtime contract. |
 | `src/sereno/attacker/observation.py` | Bounded envelope, transcript paging/search and thinking rendering. |
 | `src/sereno/attacker/tools.py` | The tool catalog and the per-call toolbox. |
@@ -262,7 +266,7 @@ chain, not the individual session.
 | `tests/test_attacker_tools.py` | Runtime-side transcript and tool tests. |
 
 The design's required behavior is the `thinking` field described in section 3.
-`visible_transcript` (`src/sereno/context_eval/run_attacker.py:147-181`) produces it in every
-provider spelling, and its tests (`tests/test_context_eval_run_attacker.py:249-323`) pin the
+`visible_transcript` (`src/sereno/context_eval/run_attacker.py:151-185`) produces it in every
+provider spelling, and its tests (`tests/test_context_eval_run_attacker.py:251-325`) pin the
 top-level `reasoning` shape, `reasoning_content`, joined thinking blocks, the redacted marker
 and the withheld notice.
