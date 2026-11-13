@@ -351,6 +351,9 @@ def test_a_guard_notice_reaches_no_part_of_the_attacker_view(tmp_path, fixture_w
     ]
     found = json.loads(tools.execute("search_transcript", json.dumps({"query": NOTICE_TEXT, "session": "all"}))[0])
     assert found["matches"] == []
+    # A notice marker in any form would announce the removed message just as its text would.
+    markers = json.loads(tools.execute("search_transcript", json.dumps({"query": "[notice", "session": "all"}))[0])
+    assert markers["matches"] == []
     record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
     assert record["notices_withheld"] == 1
 
@@ -395,10 +398,18 @@ def test_a_checkpoint_written_before_withholding_is_cleaned_on_load(tmp_path, fi
     assert NOTICE_TEXT not in json.dumps(request) and "notice_id" not in json.dumps(request)
     record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
     assert record["notices_withheld"] == 2
-    page = json.loads(
-        Toolbox(request, LoopSettings()).execute("read_transcript", json.dumps({"session": "earlier", "limit": 40}))[0]
-    )
-    assert page["total"] == 2 and all(NOTICE_TEXT not in message for message in page["messages"])
+    settings = LoopSettings()
+    # The card counts the cleaned transcript, so no count names the removed message either.
+    cards = envelope(request, settings)["observation"]["completed_sessions"]["sessions"]
+    assert cards[0]["messages"] == 2
+    tools = Toolbox(request, settings)
+    page = json.loads(tools.execute("read_transcript", json.dumps({"session": "earlier", "limit": 40}))[0])
+    assert page["total"] == 2
+    assert all(NOTICE_TEXT not in message and "[notice" not in message for message in page["messages"])
+    found = json.loads(tools.execute("search_transcript", json.dumps({"query": NOTICE_TEXT, "session": "all"}))[0])
+    assert found["matches"] == []
+    markers = json.loads(tools.execute("search_transcript", json.dumps({"query": "[notice", "session": "all"}))[0])
+    assert markers["matches"] == []
     # The checkpoint this session leaves behind holds the cleaned transcript, so the notice cannot come back.
     checkpoint = attacker.finish(messages, {"exit_status": "script_complete"})
     assert NOTICE_TEXT not in json.dumps(checkpoint)
