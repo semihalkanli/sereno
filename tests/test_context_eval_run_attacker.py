@@ -786,6 +786,69 @@ def test_code_reads_follow_in_root_symlinks_and_deny_escapes(tmp_path, fixture_w
     assert attacker.read_code("/app/pkg/loop.py")["status"] == "missing"
 
 
+def test_an_oversized_file_is_named_without_being_read(tmp_path, fixture_world):
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    env.write("/app/large.py", "x" * 64)
+
+    def read(path):
+        raise AssertionError(f"an oversized file must not be read: {path}")
+
+    env.read = read
+    attacker = run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings(max_read_bytes=40)), runtime, "fixture task", "first"
+    )
+    assert attacker.read_code("/app/large.py") == {"status": "too_large", "bytes": 64, "limit": 40}
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        RuntimeError("fixture realpath timeout"),
+        {"output": "", "returncode": -1, "exception_info": "Command timed out after 300 seconds"},
+        {"output": "", "returncode": 128 + 9, "exception_info": ""},
+    ],
+)
+def test_a_realpath_execution_failure_is_not_a_missing_file(tmp_path, fixture_world, failure):
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    original = env.execute
+
+    def execute(command):
+        if "realpath -e" in command:
+            if isinstance(failure, Exception):
+                raise failure
+            return failure
+        return original(command)
+
+    env.execute = execute
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="code_realpath"):
+        attacker.read_code("/app/README.md")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        RuntimeError("fixture stat timeout"),
+        {"output": "", "returncode": 128 + 9, "exception_info": ""},
+    ],
+)
+def test_a_size_check_execution_failure_is_an_infrastructure_error(tmp_path, fixture_world, failure):
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    original = env.execute
+
+    def execute(command):
+        if "stat -c" in command:
+            if isinstance(failure, Exception):
+                raise failure
+            return failure
+        return original(command)
+
+    env.execute = execute
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="code_size"):
+        attacker.read_code("/app/README.md")
+
+
 def test_an_index_path_found_by_the_tools_is_served_on_the_next_call(tmp_path, fixture_world, monkeypatch):
     env, runtime = runtime_for(tmp_path, fixture_world)
     env.write("/app/pkg/core.py", "def alpha():\n    return 1\n")

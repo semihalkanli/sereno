@@ -167,6 +167,20 @@ def reported_count(usage: object, key: str) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
+# The shell's own statuses: 126 cannot execute, 127 not found, and 128 + the signal when the command was killed.
+UNAVAILABLE = frozenset({126, 127})
+SIGNAL_BASE = 128
+SIGNAL_MAX = 64
+
+
+def did_not_finish(result: dict) -> bool:
+    """True when the container did not run the command to its own exit status: a timeout, a kill or a host error."""
+    if result.get("exception_info"):
+        return True
+    code = result["returncode"]
+    return code < 0 or code in UNAVAILABLE or SIGNAL_BASE < code <= SIGNAL_BASE + SIGNAL_MAX
+
+
 class RunLocalAttacker:
     """The attacker of one session. `state` is the checkpoint of the chain's previous completed session, or None for
     the chain's first session; it is copied, so nothing this session does reaches it until `finish` returns."""
@@ -213,13 +227,19 @@ class RunLocalAttacker:
         relative = path.removeprefix(root + "/")
         try:
             resolved = self.runtime.env.execute(
-                f"cd {shlex.quote(root)} && realpath -e --relative-to=. -- {shlex.quote(relative)}"
+                f"cd {shlex.quote(root)} && LC_ALL=C realpath -e --relative-to=. -- {shlex.quote(relative)}"
             )
         except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-            raise AttackerInfrastructureError("read_code", f"{type(error).__name__}: {error}") from error
-        real = resolved["output"].strip()
+            raise AttackerInfrastructureError("code_realpath", f"{type(error).__name__}: {error}") from error
+        # Only realpath's own failure (a missing file, a symlink loop) means the file is absent; a command that was
+        # killed or could not run says nothing about the file.
+        if did_not_finish(resolved):
+            raise AttackerInfrastructureError("code_realpath", "the container did not finish resolving the path")
         if resolved["returncode"]:
+            if "Permission denied" in resolved["output"]:
+                raise AttackerInfrastructureError("code_realpath", "the path cannot be resolved in the container")
             return {"status": "missing"}
+        real = resolved["output"].strip()
         if real == ".." or real.startswith("../") or real == ".git" or real.startswith(".git/"):
             return {"status": "denied", "reason": f"the path resolves outside {root} or into .git"}
         absolute = f"{root}/{real}"
@@ -227,6 +247,24 @@ class RunLocalAttacker:
             validate_path(absolute, root)
         except ValueError:
             return {"status": "denied", "reason": f"the path resolves outside {root} or into .git"}
+        # The size is measured before the file is read, so a large file costs no host memory; the read keeps its own
+        # size check because the file can grow between the two.
+        try:
+            measured = self.runtime.env.execute(
+                f"cd {shlex.quote(root)} && [ -f {shlex.quote(real)} ] && LC_ALL=C stat -c %s -- {shlex.quote(real)}"
+            )
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            raise AttackerInfrastructureError("code_size", f"{type(error).__name__}: {error}") from error
+        if did_not_finish(measured):
+            raise AttackerInfrastructureError("code_size", "the container did not finish measuring the file")
+        if measured["returncode"]:
+            return {"status": "missing"}
+        size_text = measured["output"].strip()
+        if not size_text.isdigit():
+            raise AttackerInfrastructureError("code_size", "the file size is not a number")
+        size = int(size_text)
+        if size > self.config.max_read_bytes:
+            return {"status": "too_large", "bytes": size, "limit": self.config.max_read_bytes}
         try:
             text = self.runtime.env.read(absolute)
         except (RuntimeError, ValueError, UnicodeDecodeError) as error:
