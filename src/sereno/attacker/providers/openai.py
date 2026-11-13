@@ -36,15 +36,25 @@ FINISHES = frozenset({"stop", "tool_calls"})
 
 
 def conversation_id(request: dict) -> str:
-    """One stable id per invocation, for APIs that route and cache by session: the request's session, task, call kind,
-    stage and call index, hashed. The same request always yields the same id, and no path enters it."""
+    """One stable id per invocation, for APIs that route and cache by session: the request's chain identity (campaign,
+    case, arm, repeat, target and the target agent), its session, task, call kind, stage and call index, hashed. Every
+    field is a name the request carries, so two campaigns, cases, arms or repeats never share an id, the same request
+    always yields the same one, and no path enters it."""
     contract = request.get("contract")
     contract = contract if isinstance(contract, dict) else {}
+    chain = contract.get("chain")
+    chain = chain if isinstance(chain, dict) else {}
     observation = request.get("observation")
     observation = observation if isinstance(observation, dict) else {}
     session = observation.get("session")
     session = session if isinstance(session, dict) else {}
     identity = {
+        "campaign": chain.get("campaign"),
+        "case": chain.get("case"),
+        "arm": chain.get("arm"),
+        "repeat": chain.get("repeat"),
+        "target": chain.get("target"),
+        "agent_id": chain.get("agent_id"),
         "session": session.get("id"),
         "task": session.get("task_id"),
         "kind": contract.get("kind"),

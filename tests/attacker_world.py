@@ -88,7 +88,17 @@ def make_request(**contract) -> dict:
         "max_reads_per_call": 10,
         "max_read_bytes": 200000,
         "response_keys": sorted(
-            ["schema_version", "actions", "strategy", "notebook", "reads", "writer_usage", "status"]
+            [
+                "schema_version",
+                "actions",
+                "strategy",
+                "notebook",
+                "reads",
+                "writer_usage",
+                "status",
+                "loop_ending",
+                "declined_after_actions",
+            ]
         ),
     }
     return {

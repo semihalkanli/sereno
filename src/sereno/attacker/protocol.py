@@ -21,7 +21,17 @@ SCHEMA_VERSION = "1.0"
 KINDS = frozenset({"in_task", "session_end"})
 STAGES = frozenset({"exposure", "probe"})
 RESPONSE_KEYS = frozenset(
-    {"schema_version", "actions", "strategy", "notebook", "reads", "writer_usage", "status", "loop_ending"}
+    {
+        "schema_version",
+        "actions",
+        "strategy",
+        "notebook",
+        "reads",
+        "writer_usage",
+        "status",
+        "loop_ending",
+        "declined_after_actions",
+    }
 )
 LOOP_ENDINGS = frozenset({"plain_text", "empty_reply", "finish", "max_steps", "max_tokens", "declined"})
 
@@ -152,6 +162,10 @@ def build_response(
         response["loop_ending"] = finish if ending is None else ending
     if finish == "declined" and "status" in allowed:
         response["status"] = "declined"
+    if finish == "declined" and "declined_after_actions" in allowed:
+        # A decline can end a call whose earlier steps already staged actions; the field states that separately from
+        # the action list itself, so the outcome label never has to be inferred from a non-empty list.
+        response["declined_after_actions"] = bool(response["actions"])
     if toolbox.strategy_dirty and "strategy" in allowed:
         response["strategy"] = toolbox.strategy
     if toolbox.notebook_dirty and "notebook" in allowed:
@@ -183,6 +197,11 @@ def validate_response(response: dict, contract: dict) -> None:
         raise OutputError(f"unexpected response fields {extra}", "response")
     if "status" in response and response["status"] != "declined":
         raise OutputError("status, when present, must be declined", "response")
+    if "declined_after_actions" in response:
+        if not isinstance(response["declined_after_actions"], bool):
+            raise OutputError("declined_after_actions must be a boolean", "response")
+        if response.get("status") != "declined":
+            raise OutputError("declined_after_actions is only reported on a declined response", "response")
     if "loop_ending" in response and (
         not isinstance(response["loop_ending"], str) or response["loop_ending"] not in LOOP_ENDINGS
     ):

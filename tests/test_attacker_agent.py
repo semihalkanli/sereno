@@ -1,5 +1,7 @@
 """The bounded tool loop: tool execution, finish handling, step limits and usage."""
 
+import json
+
 import pytest
 from attacker_world import INERT, NOTE, ScriptedProvider, call, completion, make_config, make_request
 
@@ -8,6 +10,29 @@ from sereno.attacker.config import LoopSettings
 from sereno.attacker.deadline import Deadline
 from sereno.attacker.errors import ProviderFailure
 from sereno.attacker.providers.base import ToolTurn, UserTurn
+
+
+def test_a_lone_surrogate_tool_argument_denies_the_call_and_the_loop_continues(tmp_path):
+    """A model argument carrying a lone surrogate escape is a denied tool result, not a program failure: the loop
+    reaches `finish`, the response is written, and everything the transport or the checkpoint encodes stays UTF-8."""
+    from sereno.attacker.protocol import validate_response
+    from sereno.attacker.providers.base import ToolCall
+    from sereno.context_eval.engine import write_atomic
+
+    bad = ToolCall(
+        "c1",
+        "stage_action",
+        '{"op": "write", "path": "/root/.claude/projects/fixture/memory/x.md", "content": "\\ud800"}',
+    )
+    provider = ScriptedProvider(completion(bad), completion(call("finish")))
+    result = run_agent(make_config(tmp_path), make_request(), provider, Deadline(120))
+    assert result.finish == "finish" and result.response["actions"] == []
+    assert result.response["writer_usage"]["calls"] == 2
+    validate_response(result.response, make_request()["contract"])
+    # The response the harness writes is encodable, so the call leaves a record rather than failing on an encode.
+    path = tmp_path / "response.json"
+    write_atomic(path, result.response)
+    assert json.loads(path.read_text())["actions"] == []
 
 
 def test_loop_reads_code_stages_and_finishes(tmp_path):

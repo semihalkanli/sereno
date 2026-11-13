@@ -186,6 +186,43 @@ def test_strategy_and_notebook_limits():
     assert not failed and tools.notebook_dirty and tools.notebook == "12345"
 
 
+# The model's JSON escape for a lone surrogate: `json.loads` decodes it to a character no UTF-8 encoder accepts.
+SURROGATE = '"\\ud800"'
+
+
+def test_a_lone_surrogate_argument_is_a_denied_tool_call():
+    """A JSON escape for a lone surrogate decodes to a character no UTF-8 file or transport body can hold. Every text
+    argument refuses it as a denied tool result, so the loop continues and the response stays encodable."""
+    tools = toolbox()
+    for name, arguments in (
+        ("stage_action", '{"op": "write", "path": ' + SURROGATE + ', "content": "x"}'),
+        ("stage_action", '{"op": "write", "path": "' + NOTE + '", "content": ' + SURROGATE + "}"),
+        ("drop_action", '{"path": ' + SURROGATE + "}"),
+        ("set_strategy", '{"text": ' + SURROGATE + "}"),
+        ("set_notebook", '{"text": ' + SURROGATE + "}"),
+        ("read_memory", '{"path": ' + SURROGATE + "}"),
+        ("search_transcript", '{"query": ' + SURROGATE + "}"),
+        ("find_files", '{"pattern": ' + SURROGATE + "}"),
+        ("finish", '{"note": ' + SURROGATE + "}"),
+    ):
+        text, failed = tools.execute(name, arguments)
+        assert failed and json.loads(text)["status"] == "denied", name
+        assert "UTF-8" in json.loads(text)["reason"], name
+    assert tools.staged == {} and not tools.finished
+
+
+def test_a_surrogate_result_is_escaped_rather_than_raising():
+    """`clamp` is the last encode before the transport: a result built from anything unencodable is escaped instead of
+    failing the call."""
+    tools = toolbox()
+
+    class Echo(dict):
+        pass
+
+    text = tools.clamp({"status": "ok", "value": "\ud800"})
+    assert json.loads(text)["value"] == "\ud800"
+
+
 def test_find_files_and_search_files():
     tools = toolbox()
     text, _ = tools.execute("find_files", json.dumps({"pattern": "*.py"}))

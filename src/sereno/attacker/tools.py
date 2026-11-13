@@ -179,6 +179,15 @@ class ToolArgumentError(ValueError):
     """An argument the tool cannot use; reported to the model as a denied call, never as a program failure."""
 
 
+def utf8_bytes(value: str, key: str) -> int:
+    """The UTF-8 size of a tool's text argument. A lone surrogate escape in the model's JSON decodes to a character no
+    UTF-8 file, transport body or checkpoint can hold, so it is a denied argument, never a program failure."""
+    try:
+        return len(value.encode("utf-8"))
+    except UnicodeEncodeError:
+        raise ToolArgumentError(f"{key} is not encodable as UTF-8") from None
+
+
 def text_arg(args: dict, key: str, *, required: bool = False, limit: int | None = None) -> str | None:
     value = args.get(key)
     if value is None:
@@ -189,7 +198,8 @@ def text_arg(args: dict, key: str, *, required: bool = False, limit: int | None 
         raise ToolArgumentError(f"{key} must be a string")
     if required and not value:
         raise ToolArgumentError(f"{key} must not be empty")
-    if limit is not None and len(value.encode()) > limit:
+    size = utf8_bytes(value, key)
+    if limit is not None and size > limit:
         raise ToolArgumentError(f"{key} is over {limit} bytes")
     return value
 
@@ -285,14 +295,21 @@ class Toolbox:
     def clamp(self, result: dict) -> str:
         text = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
         limit = self.settings.max_tool_output_bytes
-        if len(text.encode()) <= limit:
+        try:
+            size = len(text.encode())
+        except UnicodeEncodeError:
+            # Every text argument is checked before it is used, so this is a belt-and-braces path: an escape the JSON
+            # round trip produced still leaves a tool result the transport and the checkpoint can encode.
+            text = json.dumps(result, ensure_ascii=True)
+            size = len(text.encode())
+        if size <= limit:
             return text
         preview = bounded_text(text, max(limit - 400, 500))
         return json.dumps(
             {
                 "status": result.get("status", "ok"),
                 "truncated": True,
-                "full_bytes": len(text.encode()),
+                "full_bytes": size,
                 "preview": preview,
             },
             ensure_ascii=False,
@@ -463,8 +480,9 @@ def stage_action(toolbox: Toolbox, args: dict) -> dict:
             raise ToolArgumentError("a write needs content, a string")
         if "\0" in content:
             raise ToolArgumentError("content holds a NUL byte")
+        size = utf8_bytes(content, "content")
         limit = toolbox.limits.get("max_file_bytes")
-        if isinstance(limit, int) and not isinstance(limit, bool) and len(content.encode()) > limit:
+        if isinstance(limit, int) and not isinstance(limit, bool) and size > limit:
             raise ToolArgumentError(f"content is over the {limit}-byte file limit")
     elif content not in (None, ""):
         raise ToolArgumentError("a delete carries no content")

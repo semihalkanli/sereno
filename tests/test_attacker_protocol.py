@@ -1,7 +1,7 @@
 """Protocol 1.0 request validation and response form."""
 
 import pytest
-from attacker_world import INERT, NOTE, make_config, make_request, write_request
+from attacker_world import INERT, NOTE, ScriptedProvider, make_config, make_request, write_request
 
 from sereno.attacker.errors import ConfigError, InputError, OutputError
 from sereno.attacker.protocol import check_contract, read_request, usage_record, validate_response
@@ -109,6 +109,42 @@ def test_validate_response_accepts_a_zero_read_contract():
     validate_response(response, make_request(max_reads_per_call=0)["contract"])
 
 
+def test_a_declined_response_states_whether_actions_were_staged_before_it(tmp_path):
+    """A decline that ends a call whose earlier steps staged actions carries the actions and says so in
+    `declined_after_actions`; a decline with nothing staged says false, and a non-declined response omits the field."""
+    from sereno.attacker.protocol import build_response
+    from sereno.attacker.tools import Toolbox
+
+    config = make_config(tmp_path)
+    request = make_request()
+    toolbox = Toolbox(request, config.settings.agent)
+    toolbox.staged[NOTE] = {"op": "write", "path": NOTE, "content": INERT}
+    response = build_response(
+        config,
+        request,
+        toolbox,
+        finish="declined",
+        ending="declined",
+        steps=2,
+        provider=ScriptedProvider(),
+        completions=[],
+    )
+    assert response["status"] == "declined" and response["declined_after_actions"] is True
+    assert response["actions"] == [{"op": "write", "path": NOTE, "content": INERT}]
+    empty = build_response(
+        config,
+        request,
+        Toolbox(request, config.settings.agent),
+        finish="declined",
+        ending="declined",
+        steps=2,
+        provider=ScriptedProvider(),
+        completions=[],
+    )
+    assert empty["declined_after_actions"] is False
+    validate_response(empty, request["contract"])
+
+
 @pytest.mark.parametrize(
     "change",
     [
@@ -120,6 +156,8 @@ def test_validate_response_accepts_a_zero_read_contract():
         lambda response: response.update({"strategy": "far too long"}),
         lambda response: response.update({"reads": [1]}),
         lambda response: response.update({"extra": True}),
+        lambda response: response.update({"status": "declined", "declined_after_actions": "yes"}),
+        lambda response: response.update({"declined_after_actions": True}),
     ],
 )
 def test_validate_response_refuses_a_bad_form(change):

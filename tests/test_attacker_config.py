@@ -107,6 +107,23 @@ def test_base_url_must_be_https_or_loopback(tmp_path):
     assert config.settings.provider.base_url == "http://127.0.0.1:8080/v1"
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://opencode.ai/inference/go/anthropic/v1/messages",
+        "https://opencode.ai/inference/go/openai/v1",
+        "https://opencode.ai/inference/go/openai/v1/chat/completions/extra",
+    ],
+)
+def test_an_opencode_base_url_must_be_the_chat_completions_route(tmp_path, url):
+    """The runtime builds a chat-completions body; another route under the Go API's prefix would accept it and answer
+    nothing the adapter can read, so it is refused at configuration time."""
+    with pytest.raises(ConfigError, match="chat/completions"):
+        load_config(write_config(tmp_path, provider={"base_url": url}))
+    accepted = "https://opencode.ai/inference/go/openai/v1/chat/completions"
+    assert load_config(write_config(tmp_path, provider={"base_url": accepted})).settings.provider.base_url == accepted
+
+
 def test_the_credential_is_read_from_the_environment(tmp_path, monkeypatch):
     monkeypatch.delenv("FIXTURE_ATTACKER_TEST_KEY", raising=False)
     config = load_config(write_config(tmp_path, provider={"credential_env": "FIXTURE_ATTACKER_TEST_KEY"}))
@@ -115,6 +132,14 @@ def test_the_credential_is_read_from_the_environment(tmp_path, monkeypatch):
     assert caught.value.code == "missing_credential"
     monkeypatch.setenv("FIXTURE_ATTACKER_TEST_KEY", "fixture-key")
     assert config.credential() == "fixture-key"
+    # The name the configuration carries is the one read: another provider's key in the environment changes nothing,
+    # and removing the named variable raises even while that other key stays set.
+    monkeypatch.setenv("OPENCODE_API_KEY", "another-key")
+    assert config.credential() == "fixture-key"
+    monkeypatch.delenv("FIXTURE_ATTACKER_TEST_KEY")
+    with pytest.raises(ConfigError) as caught:
+        config.credential()
+    assert caught.value.code == "missing_credential"
 
 
 def test_a_product_user_agent_and_a_session_header_are_accepted(tmp_path):

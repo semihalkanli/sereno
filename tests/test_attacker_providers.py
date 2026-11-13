@@ -223,11 +223,12 @@ def test_build_provider_chooses_the_configured_kind(tmp_path):
         anthropic.close()
 
 
-def opencode_body(allowance=0.02, billing_source="subscription"):
-    """A chat-completions answer as the opencode Go API returns it: no provider, an allowance charge."""
+def opencode_body(allowance=0.02, billing_source="subscription", model="deepseek-v4.1-flash"):
+    """A chat-completions answer as the opencode Go API returns it: no serving provider, an allowance charge, and the
+    requested alias as its `model`, which is what the live API returned."""
     return {
         "id": "gen-oc-1",
-        "model": "deepseek-v4.1-flash-1018",
+        "model": model,
         "choices": [{"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
         "usage": {
             "prompt_tokens": 3,
@@ -289,12 +290,65 @@ def test_opencode_usage_and_record_carry_the_allowance_and_the_billing_source(tm
         provider.close()
     record = completion.record()
     assert record["cost"] == pytest.approx(0.02) and record["allowance"] == pytest.approx(0.02)
-    assert record["billing_source"] == "subscription" and record["returned_model"] == "deepseek-v4.1-flash-1018"
+    assert record["billing_source"] == "subscription" and record["returned_model"] == "deepseek-v4.1-flash"
     usage = usage_record([completion], finish="finish", steps=1, provider=provider, config=config)
     assert usage["cost"] == pytest.approx(0.02) and usage["allowance_usd"] == pytest.approx(0.02)
     assert usage["billing"] == "allowance" and usage["billing_source"] == "subscription"
     assert usage["requested_model"] == "deepseek-v4.1-flash"
-    assert usage["returned_model"] == "deepseek-v4.1-flash-1018"
+    assert usage["returned_model"] == "deepseek-v4.1-flash"
+
+
+def test_a_returned_model_other_than_the_alias_is_recorded_as_returned(tmp_path):
+    """The live API returns the requested alias; a different string the API returns is still recorded as returned,
+    never replaced by the requested model."""
+
+    def handler(request):
+        return httpx.Response(200, json=opencode_body(model="deepseek-v4.1-flash-20261101"))
+
+    config = opencode_config(tmp_path)
+    provider = build_provider(config, Deadline(60), transport=httpx.MockTransport(handler), request=make_request())
+    try:
+        completion = provider.complete([UserTurn("user")], TOOL_SPECS, call=1)
+    finally:
+        provider.close()
+    usage = usage_record([completion], finish="finish", steps=1, provider=provider, config=config)
+    assert usage["requested_model"] == "deepseek-v4.1-flash"
+    assert usage["returned_model"] == "deepseek-v4.1-flash-20261101"
+
+
+def test_the_conversation_id_is_unique_per_chain_case_arm_repeat_and_agent():
+    """The id a provider routes by comes from the chain identity the request carries: two campaigns, cases, arms,
+    repeats, targets or agents never share one, and the same conversation always rebuilds the same id."""
+    base = {
+        "campaign": "campaign-a",
+        "case": "t1--default--r001",
+        "arm": "attack_carry",
+        "repeat": 1,
+        "target": "t1",
+        "agent_id": "main",
+    }
+
+    def request(chain):
+        req = make_request()
+        req["contract"]["chain"] = chain
+        return req
+
+    ids = {conversation_id(request(base))}
+    assert conversation_id(request(dict(base))) in ids
+    for change in (
+        {"campaign": "campaign-b"},
+        {"case": "t1--defended--r001"},
+        {"arm": "attack_reset"},
+        {"repeat": 2},
+        {"target": "t2"},
+        {"agent_id": "helper"},
+    ):
+        other = conversation_id(request(base | change))
+        assert other not in ids
+        ids.add(other)
+    assert len(ids) == 7
+    # A request without the field still yields a stable id, never an error.
+    assert conversation_id(make_request()) == conversation_id(make_request())
 
 
 def test_a_400_missing_session_id_is_a_provider_failure(tmp_path):

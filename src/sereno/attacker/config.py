@@ -34,6 +34,11 @@ GENERIC_AGENTS = ("python-httpx", "httpx", "openai", "litellm", "requests", "aio
 HEADER_NAME = re.compile(r"^[A-Za-z0-9-]+$")
 # Headers the runtime sets itself; a session-header policy may not replace one of them.
 RUNTIME_HEADERS = frozenset({"authorization", "content-type"})
+# The opencode Go API's chat-completions route: the only route the openai-compatible adapter's body fits. Another
+# route under the same prefix, such as the Messages path, would take that body and answer nothing usable.
+OPENCODE_HOST = "opencode.ai"
+OPENCODE_PATH = "/inference/go/"
+OPENCODE_ROUTE = "/chat/completions"
 
 
 class Settings(BaseModel, extra="forbid"):
@@ -171,9 +176,24 @@ def check_command_identity(command: list[str]) -> None:
         return
 
 
+def check_opencode_base_url(kind: str, url: str) -> None:
+    """A base_url on the opencode Go API must be the chat-completions route the openai-compatible adapter speaks: the
+    runtime builds a chat-completions body, and another route under the same prefix would accept it and answer
+    nothing the adapter can read. Any other host, and the Messages adapter, are left to `check_base_url`."""
+    parts = urlsplit(url)
+    if parts.hostname != OPENCODE_HOST or kind != "openai-compatible":
+        return
+    if not parts.path.startswith(OPENCODE_PATH) or not parts.path.endswith(OPENCODE_ROUTE):
+        raise ConfigError(
+            f"base_url {url!r} must be under {OPENCODE_PATH} and end with {OPENCODE_ROUTE} on {OPENCODE_HOST}",
+            "endpoint",
+        )
+
+
 def check_settings(settings: AttackerSettings) -> None:
     provider = settings.provider
     check_base_url(provider.base_url)
+    check_opencode_base_url(provider.kind, provider.base_url)
     if provider.credential_env is not None and not ENV_NAME.match(provider.credential_env):
         raise ConfigError(f"credential_env {provider.credential_env!r} is not a variable name", "credential_env")
     if provider.credential_env is not None and harness_controlled(provider.credential_env):
