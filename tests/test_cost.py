@@ -171,8 +171,11 @@ def handler(request):
     body = {
         "id": "gen-oc-1",
         "model": "deepseek-v4.1-flash-1018",
-        "billing_source": "subscription",
-        "usage": {"prompt_tokens": 4, "completion_tokens": 2, "opencode": {"allowance": 0.03}},
+        "usage": {
+            "prompt_tokens": 4,
+            "completion_tokens": 2,
+            "opencode": {"allowance": 0.03, "billing_source": "subscription"},
+        },
     }
     return httpx.Response(200, json=body)
 

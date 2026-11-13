@@ -29,6 +29,7 @@ from sereno.attacker.providers.base import (
     UserTurn,
 )
 from sereno.attacker.providers.transport import Sink, describe, post
+from sereno.usage import billing_source_of
 
 REASONING_FIELDS = ("reasoning", "reasoning_details", "reasoning_content")
 FINISHES = frozenset({"stop", "tool_calls"})
@@ -162,7 +163,7 @@ def parse_completion(answer: bytes, expected_provider: str | None) -> Completion
         provider=provider if isinstance(provider, str) else None,
         generation_id=body.get("id"),
         declined=declined,
-        billing_source=body.get("billing_source") or usage.get("billing_source"),
+        billing_source=billing_source_of(body),
     )
 
 

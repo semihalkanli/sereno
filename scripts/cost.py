@@ -151,13 +151,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     with args.ledger.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row) + "\n")
     print(
-        f"[cost] {run_id}: {row['calls']} calls ({row['failed_calls']} failed), "
+        f"[cost] {run_id}: {row['calls']} cash calls ({row['failed_calls']} failed), "
         f"{row['prompt_tokens']}+{row['completion_tokens']} tokens, USD {row['cost_usd']:.6f}",
         file=sys.stderr,
     )
     if row["allowance_calls"]:
         print(
-            f"[cost] {row['allowance_calls']} opencode calls charged USD {row['allowance_usd']:.6f} against the "
+            f"[cost] {row['allowance_calls']} opencode calls, {row['allowance_prompt_tokens']}+"
+            f"{row['allowance_completion_tokens']} tokens, charged USD {row['allowance_usd']:.6f} against the "
             f"subscription allowance (not cash)",
             file=sys.stderr,
         )

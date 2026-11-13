@@ -15,12 +15,31 @@ def allowance_of(usage: object) -> float | None:
     return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
 
 
+def billing_source_of(body: object) -> str | None:
+    """Where the charge comes from, as the API names it: the opencode Go API reports it as
+    `usage.opencode.billing_source` (for example "go"); a top-level or usage-level field is read too."""
+    if not isinstance(body, dict):
+        return None
+    raw_usage = body.get("usage")
+    usage: dict = raw_usage if isinstance(raw_usage, dict) else {}
+    raw_opencode = usage.get("opencode")
+    opencode: dict = raw_opencode if isinstance(raw_opencode, dict) else {}
+    for value in (opencode.get("billing_source"), usage.get("billing_source"), body.get("billing_source")):
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
 def usage_charge(usage: object) -> float | None:
-    """The money-equivalent charge a usage block reports: its `cost`, else the opencode allowance."""
+    """The money-equivalent charge a usage block reports: the opencode allowance when there is one (the Go API also
+    sends `cost: 0`, since nothing is charged in cash), else its `cost`."""
+    allowance = allowance_of(usage)
+    if allowance is not None:
+        return allowance
     amount = usage.get("cost") if isinstance(usage, dict) else None
     if isinstance(amount, int | float) and not isinstance(amount, bool):
         return float(amount)
-    return allowance_of(usage)
+    return None
 
 
 def sum_usage(records: Iterable[dict]) -> tuple[dict, int, float]:

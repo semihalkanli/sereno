@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from sereno.usage import allowance_of, usage_charge
+from sereno.usage import allowance_of, billing_source_of, usage_charge
 from sereno.writer.config import WriterConfig
 from sereno.writer.errors import ConfigError, ProviderFailure
 
@@ -200,7 +200,7 @@ def parse_completion(
         declined=declined,
         provider_kind=provider_kind,
         requested_model=requested_model,
-        billing_source=body.get("billing_source") or usage.get("billing_source"),
+        billing_source=billing_source_of(body),
     )
 
 

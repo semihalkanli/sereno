@@ -21,7 +21,8 @@ paths stay configured and tested, so a campaign switches back by configuration a
   from the request's run and chain identity (the campaign directory's name, the case, the arm, the repeat, the agent
   id and the next session with its position), so a resumed step reuses it; it contains no path. The response's
   returned `model` is recorded per call, and `usage.opencode.allowance` is the charge, recorded with its
-  `billing_source` and `billing: allowance`: a subscription allowance, never a cash cost. The DeepSeek allowance is
+  `billing_source` (both under `usage.opencode`; the API also sends `usage.cost: 0`, which is never read as the charge)
+  and `billing: allowance`: a subscription allowance, never a cash cost. The DeepSeek allowance is
   USD 100 a month, at most 20 % of it in a five-hour window and 50 % in a week; the ledger keeps every charge.
 
 The opencode model id is an undated alias whose build can change, so every call records the build the API says it
@@ -29,7 +30,10 @@ served. Jev, the guard's judge, stays on OpenRouter's decisions endpoint pinned 
 of this provider move touches it. Example API settings are `examples/context-eval/writer-api-opencode.json` (the
 default) and `examples/context-eval/writer-api-openrouter.json`; the design's `endpoint` and `credential_env_name` must
 match the kind (`https://opencode.ai/inference/go/openai/v1/chat/completions` with `OPENCODE_API_KEY`, or
-`https://openrouter.ai/api/v1/chat/completions` with `OPENROUTER_API_KEY`).
+`https://openrouter.ai/api/v1/chat/completions` with `OPENROUTER_API_KEY`). On either kind a model-free check may
+override the endpoint with a plain-http loopback fake. Since 2026-11-14 the design in
+`~/agent-learning/docs/deepseek-writer-20261023` and every built package use the opencode kind; the request carries
+no sampling or reasoning parameter, so the model runs at the defaults the API serves.
 
 ## Command
 

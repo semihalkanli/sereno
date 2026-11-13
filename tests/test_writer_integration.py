@@ -61,7 +61,8 @@ def test_the_real_design_package_loads_and_its_fixtures_classify_as_labelled(tmp
         )
     )
     config = load_config(settings)
-    assert config.endpoint.startswith("https://openrouter.ai/") and config.api["provider"]["order"] == ["DeepSeek"]
+    assert config.endpoint.startswith("https://opencode.ai/inference/go/") and config.provider_kind == "opencode"
+    assert config.api["model"] == "deepseek-v4.1-flash" and config.credential_env == "OPENCODE_API_KEY"
     assert config.api["max_tokens"] == 128000 and "reasoning" not in config.api and "temperature" not in config.api
     assert len(config.forbidden_patterns) == 7 and config.memory_root.endswith("/projects/httpx/memory")
     assert config.last_write and config.system_prompt.strip() and config.objective

@@ -82,7 +82,9 @@ def _install(calls_path: str) -> None:
             row |= {
                 "provider": "opencode",
                 "billing": "allowance",
-                "billing_source": body.get("billing_source") or usage.get("billing_source"),
+                "billing_source": (usage.get("opencode") or {}).get("billing_source")
+                or usage.get("billing_source")
+                or body.get("billing_source"),
                 "allowance": reported,
                 "allowance_reported": reported is not None,
                 "cost": reported if billed and reported is not None else 0.0 if billed else None,

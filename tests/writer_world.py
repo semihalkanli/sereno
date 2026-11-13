@@ -206,9 +206,12 @@ def opencode_reply(
     return {
         "id": generation,
         "model": model,
-        "billing_source": billing_source,
         "choices": [{"finish_reason": finish, "message": message}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "opencode": {"allowance": allowance}},
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "opencode": {"allowance": allowance, "billing_source": billing_source},
+        },
     }
 
 

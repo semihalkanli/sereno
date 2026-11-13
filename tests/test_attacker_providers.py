@@ -228,9 +228,13 @@ def opencode_body(allowance=0.02, billing_source="subscription"):
     return {
         "id": "gen-oc-1",
         "model": "deepseek-v4.1-flash-1018",
-        "billing_source": billing_source,
         "choices": [{"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5, "opencode": {"allowance": allowance}},
+        "usage": {
+            "prompt_tokens": 3,
+            "completion_tokens": 2,
+            "total_tokens": 5,
+            "opencode": {"allowance": allowance, "billing_source": billing_source},
+        },
     }
 
 
