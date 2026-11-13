@@ -24,6 +24,7 @@ import copy
 import hashlib
 import json
 import shlex
+import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -185,7 +186,12 @@ class RunLocalAttacker:
         their count when there are too many."""
         root = self.config.code_root
         command = f"cd {shlex.quote(root)} && git -c safe.directory=/app -c core.quotepath=off ls-files"
-        listed = self.runtime.env.execute(command)
+        try:
+            listed = self.runtime.env.execute(command)
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            raise AttackerInfrastructureError(
+                "code_index", f"cannot list the repository files: {type(error).__name__}: {error}"
+            ) from error
         if listed["returncode"]:
             raise AttackerInfrastructureError("code_index", "cannot list the repository files")
         files = [f"{root}/{line}" for line in listed["output"].splitlines() if line]
@@ -205,9 +211,12 @@ class RunLocalAttacker:
             return {"status": "denied", "reason": f"not a canonical file path below {root}, outside .git"}
         # A symlink must not lead out of the code root, so the real path is resolved in the container.
         relative = path.removeprefix(root + "/")
-        resolved = self.runtime.env.execute(
-            f"cd {shlex.quote(root)} && realpath -e --relative-to=. -- {shlex.quote(relative)}"
-        )
+        try:
+            resolved = self.runtime.env.execute(
+                f"cd {shlex.quote(root)} && realpath -e --relative-to=. -- {shlex.quote(relative)}"
+            )
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            raise AttackerInfrastructureError("read_code", f"{type(error).__name__}: {error}") from error
         real = resolved["output"].strip()
         if resolved["returncode"]:
             return {"status": "missing"}
@@ -217,6 +226,8 @@ class RunLocalAttacker:
             text = self.runtime.env.read(path)
         except (RuntimeError, ValueError, UnicodeDecodeError) as error:
             return {"status": "unreadable", "reason": type(error).__name__}
+        except (OSError, subprocess.SubprocessError) as error:
+            raise AttackerInfrastructureError("read_code", f"{type(error).__name__}: {error}") from error
         if text is None:
             return {"status": "missing"}
         size = len(text.encode())
@@ -291,7 +302,12 @@ class RunLocalAttacker:
         runtime, config = self.runtime, self.config
         writes_open = kind == "in_task" and self.stage == "exposure"
         request = self.request(kind, number, transcript, summary, writes_open)
-        encoded = (json.dumps(request, ensure_ascii=False, sort_keys=True) + "\n").encode()
+        try:
+            encoded = (json.dumps(request, ensure_ascii=False, sort_keys=True) + "\n").encode()
+        except UnicodeEncodeError as error:
+            raise AttackerInfrastructureError(
+                "request_encoding", f"{type(error).__name__}: the request is not encodable as UTF-8"
+            ) from error
         audit = runtime.log.path.parent / AUDIT_DIR / f"{number:04d}"
         audit.mkdir(parents=True, exist_ok=False)
         base = {
@@ -336,7 +352,11 @@ class RunLocalAttacker:
         }
         if outcome["timed_out"] or outcome["error"] or outcome["exit_code"] != 0:
             failure = audit / "failure_usage.json"
-            if failure.is_file() and failure.stat().st_size <= RESPONSE_BYTES:
+            try:
+                readable = failure.is_file() and failure.stat().st_size <= RESPONSE_BYTES
+            except OSError as error:
+                raise AttackerInfrastructureError("response_read", f"{type(error).__name__}: {error}") from error
+            if readable:
                 try:
                     usage = json.loads(failure.read_bytes())
                 except (OSError, ValueError, UnicodeDecodeError, RecursionError):
@@ -357,7 +377,10 @@ class RunLocalAttacker:
             actions = parse_actions(response["actions"], runtime.project)
         except ResponseError as error:
             self.fail(audit, base, "invalid_response", str(error))
-        base["response_sha256"] = file_sha256(audit / "response.json")
+        try:
+            base["response_sha256"] = file_sha256(audit / "response.json")
+        except OSError as error:
+            raise AttackerInfrastructureError("response_hash", f"{type(error).__name__}: {error}") from error
         base["loop_ending"] = response.get("loop_ending")
         base["actions"] = len(actions)
         usage = response.get("writer_usage")
@@ -467,12 +490,14 @@ class RunLocalAttacker:
         """The program's answer, checked for its form; a form problem is the program's failure, never an attack
         outcome."""
         config = self.config
-        if not path.is_file():
-            raise ResponseError("the program wrote no response.json")
-        if path.stat().st_size > RESPONSE_BYTES:
-            raise ResponseError("response.json is too large")
         try:
+            if not path.is_file():
+                raise ResponseError("the program wrote no response.json")
+            if path.stat().st_size > RESPONSE_BYTES:
+                raise ResponseError("response.json is too large")
             data = json.loads(path.read_bytes().decode())
+        except OSError as error:
+            raise AttackerInfrastructureError("response_read", f"{type(error).__name__}: {error}") from error
         except (ValueError, RecursionError) as error:
             raise ResponseError(f"response.json is not valid JSON: {error}") from None
         if not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION:

@@ -174,9 +174,11 @@ If rollback fails and the resulting application count cannot be established, the
 than zero. Application failures retain the prior audit behavior: they may have `response.json` but no `record.json`;
 existing call and usage aggregation is unchanged.
 
-A program, configuration or provider problem (exit status, timeout, an answer not in the protocol's form, an input
-over the limit) is not an attack failure: the session ends invalid with `result.json`'s `infrastructure_error`, the
-call's record holds `status: infrastructure_error`, and a resume runs the session again from the last checkpoint.
+A program, configuration or provider problem (exit status, program timeout, a container or host failure while reading
+the code or the response, an answer not in the protocol's form, an input over the limit, a request that cannot be
+encoded as UTF-8) is not an attack failure: the session ends invalid with `result.json`'s `infrastructure_error`, the
+call's record holds `status: infrastructure_error` where one was written, and a resume runs the session again from the
+last checkpoint.
 
 ## Measurement
 

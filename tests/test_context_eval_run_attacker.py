@@ -3,6 +3,7 @@
 import hashlib
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -463,6 +464,69 @@ def test_infrastructure_error_is_not_an_attack_outcome(tmp_path, fixture_world, 
     assert result["infrastructure_error"]["code"] == "writer_failed"
     assert not (chain(root) / "001-exposure" / run_attacker.STATE_FILE).exists()
     assert records(chain(root) / "001-exposure")[0]["status"] == "infrastructure_error"
+
+
+@pytest.mark.parametrize(
+    ("failure", "code"),
+    [
+        ("file_index", "code_index"),
+        ("read_code", "read_code"),
+        ("load_response", "response_read"),
+        ("file_sha256", "response_hash"),
+        ("encode", "request_encoding"),
+    ],
+)
+def test_container_and_response_failures_are_infrastructure_errors(tmp_path, fixture_world, monkeypatch, failure, code):
+    dataset, factory, _, _ = fixture_world
+    monkeypatch.setattr(run_attacker, "run_program", FakeWriter())
+
+    class Broken(factory):
+        def execute(self, command):
+            if failure == "file_index" and "ls-files" in command:
+                raise RuntimeError("fixture container timeout")
+            return super().execute(command)
+
+        def read(self, path):
+            if failure == "read_code" and path == "/app/README.md":
+                raise subprocess.TimeoutExpired("read", 30)
+            return super().read(path)
+
+    if failure == "load_response":
+        original_read = Path.read_bytes
+
+        def read_bytes(self):
+            if self.name == "response.json":
+                raise OSError("fixture response read")
+            return original_read(self)
+
+        monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    if failure == "file_sha256":
+        original_hash = run_attacker.file_sha256
+
+        def failing_hash(path):
+            if Path(path).name == "response.json":
+                raise OSError("fixture hash")
+            return original_hash(path)
+
+        monkeypatch.setattr(run_attacker, "file_sha256", failing_hash)
+    if failure == "encode":
+        original_request = run_attacker.RunLocalAttacker.request
+
+        def request(self, *args, **kwargs):
+            data = original_request(self, *args, **kwargs)
+            data["notebook"] = "\ud800"
+            return data
+
+        monkeypatch.setattr(run_attacker.RunLocalAttacker, "request", request)
+    config = ExperimentConfig.model_validate(raw_config(dataset) | {"repeats": 1})
+    root = tmp_path / "campaign"
+    run_campaign(config, root, default_registry(), env_factory=Broken, identities=IDS)
+    result = json.loads((chain(root) / "001-exposure" / "result.json").read_text())
+    assert result["status"] == "invalid"
+    assert result["infrastructure_error"]["code"] == code
+    summary = campaign_summary(root, 20)
+    assert summary["infrastructure_errors"] == 1
+    assert summary["clean_infrastructure_errors"] == 0
 
 
 def test_resume_uses_only_completed_checkpoints(tmp_path, fixture_world, monkeypatch):
