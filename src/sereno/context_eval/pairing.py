@@ -20,7 +20,7 @@ from pathlib import Path
 from sereno.context_eval.config import fingerprint, load_config, validate
 from sereno.context_eval.engine import message_text, sent_contexts
 from sereno.context_eval.memory import instructions
-from sereno.context_eval.run_attacker import STATE_FILE, read_state, writer_manifest
+from sereno.context_eval.run_attacker import STATE_FILE, check_command_identity, read_state, writer_manifest
 
 SCHEMA_VERSION = "1.0"
 RESULT_NAME = "defense effectiveness under equal-budget adaptive attack"
@@ -125,7 +125,43 @@ def added_lines(before: str | None, after: str | None, min_chars: int) -> list[s
     return [line for line in (after or "").splitlines() if line not in old and len(line.strip()) >= min_chars]
 
 
-def chain_summary(arm_dir: Path, budget: dict, min_chars: int) -> dict:
+def realized_usage(arm_dirs: list[Path]) -> dict:
+    totals = {
+        "calls": 0,
+        "tokens": 0,
+        "seconds": 0.0,
+        "writes": 0,
+        "cost_usd": 0.0,
+        "unreported_usage_calls": 0,
+        "unreported_completions": 0,
+        "declined_calls": 0,
+        "declined_attempts": 0,
+    }
+    paths = {path.resolve() for arm in arm_dirs for path in arm.glob("sessions/*/run_attacker/*/record.json")}
+    for path in sorted(paths):
+        if (path.parents[2] / "branch.json").is_file():
+            continue
+        record = read_json(path) or {}
+        if "program" not in record:
+            continue
+        usage = record.get("usage") or {}
+        tokens = usage.get("tokens")
+        missing = usage.get("unreported_completions", 0)
+        totals["calls"] += 1
+        totals["tokens"] += tokens or 0
+        totals["seconds"] += record.get("seconds") or 0.0
+        totals["writes"] += record.get("status") == "applied"
+        totals["cost_usd"] += usage.get("cost_usd") or 0.0
+        totals["unreported_usage_calls"] += tokens is None or missing > 0
+        totals["unreported_completions"] += missing
+        totals["declined_calls"] += bool(record.get("declined"))
+        totals["declined_attempts"] += record.get("declined_attempts", 0)
+    totals["seconds"] = round(totals["seconds"], 3)
+    totals["cost_usd"] = round(totals["cost_usd"], 6)
+    return totals
+
+
+def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tuple[Path, ...] = ()) -> dict:
     """One attack_carry chain: per session the calls and what their actions came to, the realized use beside the
     budget, and for each applied write whether its added lines later reached the agent or the next sessions."""
     sessions, writes, last_state = [], [], None
@@ -195,9 +231,14 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int) -> dict:
             if lines and any(x in texts[name]["agent_writes"] for x in lines)
         ]
     usage = (last_state or {}).get("usage", {})
+    realized = realized_usage([arm_dir, *attempts])
     return {
         "sessions": sessions,
         "usage": usage,
+        "realized_usage": realized,
+        "realized_cost_usd": realized["cost_usd"],
+        "declined_calls": realized["declined_calls"],
+        "declined_attempts": realized["declined_attempts"],
         "budget": budget,
         "writes": writes,
         "probe_writes_applied": sum(
@@ -211,15 +252,32 @@ def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = Non
     budget = (manifest.get("run_attacker") or {}).get("budget") or {}
     chains = {}
     clean_errors = 0
-    for case in sorted((campaign / "cases").glob("*")):
-        arm = case / "arms" / "attack_carry"
-        if arm.is_dir():
-            chains[case.name] = chain_summary(arm, budget, min_chars)
+    case_names = {case.name for case in (campaign / "cases").glob("*")}
+    case_names |= {arm.parents[1].name for arm in (campaign / "superseded").glob("*/cases/*/arms/attack_carry")}
+    for name in sorted(case_names):
+        arm = campaign / "cases" / name / "arms/attack_carry"
+        attempts = tuple(sorted((campaign / "superseded").glob(f"*/cases/{name}/arms/attack_carry")))
+        if arm.is_dir() or attempts:
+            chains[name] = chain_summary(arm, budget, min_chars, attempts=attempts)
     for result in campaign.glob("clean/*/sessions/*/result.json"):
         clean_errors += bool((read_json(result) or {}).get("infrastructure_error"))
     infrastructure = sum(
         bool(session["infrastructure_error"]) for chain in chains.values() for session in chain["sessions"]
     )
+    realized = {key: sum(chain["realized_usage"][key] for chain in chains.values()) for key in realized_usage([])}
+    realized["seconds"] = round(realized["seconds"], 3)
+    realized["cost_usd"] = round(realized["cost_usd"], 6)
+    arm_names = {"clean", "attack_carry"}
+    arm_names |= {arm.name for arm in (campaign / "cases").glob("*/arms/*")}
+    arm_names |= {arm.name for arm in (campaign / "superseded").glob("*/cases/*/arms/*")}
+    declines_by_arm = {}
+    for name in sorted(arm_names):
+        arms = [
+            *(campaign / "cases").glob(f"*/arms/{name}"),
+            *(campaign / "superseded").glob(f"*/cases/*/arms/{name}"),
+        ]
+        usage = realized_usage(arms)
+        declines_by_arm[name] = {key: usage[key] for key in ("declined_calls", "declined_attempts")}
     return {
         "campaign": str(campaign.resolve()),
         "config_sha256": manifest.get("config_sha256"),
@@ -227,6 +285,9 @@ def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = Non
         "infrastructure_errors": infrastructure,
         "clean_infrastructure_errors": clean_errors,
         "cost_usd": round(sum(chain["usage"].get("cost_usd", 0.0) for chain in chains.values()), 6),
+        "realized_usage": realized,
+        "realized_cost_usd": round(realized.get("cost_usd", 0.0), 6),
+        "declines_by_arm": declines_by_arm,
     }
 
 
@@ -246,6 +307,7 @@ def summarize_pair(pairing: dict, defended: Path, undefended: Path, *, min_line_
             raise ValueError(f"the {side} campaign does not run the paired config")
         if manifest.get("run_attacker") != pairing.get("run_attacker"):
             raise ValueError(f"the {side} campaign's attacker program or settings differ from the pairing's")
+        check_command_identity((manifest.get("run_attacker") or {}).get("command", []))
         manifests[side] = manifest
     summaries = {side: campaign_summary(path, min_line_chars, manifests[side]) for side, path in sides.items()}
     return {

@@ -2,9 +2,10 @@
 
 One logical call is at most `attempts` transport attempts, all inside the program's shared deadline. A transient HTTP
 status or a connection failure is retried within that budget; every other trouble (missing credential, authentication,
-balance, a body-level error under HTTP 200, an unexpected provider, a refusal, a cut-off, an empty answer) is an
-explicit failure that is never retried or worked around. An ambiguous transport failure can be billed twice, so every
-attempt is recorded and a request is never described as exactly-once.
+balance, a body-level error under HTTP 200, an unexpected provider, a cut-off, an empty answer) is an explicit failure.
+Live mode may expose declines for bounded plain resampling; other writer modes still treat refusals as failures.
+An ambiguous transport failure can be billed twice, so every attempt is recorded and a request is never described as
+exactly-once.
 """
 
 import contextlib
@@ -94,9 +95,11 @@ class Completion:
     generation_id: str | None
     usage: dict
     body: dict = field(repr=False)
+    declined: bool = False
 
     def record(self) -> dict:
         return {
+            "declined": self.declined,
             "finish_reason": self.finish_reason,
             "native_finish_reason": self.native_finish_reason,
             "returned_model": self.model,
@@ -125,7 +128,7 @@ def sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def parse_completion(body: object, expected_provider: str) -> Completion:
+def parse_completion(body: object, expected_provider: str, *, allow_declines: bool = False) -> Completion:
     """A usable answer, or the explicit failure its body amounts to."""
     if not isinstance(body, dict):
         raise ProviderFailure("the response body is not a JSON object", "malformed_body")
@@ -141,14 +144,17 @@ def parse_completion(body: object, expected_provider: str) -> Completion:
     if provider != expected_provider:
         raise ProviderFailure(f"answered by {provider!r}, not {expected_provider!r}", "unexpected_provider")
     message, finish = choice["message"], choice.get("finish_reason")
-    if message.get("refusal") or finish == "content_filter":
+    declined = bool(message.get("refusal")) or finish == "content_filter"
+    if declined and not allow_declines:
         raise ProviderFailure("the provider refused", "refusal")
-    if finish == "length":
+    if finish == "length" and not declined:
         raise ProviderFailure("the answer was cut off at the length limit", "truncated")
-    if finish != "stop":
+    if finish != "stop" and not declined:
         raise ProviderFailure(f"the answer ended with finish_reason {finish!r}", "unexpected_finish")
     content = message.get("content")
-    if not isinstance(content, str) or not content.strip():
+    if declined and content is None:
+        content = ""
+    if not isinstance(content, str) or (not content.strip() and not declined):
         raise ProviderFailure("the completion is empty", "empty_completion")
     usage = body.get("usage")
     return Completion(
@@ -161,6 +167,7 @@ def parse_completion(body: object, expected_provider: str) -> Completion:
         generation_id=body.get("id"),
         usage=usage if isinstance(usage, dict) else {},
         body=body,
+        declined=declined,
     )
 
 
@@ -204,8 +211,10 @@ class Provider:
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
         sink: Sink | None = None,
+        allow_declines: bool = False,
     ):
         self.config, self.deadline, self.sleep, self.sink = config, deadline, sleep, sink
+        self.allow_declines = allow_declines
         self.key = config.credential()
         self.client = httpx.Client(transport=transport, follow_redirects=False)
         self.attempts: list[Attempt] = []
@@ -259,7 +268,9 @@ class Provider:
                     body = json.loads(answer.decode("utf-8"))
                 except (ValueError, UnicodeDecodeError):
                     raise ProviderFailure("the response body is not valid JSON", "malformed_body") from None
-                return parse_completion(body, self.config.api["provider"]["order"][0])
+                return parse_completion(
+                    body, self.config.api["provider"]["order"][0], allow_declines=self.allow_declines
+                )
             if status in control.retry_statuses:
                 if number == control.attempts:
                     raise ProviderFailure(f"HTTP {status} after {number} attempts", "http_transient")

@@ -111,17 +111,19 @@ def parse_completion(answer: bytes) -> Completion:
     finish = body.get("stop_reason")
     if finish == "max_tokens":
         raise ProviderFailure("the answer was cut off at the length limit", "truncated")
-    if finish == "refusal":
-        raise ProviderFailure("the provider refused", "refusal")
-    if finish not in FINISHES:
+    declined = finish == "refusal"
+    if finish not in FINISHES and not declined:
         raise ProviderFailure(f"the answer ended with stop_reason {finish!r}", "unexpected_finish")
     text = "\n".join(texts)
-    if not text.strip() and not calls:
+    if not text.strip() and not calls and not declined:
         raise ProviderFailure("the completion is empty", "empty_completion")
     raw_usage = body.get("usage")
     usage: dict = raw_usage if isinstance(raw_usage, dict) else {}
     prompt, completion = usage.get("input_tokens"), usage.get("output_tokens")
-    if isinstance(prompt, int) and isinstance(completion, int):
+    creation = usage.get("cache_creation_input_tokens", 0)
+    cached = usage.get("cache_read_input_tokens", 0)
+    if all(isinstance(value, int) and not isinstance(value, bool) for value in (prompt, completion, creation, cached)):
+        prompt += creation + cached
         usage = {"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": prompt + completion}
     else:
         usage = {}
@@ -135,6 +137,7 @@ def parse_completion(answer: bytes) -> Completion:
         model=body.get("model"),
         provider="anthropic",
         generation_id=body.get("id"),
+        declined=declined,
     )
 
 

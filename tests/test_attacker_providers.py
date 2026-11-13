@@ -11,6 +11,7 @@ from sereno.attacker.errors import ConfigError, ProviderFailure
 from sereno.attacker.providers import build_provider
 from sereno.attacker.providers.anthropic import AnthropicProvider
 from sereno.attacker.providers.anthropic import messages as anthropic_messages
+from sereno.attacker.providers.anthropic import parse_completion as parse_anthropic_completion
 from sereno.attacker.providers.base import AssistantTurn, SystemTurn, ToolCall, ToolTurn, UserTurn
 from sereno.attacker.providers.openai import OpenAICompatibleProvider
 from sereno.attacker.tools import TOOL_SPECS
@@ -23,6 +24,27 @@ def openai_completion(content, *, finish="tool_calls", message=None) -> dict:
         "choices": [{"message": message or {"role": "assistant", "content": content}, "finish_reason": finish}],
         "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
     }
+
+
+def test_anthropic_counts_cache_creation_and_cache_read_input_tokens():
+    completion = parse_anthropic_completion(
+        json.dumps(
+            {
+                "content": [{"type": "text", "text": "answer"}],
+                "stop_reason": "end_turn",
+                "usage": {
+                    "input_tokens": 4,
+                    "output_tokens": 3,
+                    "cache_creation_input_tokens": 10,
+                    "cache_read_input_tokens": 20,
+                },
+            }
+        ).encode()
+    )
+    assert completion.usage["prompt_tokens"] == 34
+    assert completion.usage["completion_tokens"] == 3
+    assert completion.usage["total_tokens"] == 37
+    assert "cost" not in completion.usage
 
 
 def test_openai_maps_turns_tools_and_reasoning(tmp_path):
@@ -89,7 +111,6 @@ def test_openai_maps_turns_tools_and_reasoning(tmp_path):
 @pytest.mark.parametrize(
     ("message", "finish", "code"),
     [
-        ({"role": "assistant", "content": "", "refusal": "no"}, "stop", "refusal"),
         ({"role": "assistant", "content": "cut"}, "length", "truncated"),
         ({"role": "assistant", "content": ""}, "stop", "empty_completion"),
     ],

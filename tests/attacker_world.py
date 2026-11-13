@@ -82,7 +82,9 @@ def make_request(**contract) -> dict:
         "code_root": "/app",
         "max_reads_per_call": 10,
         "max_read_bytes": 200000,
-        "response_keys": sorted(["schema_version", "actions", "strategy", "notebook", "reads", "writer_usage"]),
+        "response_keys": sorted(
+            ["schema_version", "actions", "strategy", "notebook", "reads", "writer_usage", "status"]
+        ),
     }
     return {
         "schema_version": "1.0",

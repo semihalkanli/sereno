@@ -21,6 +21,7 @@ outcome.
 """
 
 import copy
+import hashlib
 import json
 import shlex
 import time
@@ -47,7 +48,7 @@ SCHEMA_VERSION = "1.0"
 STATE_SCHEMA = "1.0"
 STATE_FILE = "run_attacker_state.json"
 AUDIT_DIR = "run_attacker"
-RESPONSE_KEYS = frozenset({"schema_version", "actions", "strategy", "notebook", "reads", "writer_usage"})
+RESPONSE_KEYS = frozenset({"schema_version", "actions", "strategy", "notebook", "reads", "writer_usage", "status"})
 # What a call's actions came to. Only `applied` changes memory.
 ACTION_RESULTS = ("applied", "no_change", "no_action", "rejected", "not_applied")
 # Message fields a recorded transcript shows; provider metadata stays out except the readable thinking text, which
@@ -157,6 +158,11 @@ def reported_cost(usage: object) -> float:
     return float(cost) if isinstance(cost, int | float) and not isinstance(cost, bool) else 0.0
 
 
+def reported_count(usage: object, key: str) -> int:
+    value = usage.get(key) if isinstance(usage, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
 class RunLocalAttacker:
     """The attacker of one session. `state` is the checkpoint of the chain's previous completed session, or None for
     the chain's first session; it is copied, so nothing this session does reaches it until `finish` returns."""
@@ -227,11 +233,12 @@ class RunLocalAttacker:
         self.state["pending_reads"] = []
         return served
 
-    def exhausted(self) -> str | None:
+    def exhausted(self, kind: str) -> str | None:
         budget, used = self.config.budget, self.state["usage"]
-        if used["calls"] >= budget.max_calls:
+        reserve = int(kind == "in_task")
+        if used["calls"] >= budget.max_calls - reserve:
             return "max_calls"
-        if self.session_calls >= budget.max_calls_per_session:
+        if self.session_calls >= budget.max_calls_per_session - reserve:
             return "max_calls_per_session"
         if used["tokens"] >= budget.max_tokens:
             return "max_tokens"
@@ -267,7 +274,7 @@ class RunLocalAttacker:
         return copy.deepcopy(self.state)
 
     def call(self, kind: str, transcript: list[dict], summary: dict | None = None) -> None:
-        if reason := self.exhausted():
+        if reason := self.exhausted(kind):
             self.state["usage"]["skipped_calls"] += 1
             if reason not in self.skipped:
                 self.skipped.add(reason)
@@ -279,7 +286,7 @@ class RunLocalAttacker:
         runtime, config = self.runtime, self.config
         writes_open = kind == "in_task" and self.stage == "exposure"
         request = self.request(kind, number, transcript, summary, writes_open)
-        encoded = json.dumps(request, ensure_ascii=False).encode()
+        encoded = (json.dumps(request, ensure_ascii=False, sort_keys=True) + "\n").encode()
         audit = runtime.log.path.parent / AUDIT_DIR / f"{number:04d}"
         audit.mkdir(parents=True, exist_ok=False)
         base = {
@@ -295,11 +302,18 @@ class RunLocalAttacker:
             "strategy_sha256_before": self.state["strategy"]["sha256"],
             "notebook_sha256_before": fingerprint(self.state["notebook"]),
             "request_bytes": len(encoded),
-            "request_sha256": fingerprint(request),
+            "request_sha256": hashlib.sha256(encoded).hexdigest(),
         }
         if len(encoded) > config.max_input_bytes:
-            self.fail(audit, base, "input_over_limit", f"the request is {len(encoded)} bytes, over max_input_bytes")
-        write_atomic(audit / "request.json", request)
+            self.fail(
+                audit,
+                base,
+                "input_over_limit",
+                f"the request is {len(encoded)} bytes, over max_input_bytes={config.max_input_bytes}",
+            )
+        partial = audit / ".request.json.partial"
+        partial.write_bytes(encoded)
+        partial.replace(audit / "request.json")
         clock = time.monotonic()
         # A fresh working directory on every call: the program keeps nothing of its own between calls.
         with TemporaryDirectory(prefix="sereno-run-attacker-") as scratch:
@@ -315,6 +329,20 @@ class RunLocalAttacker:
         base["program"] = {
             key: outcome.get(key) for key in ("exit_code", "timed_out", "error", "stdout_bytes", "stderr_bytes")
         }
+        if outcome["timed_out"] or outcome["error"] or outcome["exit_code"] != 0:
+            failure = audit / "failure_usage.json"
+            if failure.is_file() and failure.stat().st_size <= RESPONSE_BYTES:
+                try:
+                    usage = json.loads(failure.read_bytes())
+                except (OSError, ValueError, UnicodeDecodeError, RecursionError):
+                    usage = None
+                if isinstance(usage, dict):
+                    base["usage"] = {
+                        "tokens": reported_tokens(usage),
+                        "cost_usd": reported_cost(usage),
+                        "unreported_completions": reported_count(usage, "unreported_completions"),
+                    }
+                    base["declined_attempts"] = reported_count(usage, "declined_attempts")
         if outcome["timed_out"]:
             self.fail(audit, base, "timeout", f"the program ran past {config.timeout_seconds} seconds")
         if outcome["error"] or outcome["exit_code"] != 0:
@@ -327,10 +355,15 @@ class RunLocalAttacker:
         base["response_sha256"] = file_sha256(audit / "response.json")
         usage = response.get("writer_usage")
         tokens = reported_tokens(usage)
+        missing = reported_count(usage, "unreported_completions")
         self.state["usage"]["tokens"] += tokens or 0
-        self.state["usage"]["unreported_usage_calls"] += tokens is None
+        self.state["usage"]["unreported_usage_calls"] += tokens is None or missing > 0
         self.state["usage"]["cost_usd"] += reported_cost(usage)
-        base["usage"] = {"tokens": tokens, "cost_usd": reported_cost(usage)}
+        base["usage"] = {"tokens": tokens, "cost_usd": reported_cost(usage), "unreported_completions": missing}
+        base["declined"] = response.get("status") == "declined" or (
+            isinstance(usage, dict) and usage.get("finish") == "declined"
+        )
+        base["declined_attempts"] = reported_count(usage, "declined_attempts")
         status, reason, violations, changes = self.apply(actions, kind, writes_open)
         # The private state follows every valid answer, the rejected or unapplied actions included. A lone surrogate
         # in the program's JSON becomes an escape, so the checkpoint stays writable UTF-8.
@@ -438,6 +471,8 @@ class RunLocalAttacker:
             raise ResponseError(f"response.json must hold an object with schema_version {SCHEMA_VERSION!r}")
         if extra := set(data) - RESPONSE_KEYS:
             raise ResponseError(f"unexpected fields {sorted(extra)}")
+        if "status" in data and data["status"] != "declined":
+            raise ResponseError("status, when present, must be declined")
         if "actions" not in data:
             raise ResponseError("actions is missing")
         for key, limit in (("strategy", config.strategy_max_bytes), ("notebook", config.notebook_max_bytes)):
@@ -498,6 +533,7 @@ class RunLocalAttacker:
 def writer_manifest(config) -> dict:
     """The attacker as the campaign manifest records it: its settings, budgets and starting strategy, and the sha256
     of every command word that names an existing file."""
+    check_command_identity(config.command)
     return config.model_dump(mode="json") | {
         "strategy_sha256": fingerprint(config.strategy),
         "program_sha256": {
@@ -506,3 +542,13 @@ def writer_manifest(config) -> dict:
             if Path(word).is_absolute() and Path(word).is_file()
         },
     }
+
+
+def check_command_identity(command: list[str]) -> None:
+    from sereno.attacker.config import check_command_identity as check_attacker_command
+    from sereno.attacker.errors import ConfigError
+
+    try:
+        check_attacker_command(command)
+    except ConfigError as error:
+        raise ValueError(f"run_attacker {error.code}: {error}") from None

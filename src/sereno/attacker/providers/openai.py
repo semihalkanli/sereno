@@ -115,21 +115,18 @@ def parse_completion(answer: bytes, expected_provider: str | None) -> Completion
     if not isinstance(choice, dict) or not isinstance(choice.get("message"), dict):
         raise ProviderFailure("the response holds no choice with a message", "malformed_body")
     message, finish = choice["message"], choice.get("finish_reason")
-    if message.get("refusal"):
-        raise ProviderFailure("the provider refused", "refusal")
-    if finish == "length":
+    declined = bool(message.get("refusal")) or finish == "content_filter"
+    if finish == "length" and not declined:
         raise ProviderFailure("the answer was cut off at the length limit", "truncated")
-    if finish == "content_filter":
-        raise ProviderFailure("the provider filtered the answer", "refusal")
-    if finish not in FINISHES:
+    if finish not in FINISHES and not declined:
         raise ProviderFailure(f"the answer ended with finish_reason {finish!r}", "unexpected_finish")
-    calls = parse_tool_calls(message.get("tool_calls"))
+    calls = [] if declined else parse_tool_calls(message.get("tool_calls"))
     text = message.get("content")
     if text is None:
         text = ""
     if not isinstance(text, str):
         raise ProviderFailure("the answer's content is not text", "malformed_body")
-    if not text.strip() and not calls:
+    if not text.strip() and not calls and not declined:
         raise ProviderFailure("the completion is empty", "empty_completion")
     usage = body.get("usage")
     return Completion(
@@ -141,6 +138,7 @@ def parse_completion(answer: bytes, expected_provider: str | None) -> Completion
         model=body.get("model"),
         provider=provider if isinstance(provider, str) else None,
         generation_id=body.get("id"),
+        declined=declined,
     )
 
 

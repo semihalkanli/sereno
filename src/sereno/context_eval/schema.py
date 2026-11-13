@@ -326,7 +326,7 @@ class RunAttacker(Contract):
     # A file index with more entries is named with its count and never cut.
     max_index_entries: int = Field(100_000, ge=1, le=1_000_000)
     # A request over this size is an infrastructure error, never cut.
-    max_input_bytes: int = Field(4_000_000, ge=1, le=50_000_000)
+    max_input_bytes: int = Field(40_000_000, ge=1, le=50_000_000)
 
     @model_validator(mode="after")
     def coherent(self):

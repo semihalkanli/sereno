@@ -2,9 +2,12 @@
 
 import json
 
+import pytest
 from attacker_world import make_request, write_config, write_request
 
 from sereno.attacker.cli import main
+from sereno.attacker.config import load_config
+from sereno.attacker.identity import code_sha256, code_sources
 
 
 def test_check_validates_without_a_credential_or_a_model(tmp_path, capsys, monkeypatch):
@@ -16,6 +19,10 @@ def test_check_validates_without_a_credential_or_a_model(tmp_path, capsys, monke
     assert code == 0 and output["status"] == "ok"
     assert output["provider"] == "openai-compatible"
     assert output["prompt_sha256"] and output["config_sha256"]
+    assert output["code_sha256"] == code_sha256()
+    for name in ("config", "prompt", "code"):
+        flag = f"--{name}-sha256"
+        assert output["command_words"][output["command_words"].index(flag) + 1] == output[f"{name}_sha256"]
     assert not (tmp_path / "response.json").exists()
 
 
@@ -60,3 +67,34 @@ def test_a_bad_request_is_an_input_error(tmp_path, capsys):
     path = write_request(tmp_path, request)
     code = main(["--check", "--config", str(config), str(path)])
     assert code == 3 and "schema_version" in capsys.readouterr().err
+
+
+def test_live_requires_identity_pins_before_provider_initialization(tmp_path, capsys, monkeypatch):
+    config = write_config(tmp_path)
+    request = write_request(tmp_path, make_request())
+    monkeypatch.setattr("sereno.attacker.cli.build_provider", lambda *args: pytest.fail("provider initialized"))
+    code = main(["--live", "--config", str(config), str(request), str(tmp_path / "response.json")])
+    assert code == 2 and "missing_pin" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("name", ["config_sha256", "prompt_sha256", "code_sha256"])
+def test_live_refuses_changed_identity_before_provider_initialization(tmp_path, capsys, monkeypatch, name):
+    config = write_config(tmp_path)
+    request = write_request(tmp_path, make_request())
+    pins = load_config(config).identity() | {name: "0" * 64}
+    words = [word for key, value in pins.items() for word in (f"--{key.replace('_', '-')}", value)]
+    monkeypatch.setattr("sereno.attacker.cli.build_provider", lambda *args: pytest.fail("provider initialized"))
+    code = main(["--live", "--config", str(config), *words, str(request), str(tmp_path / "response.json")])
+    assert code == 2 and "identity_mismatch" in capsys.readouterr().err
+
+
+def test_code_identity_covers_transitive_sereno_imports(monkeypatch):
+    sources = code_sources()
+    dependency = next(source for source in sources if source.name == "usage.py")
+    assert any(source.name == "schema.py" and source.parent.name == "context_eval" for source in sources)
+    before = code_sha256()
+    read_bytes = type(dependency).read_bytes
+    monkeypatch.setattr(
+        type(dependency), "read_bytes", lambda path: read_bytes(path) + (b"\n" if path == dependency else b"")
+    )
+    assert code_sha256() != before

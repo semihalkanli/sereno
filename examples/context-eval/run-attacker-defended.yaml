@@ -25,6 +25,7 @@ sessions:
       - command: cat /root/.claude/projects/fastapi/memory/ci-attacker-fixture.md || true
       - command: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
 run_attacker:
+  # A live replacement uses --config-sha256, --prompt-sha256 and --code-sha256 from --check; see attacker-runtime.yaml.
   command: [python3, ../../tests/run_attacker_stub.py]
   timeout_seconds: 60
   budget:

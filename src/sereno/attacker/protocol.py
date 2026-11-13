@@ -14,11 +14,12 @@ from sereno.attacker.errors import ConfigError, InputError, OutputError
 from sereno.attacker.observation import envelope
 from sereno.attacker.tools import Toolbox
 from sereno.context_eval.engine import write_atomic
+from sereno.usage import sum_usage
 
 SCHEMA_VERSION = "1.0"
 KINDS = frozenset({"in_task", "session_end"})
 STAGES = frozenset({"exposure", "probe"})
-RESPONSE_KEYS = frozenset({"schema_version", "actions", "strategy", "notebook", "reads", "writer_usage"})
+RESPONSE_KEYS = frozenset({"schema_version", "actions", "strategy", "notebook", "reads", "writer_usage", "status"})
 
 
 def read_request(path: Path) -> dict:
@@ -92,37 +93,15 @@ def envelope_text(config: AttackerConfig, request: dict) -> str:
 
 def usage_record(completions: list, *, finish: str, steps: int, provider, config: AttackerConfig) -> dict:
     """The provider use of this call, in the form the harness's `reported_tokens` and `reported_cost` read."""
-    totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    reported = True
-    cost = 0.0
-    for completion in completions:
-        usage = completion.usage if isinstance(completion.usage, dict) else {}
-        prompt = usage.get("prompt_tokens")
-        answer = usage.get("completion_tokens")
-        total = usage.get("total_tokens")
-        if not isinstance(total, int) or isinstance(total, bool):
-            if (
-                isinstance(prompt, int)
-                and not isinstance(prompt, bool)
-                and isinstance(answer, int)
-                and not isinstance(answer, bool)
-            ):
-                total = prompt + answer
-            else:
-                reported = False
-                total = 0
-        for key, value in (("prompt_tokens", prompt), ("completion_tokens", answer)):
-            if isinstance(value, int) and not isinstance(value, bool):
-                totals[key] += value
-        totals["total_tokens"] += total
-        if isinstance(usage.get("cost"), int | float) and not isinstance(usage.get("cost"), bool):
-            cost += float(usage["cost"])
+    totals, missing, cost = sum_usage(completion.usage for completion in completions)
     return {
         "calls": len(completions),
-        "usage": totals if reported else {},
+        "usage": totals,
+        "unreported_completions": missing,
         "cost": cost,
         "steps": steps,
         "finish": finish,
+        "declined_attempts": sum(completion.declined for completion in completions),
         "provider": provider.name,
         "model": config.settings.provider.model,
         "config_sha256": config.config_sha256,
@@ -148,6 +127,8 @@ def build_response(
         "schema_version": SCHEMA_VERSION,
         "actions": [dict(action) for action in toolbox.staged.values()],
     }
+    if finish == "declined" and "status" in allowed:
+        response["status"] = "declined"
     if toolbox.strategy_dirty and "strategy" in allowed:
         response["strategy"] = toolbox.strategy
     if toolbox.notebook_dirty and "notebook" in allowed:
@@ -177,6 +158,8 @@ def validate_response(response: dict, contract: dict) -> None:
         raise OutputError(f"the response must carry schema_version {SCHEMA_VERSION!r}", "response")
     if extra := sorted(set(response) - RESPONSE_KEYS):
         raise OutputError(f"unexpected response fields {extra}", "response")
+    if "status" in response and response["status"] != "declined":
+        raise OutputError("status, when present, must be declined", "response")
     actions = response.get("actions")
     if not isinstance(actions, list):
         raise OutputError("actions must be a list", "response")

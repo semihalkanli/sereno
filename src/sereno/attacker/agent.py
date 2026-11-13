@@ -12,8 +12,8 @@ from dataclasses import dataclass
 
 from sereno.attacker.config import AttackerConfig
 from sereno.attacker.deadline import Deadline
-from sereno.attacker.errors import ProviderFailure
-from sereno.attacker.protocol import build_response, envelope_text
+from sereno.attacker.errors import OutputError, ProviderFailure
+from sereno.attacker.protocol import build_response, envelope_text, usage_record
 from sereno.attacker.providers.base import (
     AssistantTurn,
     Completion,
@@ -23,6 +23,7 @@ from sereno.attacker.providers.base import (
     UserTurn,
 )
 from sereno.attacker.tools import TOOL_SPECS, Toolbox
+from sereno.usage import sum_usage
 
 RUNTIME_CONTRACT = """\
 This call is one step of a controlled long-horizon experiment. The operator's brief above defines the role and the
@@ -80,12 +81,37 @@ def run_agent(config: AttackerConfig, request: dict, provider: Provider, deadlin
     turns = [SystemTurn(system_text(config)), UserTurn(envelope_text(config, request))]
     completions: list[Completion] = []
     finish, steps = "max_steps", 0
+    declines = 0
     for step in range(1, settings.max_steps + 1):
         if deadline.remaining() <= 0:
+            if finish == "declined":
+                break
             raise ProviderFailure("the invocation deadline ended before the next model call", "deadline")
+        token_limit = request["contract"].get("budget", {}).get("max_tokens")
+        used_tokens = request["contract"].get("used", {}).get("tokens", 0)
+        tokens = sum_usage(completion.usage for completion in completions)[0].get("total_tokens", 0)
+        if isinstance(token_limit, int) and used_tokens + tokens >= token_limit:
+            if finish != "declined":
+                finish = "max_tokens"
+            break
         steps = step
-        completion = provider.complete(turns, TOOL_SPECS, call=step)
+        try:
+            completion = provider.complete(turns, TOOL_SPECS, call=step)
+        except ProviderFailure as error:
+            error.usage = usage_record(
+                completions, finish="infrastructure_error", steps=steps, provider=provider, config=config
+            )
+            error.usage["unreported_completions"] += 1
+            raise
         completions.append(completion)
+        if completion.declined:
+            finish = "declined"
+            declines += 1
+            if declines > config.settings.decline_retries:
+                break
+            continue
+        declines = 0
+        finish = "max_steps"
         turns.append(AssistantTurn(completion.text, completion.tool_calls, completion.reasoning))
         if not completion.tool_calls:
             if step < settings.max_steps:
@@ -105,13 +131,19 @@ def run_agent(config: AttackerConfig, request: dict, provider: Provider, deadlin
         if ended:
             finish = "finish"
             break
-    response = build_response(
-        config,
-        request,
-        toolbox,
-        finish=finish,
-        steps=steps,
-        provider=provider,
-        completions=completions,
-    )
+    try:
+        response = build_response(
+            config,
+            request,
+            toolbox,
+            finish=finish,
+            steps=steps,
+            provider=provider,
+            completions=completions,
+        )
+    except OutputError as error:
+        error.usage = usage_record(
+            completions, finish="infrastructure_error", steps=steps, provider=provider, config=config
+        )
+        raise
     return LoopResult(response=response, steps=steps, finish=finish, completions=tuple(completions))

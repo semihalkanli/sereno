@@ -15,11 +15,12 @@ import sys
 from pathlib import Path
 
 from sereno.attacker.agent import run_agent
-from sereno.attacker.config import load_config
+from sereno.attacker.config import check_identity, load_config
 from sereno.attacker.deadline import Deadline
 from sereno.attacker.errors import AttackerError, InputError
 from sereno.attacker.protocol import check_contract, read_request, write_response
 from sereno.attacker.providers import build_provider
+from sereno.context_eval.engine import write_atomic
 
 
 def parser() -> argparse.ArgumentParser:
@@ -28,6 +29,8 @@ def parser() -> argparse.ArgumentParser:
         description="Serve one run_attacker call with a model-agnostic tool loop.",
     )
     command.add_argument("--config", type=Path, required=True, help="the runtime configuration")
+    for name in ("config", "prompt", "code"):
+        command.add_argument(f"--{name}-sha256", help=f"{name}_sha256 from --check; required in live mode")
     mode = command.add_mutually_exclusive_group(required=True)
     mode.add_argument("--live", action="store_true", help="call the provider and write the response")
     mode.add_argument("--check", action="store_true", help="validate the configuration and request; no model call")
@@ -46,8 +49,13 @@ def check_summary(config, request: dict) -> dict:
         "status": "ok",
         "provider": config.settings.provider.kind,
         "model": config.settings.provider.model,
-        "config_sha256": config.config_sha256,
-        "prompt_sha256": config.prompt_sha256,
+        **config.identity(),
+        "command_words": [
+            "--live",
+            "--config",
+            str(config.path),
+            *[word for name, value in config.identity().items() for word in (f"--{name.replace('_', '-')}", value)],
+        ],
         "contract": {
             "kind": contract["kind"],
             "stage": contract["stage"],
@@ -81,10 +89,12 @@ def main(argv: list[str] | None = None) -> int:
         request = read_request(args.request)
         check_contract(config, request)
         if args.check:
+            check_identity(config, {name: getattr(args, name) for name in config.identity()}, required=False)
             print(json.dumps(check_summary(config, request), indent=2, sort_keys=True))
             return 0
         if args.response is None:
             raise InputError("a live call needs the response path", "arguments")
+        check_identity(config, {name: getattr(args, name) for name in config.identity()}, required=True)
         deadline = Deadline(config.settings.deadline_seconds)
         provider = build_provider(config, deadline)
         try:
@@ -95,6 +105,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(run_summary(config, result), sort_keys=True))
         return 0
     except AttackerError as error:
+        if error.usage is not None and args.response is not None:
+            write_atomic(args.response.with_name("failure_usage.json"), error.usage)
         print(f"attacker: {error.code}: {error}", file=sys.stderr)
         return error.exit_code
     except Exception as error:

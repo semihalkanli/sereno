@@ -6,8 +6,16 @@ import pytest
 import yaml
 from attacker_world import PROMPT
 
-from sereno.attacker.config import load_config
+from sereno.attacker.config import AttackerSettings, load_config
 from sereno.attacker.errors import ConfigError
+
+
+def test_runtime_example_configuration_is_valid():
+    path = Path(__file__).parents[1] / "examples/context-eval/attacker-runtime.yaml"
+    settings = AttackerSettings.model_validate(yaml.safe_load(path.read_text()))
+    assert settings.prompt_file.is_absolute()
+    assert settings.deadline_seconds < 60
+    assert settings.provider.credential_env == "DEEPSEEK_API_KEY"
 
 
 def write_config(tmp_path: Path, **changes) -> Path:

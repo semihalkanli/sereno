@@ -64,6 +64,7 @@ class Settings(Contract):
     design: Path
     # Wall clock for one run of the program; the hook's timeout_seconds must be larger.
     deadline_seconds: int = Field(ge=1)
+    decline_retries: int = Field(default=2, ge=0, le=10)
     # Largest request body, in UTF-8 bytes. A larger input is refused, never cut.
     max_input_bytes: int = Field(ge=1)
     # Repository address -> a bare git directory holding the base commit.
@@ -154,13 +155,20 @@ class WriterConfig:
 
 
 def code_sha256() -> str:
-    """A hash over this package's sources and the harness package it imports (sereno.context_eval, whose
-    validate_actions and memory layout decide what the writer checks), recorded with every attempt: the campaign
+    """A hash over this package's sources and the harness code it imports (sereno.context_eval, whose
+    validate_actions and memory layout decide what the writer checks, and sereno.usage, which sums the usage live mode
+    reports), recorded with every attempt: the campaign
     manifest hashes the words of the command that name files, and with `python -m` that leaves the writer's own code
     out."""
     package = Path(__file__).parent
     digest = hashlib.sha256()
-    for source in sorted([*package.glob("*.py"), *(package.parent / "context_eval").glob("*.py")]):
+    for source in sorted(
+        [
+            *package.glob("*.py"),
+            *(package.parent / "context_eval").glob("*.py"),
+            package.parent / "usage.py",
+        ]
+    ):
         name = f"{source.parent.name}/{source.name}"
         digest.update(name.encode() + b"\0" + source.read_bytes() + b"\0")
     return digest.hexdigest()

@@ -42,9 +42,11 @@ class Completion:
     model: str | None = None
     provider: str | None = None
     generation_id: str | None = None
+    declined: bool = False
 
     def record(self) -> dict:
         return {
+            "declined": self.declined,
             "finish_reason": self.finish_reason,
             "returned_model": self.model,
             "provider": self.provider,

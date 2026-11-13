@@ -74,6 +74,18 @@ def test_strategy_left_out_keeps_it_and_a_structural_problem_is_repaired(tmp_pat
     assert "bad_strategy" in repair
 
 
+def test_live_usage_preserves_reported_repair_totals_when_one_call_has_no_usage(tmp_path, monkeypatch):
+    monkeypatch.setenv(KEY_ENV, "fixture-key")
+    config = World(tmp_path).config()
+    transport = Transport(reply("not json", extra={"usage": {}}), reply(answer()))
+    response = tmp_path / "live-response.json"
+    live.run_live(config, request(tmp_path), response, transport=transport.transport)
+    usage = json.loads(response.read_text())["writer_usage"]
+    assert usage["usage"] == {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+    assert usage["unreported_completions"] == 1
+    assert usage["cost"] == 0.0123
+
+
 def test_unusable_answers_end_without_a_response(tmp_path, monkeypatch):
     monkeypatch.setenv(KEY_ENV, "fixture-key")
     config = World(tmp_path).config()

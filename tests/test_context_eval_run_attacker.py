@@ -1,5 +1,6 @@
 """The run-local attacker with a fake writer: no model, no network, no container."""
 
+import hashlib
 import json
 import shutil
 import sys
@@ -8,8 +9,10 @@ from pathlib import Path
 import pytest
 import test_context_eval as base
 import yaml
+from attacker_world import write_config as write_attacker_config
 
-from sereno.attacker.config import LoopSettings
+from sereno.attacker.config import AttackerConfig, LoopSettings
+from sereno.attacker.config import load_config as load_attacker_config
 from sereno.attacker.tools import Toolbox
 from sereno.context_eval import run_attacker
 from sereno.context_eval.cli import main
@@ -288,6 +291,55 @@ def test_request_carries_a_transcript_thinking_summary(tmp_path, fixture_world):
     assert request["observation"]["transcript"] == [{"role": "assistant", "content": "visible", "thinking": "summary"}]
 
 
+def test_request_is_serialized_once_and_audit_hashes_the_sent_bytes(tmp_path, fixture_world, monkeypatch):
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    writer = FakeWriter()
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    dumps = json.dumps
+    requests_serialized = []
+
+    def counted(value, *args, **kwargs):
+        if isinstance(value, dict) and "observation" in value:
+            requests_serialized.append(value)
+        return dumps(value, *args, **kwargs)
+
+    monkeypatch.setattr(json, "dumps", counted)
+    attacker.advance([{"role": "assistant", "content": "é" * 100}])
+    assert len(requests_serialized) == 1
+    audit = tmp_path / "run_attacker/0001"
+    sent = (audit / "request.json").read_bytes()
+    record = json.loads((audit / "record.json").read_bytes())
+    assert record["request_bytes"] == len(sent)
+    assert record["request_sha256"] == hashlib.sha256(sent).hexdigest()
+
+
+def test_request_overflow_records_actual_and_limit_bytes(tmp_path, fixture_world):
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    config = RunAttacker(**attacker_settings(max_input_bytes=100))
+    attacker = run_attacker.RunLocalAttacker(config, runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match=r"max_input_bytes=100"):
+        attacker.advance([])
+    record = json.loads((tmp_path / "run_attacker/0001/record.json").read_bytes())
+    assert str(record["request_bytes"]) in record["error"]["message"]
+    assert "max_input_bytes=100" in record["error"]["message"]
+    assert record["status"] == "infrastructure_error"
+
+
+def test_partial_usage_is_charged_and_flagged(tmp_path, fixture_world, monkeypatch):
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    writer = FakeWriter(
+        lambda request: {"writer_usage": {"usage": {"total_tokens": 14}, "unreported_completions": 1, "cost": 0.3}}
+    )
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    attacker.advance([])
+    assert attacker.state["usage"]["tokens"] == 14
+    assert attacker.state["usage"]["cost_usd"] == 0.3
+    assert attacker.state["usage"]["unreported_usage_calls"] == 1
+    assert attacker.calls[0]["usage"]["unreported_completions"] == 1
+
+
 def test_rejected_write_keeps_memory_but_the_private_state_learns(tmp_path, fixture_world, monkeypatch):
     env, runtime = runtime_for(tmp_path, fixture_world)
     config = RunAttacker(**attacker_settings())
@@ -345,10 +397,40 @@ def test_budgets_bound_calls_and_writes(tmp_path, fixture_world, monkeypatch):
     attacker = run_attacker.RunLocalAttacker(config, runtime, "fixture task", "first")
     for _ in range(4):
         attacker.advance([{"role": "user", "content": "fixture task"}])
-    assert len(attacker.calls) == 2 and all(r["status"] == "not_applied" for r in attacker.calls)
-    assert env.read(NOTE) is None and attacker.state["usage"]["skipped_calls"] == 2
+    assert len(attacker.calls) == 1 and all(r["status"] == "not_applied" for r in attacker.calls)
+    assert env.read(NOTE) is None and attacker.state["usage"]["skipped_calls"] == 3
     events = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
     assert [e["reason"] for e in events if e["kind"] == "run_attacker_skipped"] == ["max_calls_per_session"]
+
+
+@pytest.mark.parametrize("session_limit", [1, 3])
+def test_session_call_budget_reserves_one_session_end_evaluation(tmp_path, fixture_world, monkeypatch, session_limit):
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    config = RunAttacker(**attacker_settings(budget=BUDGET | {"max_calls_per_session": session_limit}))
+    monkeypatch.setattr(run_attacker, "run_program", FakeWriter())
+    attacker = run_attacker.RunLocalAttacker(config, runtime, "fixture task", "first")
+    for _ in range(session_limit + 2):
+        attacker.advance([])
+    assert len(attacker.calls) == session_limit - 1
+    state = attacker.finish([], {})
+    assert [record["kind"] for record in attacker.calls] == ["in_task"] * (session_limit - 1) + ["session_end"]
+    assert state["usage"]["calls"] == session_limit
+
+
+def test_chain_call_budget_reserves_its_last_call_for_current_session_end(tmp_path, fixture_world, monkeypatch):
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    config = RunAttacker(**attacker_settings(budget=BUDGET | {"max_calls": 5}))
+    state = run_attacker.initial_state(config)
+    state["usage"]["calls"] = 4
+    monkeypatch.setattr(run_attacker, "run_program", FakeWriter())
+    attacker = run_attacker.RunLocalAttacker(config, runtime, "fixture task", "first", state)
+    attacker.advance([])
+    assert not attacker.calls
+    final = attacker.finish([], {})
+    assert len(attacker.calls) == 1 and attacker.calls[0]["kind"] == "session_end"
+    assert final["usage"]["calls"] == 5
+    attacker.call("session_end", [])
+    assert len(attacker.calls) == 1
 
 
 def test_infrastructure_error_is_not_an_attack_outcome(tmp_path, fixture_world, monkeypatch):
@@ -422,6 +504,140 @@ def test_a_session_that_fails_after_the_attacker_finished_leaves_no_checkpoint(t
     assert [s["checkpoint"] for s in summary["sessions"]] == [True, False]
     assert summary["sessions"][1]["strategy_version_end"] is None
     assert summary["usage"] == json.loads((exposure / run_attacker.STATE_FILE).read_text())["usage"]
+    assert summary["realized_usage"]["calls"] == 7
+    assert summary["realized_usage"]["tokens"] == 70
+    assert summary["realized_cost_usd"] == pytest.approx(0.007)
+
+
+def test_realized_usage_includes_invalid_and_superseded_attempts_without_copies(tmp_path):
+    case = "first--default--r001"
+    relative = Path("cases") / case / "arms/attack_carry"
+    active = tmp_path / relative
+    attempts = [active, *(tmp_path / "superseded" / stamp / relative for stamp in ("one", "two"))]
+    for index, arm in enumerate(attempts, 1):
+        audit = arm / "sessions/001-exposure/run_attacker/0001"
+        audit.mkdir(parents=True)
+        record = {
+            "kind": "in_task",
+            "status": "no_action",
+            "program": {"exit_code": 0},
+            "seconds": 0.25,
+            "declined": index == 2,
+            "declined_attempts": index,
+            "usage": {
+                "tokens": 10 * index,
+                "cost_usd": 0.1 * index,
+                "unreported_completions": int(index == 2),
+            },
+        }
+        (audit / "record.json").write_text(json.dumps(record))
+    session = active / "sessions/001-exposure"
+    state = run_attacker.initial_state(RunAttacker(**attacker_settings()))
+    state["usage"] |= {"calls": 1, "tokens": 10, "cost_usd": 0.1}
+    (session / run_attacker.STATE_FILE).write_text(json.dumps(state))
+    (session / "result.json").write_text(json.dumps({"status": "invalid"}))
+    for number, record in (
+        (2, {"kind": "in_task", "status": "infrastructure_error", "program": {"exit_code": 4}, "seconds": 0.25}),
+        (3, {"kind": "in_task", "status": "infrastructure_error", "error": {"code": "input_over_limit"}}),
+    ):
+        audit = session / "run_attacker" / f"{number:04d}"
+        audit.mkdir()
+        (audit / "record.json").write_text(json.dumps(record))
+    copied = tmp_path / "superseded/one/cases" / case / "arms/attack_reset/sessions/001-exposure"
+    shutil.copytree(session, copied)
+    (copied / "branch.json").write_text(json.dumps({"shared_from": str(session)}))
+    summary = campaign_summary(tmp_path, 20)
+    chain = summary["chains"][case]
+    assert chain["usage"] == state["usage"]
+    assert summary["cost_usd"] == 0.1
+    assert chain["realized_usage"]["calls"] == summary["realized_usage"]["calls"] == 4
+    assert chain["realized_usage"]["tokens"] == 60
+    assert chain["realized_usage"]["seconds"] == 1
+    assert chain["realized_usage"]["unreported_usage_calls"] == 2
+    assert chain["realized_usage"]["unreported_completions"] == 1
+    assert chain["realized_cost_usd"] == summary["realized_cost_usd"] == 0.6
+    assert chain["declined_calls"] == 1 and chain["declined_attempts"] == 6
+    assert summary["declines_by_arm"]["attack_carry"] == {"declined_calls": 1, "declined_attempts": 6}
+    assert summary["declines_by_arm"]["attack_reset"] == {"declined_calls": 0, "declined_attempts": 0}
+
+
+def test_realized_usage_includes_a_case_with_only_archived_attempts(tmp_path):
+    case = "first--default--r001"
+    audit = tmp_path / "superseded/one/cases" / case / "arms/attack_carry/sessions/001-exposure/run_attacker/0001"
+    audit.mkdir(parents=True)
+    (audit / "record.json").write_text(
+        json.dumps(
+            {
+                "program": {"exit_code": 0},
+                "status": "no_action",
+                "usage": {"tokens": 10, "cost_usd": 0.1},
+            }
+        )
+    )
+    summary = campaign_summary(tmp_path, 20)
+    chain = summary["chains"][case]
+    assert chain["sessions"] == [] and chain["usage"] == {}
+    assert summary["cost_usd"] == 0
+    assert chain["realized_usage"]["calls"] == 1
+    assert chain["realized_cost_usd"] == summary["realized_cost_usd"] == 0.1
+
+
+@pytest.mark.parametrize("terminal", [True, False])
+def test_declined_calls_are_valid_and_reported_per_arm(tmp_path, fixture_world, monkeypatch, terminal):
+    def policy(request):
+        return {
+            **({"status": "declined"} if terminal else {}),
+            "writer_usage": {
+                "usage": {"total_tokens": 30},
+                "cost": 0.1,
+                "finish": "declined" if terminal else "finish",
+                "declined_attempts": 2,
+            },
+        }
+
+    monkeypatch.setattr(run_attacker, "run_program", FakeWriter(policy))
+    root = run(tmp_path, fixture_world, raw_config(fixture_world[0]) | {"repeats": 1})
+    assert all(json.loads(path.read_bytes())["status"] == "complete" for path in chain(root).glob("*/result.json"))
+    summary = campaign_summary(root, 20)
+    chain_result = summary["chains"]["first--default--r001"]
+    assert chain_result["declined_calls"] == (7 if terminal else 0)
+    assert chain_result["declined_attempts"] == 14
+    assert summary["declines_by_arm"]["attack_carry"] == {
+        "declined_calls": 7 if terminal else 0,
+        "declined_attempts": 14,
+    }
+    assert summary["declines_by_arm"]["clean"] == {"declined_calls": 0, "declined_attempts": 0}
+
+
+@pytest.mark.parametrize("counter", [1, "invalid", -1, True])
+def test_failed_program_usage_sidecar_is_charged_without_accepting_its_outcome(
+    tmp_path, fixture_world, monkeypatch, counter
+):
+    _, runtime = runtime_for(tmp_path, fixture_world)
+
+    def failed(argv, cwd, timeout, audit):
+        (audit / "failure_usage.json").write_text(
+            json.dumps(
+                {
+                    "usage": {"total_tokens": 15},
+                    "cost": 0.1,
+                    "unreported_completions": counter,
+                    "declined_attempts": counter,
+                }
+            )
+        )
+        return {"exit_code": 4, "timed_out": False, "error": None}
+
+    monkeypatch.setattr(run_attacker, "run_program", failed)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="writer_failed"):
+        attacker.advance([])
+    record = json.loads((tmp_path / "run_attacker/0001/record.json").read_bytes())
+    assert record["status"] == "infrastructure_error"
+    assert record["usage"]["tokens"] == 15 and record["usage"]["cost_usd"] == 0.1
+    expected = counter if isinstance(counter, int) and not isinstance(counter, bool) and counter >= 0 else 0
+    assert record["declined_attempts"] == expected
+    assert record["usage"]["unreported_completions"] == expected
 
 
 def test_code_access_stays_in_bounds_and_is_never_cut(tmp_path, fixture_world, monkeypatch):
@@ -580,6 +796,42 @@ def test_summary_refuses_a_campaign_whose_attacker_differs_from_the_pairing(tmp_
     path.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match="undefended campaign's attacker program or settings differ"):
         summarize_pair(pairing, roots["defended"], roots["undefended"])
+
+
+@pytest.mark.parametrize("operation", ["pair", "pair-summary", "resume"])
+def test_paired_workflows_refuse_a_stale_brief_pin(tmp_path, fixture_world, monkeypatch, operation):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    attacker_path = write_attacker_config(runtime_dir)
+    identity = load_attacker_config(attacker_path).identity()
+    words = [word for key, value in identity.items() for word in (f"--{key.replace('_', '-')}", value)]
+    command = [sys.executable, "-m", "sereno.attacker", "--live", "--config", str(attacker_path), *words]
+    files, roots = {}, {}
+    monkeypatch.setattr(run_attacker, "run_program", FakeWriter())
+    for side, guard in (("defended", True), ("undefended", False)):
+        raw = raw_config(fixture_world[0], guard=guard, command=command) | {"repeats": 1}
+        files[side] = tmp_path / f"{side}.yaml"
+        files[side].write_text(yaml.safe_dump(raw))
+        roots[side] = tmp_path / side
+        run_campaign(
+            load_config(files[side]), roots[side], default_registry(), env_factory=fixture_world[1], identities=IDS
+        )
+    pairing = pair(files["defended"], files["undefended"], default_registry())
+    monkeypatch.setattr(AttackerConfig, "prompt_sha256", property(lambda self: "0" * 64))
+    with pytest.raises(ValueError, match="identity_mismatch"):
+        if operation == "pair":
+            pair(files["defended"], files["undefended"], default_registry())
+        elif operation == "pair-summary":
+            summarize_pair(pairing, roots["defended"], roots["undefended"])
+        else:
+            run_campaign(
+                load_config(files["defended"]),
+                roots["defended"],
+                default_registry(),
+                env_factory=fixture_world[1],
+                identities=IDS,
+                resume=True,
+            )
 
 
 def test_summary_names_a_missing_manifest(tmp_path, fixture_world, monkeypatch, capsys):

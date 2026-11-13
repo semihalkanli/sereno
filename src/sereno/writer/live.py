@@ -13,8 +13,9 @@ import json
 from pathlib import Path
 
 from sereno.context_eval.engine import write_atomic
+from sereno.usage import sum_usage
 from sereno.writer.config import check_deadline, check_limits
-from sereno.writer.errors import InputError, OutputError
+from sereno.writer.errors import InputError, OutputError, ProviderFailure
 from sereno.writer.parsers import CODE_TEXT, STATUSES, action_shape_ok, no_duplicate_keys
 from sereno.writer.provider import Deadline, Provider
 from sereno.writer.view import check_size
@@ -127,15 +128,34 @@ def run_live(config, request_path: Path, response_path: Path, *, transport=None)
         {"role": "system", "content": config.system_prompt},
         {"role": "user", "content": json.dumps(envelope, ensure_ascii=False)},
     ]
-    # The provider owns transport retries and stops on refusals; one deadline covers every call.
-    provider = Provider(config, Deadline(config.deadline_seconds), transport=transport)
+    deadline = Deadline(config.deadline_seconds)
+    provider = Provider(config, deadline, transport=transport, allow_declines=True)
     completions, answer, codes = [], None, []
+    declines, declined_attempts, declined = 0, 0, False
     try:
         for call in range(1, config.control.repairs + 2):
+            token_limit = contract.get("budget", {}).get("max_tokens")
+            tokens = sum_usage(completion.usage for completion in completions)[0].get("total_tokens", 0)
+            used_tokens = contract.get("used", {}).get("tokens", 0)
+            if declined and (
+                deadline.remaining() <= 0 or (isinstance(token_limit, int) and used_tokens + tokens >= token_limit)
+            ):
+                break
             check_size(config, messages)
             completion = provider.complete(messages, call)
             completions.append(completion)
-            answer, codes = parse_live_answer(completion.content, notebook_max, strategy_max)
+            if completion.declined:
+                answer, codes = None, []
+            else:
+                answer, codes = parse_live_answer(completion.content, notebook_max, strategy_max)
+            declined = completion.declined or (answer is not None and answer["status"] == "unable")
+            if declined:
+                declines += 1
+                declined_attempts += 1
+                if declines > config.settings.decline_retries:
+                    break
+                continue
+            declines = 0
             if not codes:
                 break
             messages = [
@@ -143,33 +163,50 @@ def run_live(config, request_path: Path, response_path: Path, *, transport=None)
                 completion.assistant_message(),
                 {"role": "user", "content": repair_message(codes)},
             ]
+    except (ProviderFailure, OutputError):
+        totals, missing, cost = sum_usage(completion.usage for completion in completions)
+        write_atomic(
+            response_path.with_name("failure_usage.json"),
+            {
+                "usage": totals,
+                "unreported_completions": missing + 1,
+                "cost": cost,
+                "declined_attempts": declined_attempts,
+            },
+        )
+        raise
     finally:
         provider.close()
     if codes:
+        totals, missing, cost = sum_usage(completion.usage for completion in completions)
+        write_atomic(
+            response_path.with_name("failure_usage.json"),
+            {
+                "usage": totals,
+                "unreported_completions": missing,
+                "cost": cost,
+                "declined_attempts": declined_attempts,
+            },
+        )
         raise OutputError(f"no usable live answer after {len(completions)} calls: {', '.join(codes)}", "bad_answer")
-    if answer["status"] == "unable":
-        raise OutputError("the writer reported it cannot do the call", "unable")
-    totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    reported = True
-    for completion in completions:
-        counts = {key: completion.usage.get(key) for key in totals}
-        if not isinstance(counts["total_tokens"], int) and all(
-            isinstance(counts[key], int) for key in ("prompt_tokens", "completion_tokens")
-        ):
-            counts["total_tokens"] = counts["prompt_tokens"] + counts["completion_tokens"]
-        reported &= isinstance(counts["total_tokens"], int) and not isinstance(counts["total_tokens"], bool)
-        for key, value in counts.items():
-            totals[key] += value if isinstance(value, int) and not isinstance(value, bool) else 0
-    cost = sum(float(completion.usage.get("cost") or 0.0) for completion in completions)
+    if declined:
+        answer = {"actions": [], "notebook": request.get("notebook", "")}
+    if answer is None:
+        raise OutputError("the writer produced no live answer", "bad_answer")
+    totals, missing, cost = sum_usage(completion.usage for completion in completions)
     response = {
         "schema_version": SCHEMA_VERSION,
+        **({"status": "declined"} if declined else {}),
         "actions": answer["actions"],
         "notebook": answer["notebook"],
         **({"strategy": answer["strategy"]} if "strategy" in answer else {}),
         **({"reads": answer["reads"]} if "reads" in answer else {}),
         "writer_usage": {
             "calls": len(completions),
-            "usage": totals if reported else {},
+            "usage": totals,
+            "unreported_completions": missing,
+            "finish": "declined" if declined else "finished",
+            "declined_attempts": declined_attempts,
             "cost": cost,
             "completions": [completion.record() for completion in completions],
         },

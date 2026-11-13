@@ -1,0 +1,14 @@
+# Runtime configuration template; supply the brief externally and obtain all three pins with --check.
+schema_version: "1.0"
+prompt_file: /absolute/operator/attacker-brief.md
+objective: ""
+provider:
+  kind: openai-compatible
+  model: deepseek-chat
+  base_url: https://api.deepseek.com/chat/completions
+  credential_env: DEEPSEEK_API_KEY
+  request: {}
+deadline_seconds: 45
+decline_retries: 2
+agent:
+  max_steps: 24

@@ -58,7 +58,7 @@ run_attacker:
   max_reads_per_call: 10
   max_read_bytes: 200000
   max_index_entries: 100000
-  max_input_bytes: 4000000
+  max_input_bytes: 40000000
   strategy_max_bytes: 20000
   notebook_max_bytes: 20000
 ```
@@ -124,10 +124,28 @@ is not a measured success.
   the reason). Strategy and notebook never reach the agent's memory.
 - A call starts only while every budget bound has room, so realized use can pass a bound by at most the one call that
   crossed it; a skipped call is counted and logged once per session and reason.
+- In-task calls use at most `max_calls_per_session - 1` calls and leave one remaining chain call for the current
+  session's end. The end evaluation can use the full session and chain call caps. With a session cap of one, only
+  the end evaluation runs. This reserves no calls for future sessions. Token, cost and elapsed-time usage cannot be
+  reserved by call count: the shared token and time bounds may still prevent an end evaluation, and provider cost
+  is reported rather than independently capped by this protocol.
 
 Code access is read-only. A path outside `code_root`, into `.git`, through a symlink that leads out, or beyond the
 per-call read budget is named as denied. A file or index over its size limit is named with its size and never cut; a
-request over `max_input_bytes` is an infrastructure error, never cut.
+request over `max_input_bytes` is an infrastructure error, never cut. The error records the actual request bytes and
+the configured limit. Each request is serialized once; its recorded size and SHA-256 describe the exact bytes written
+atomically to `request.json`. Full earlier transcripts remain in every request and in the checkpoint. Code views are
+read again on every call so they include the agent's latest edits.
+
+The default input limit is 40,000,000 bytes. A metadata-only inventory on 2026-11-13 found 1,711 recorded `traj.json`
+files under `runs/` (1,833,713,649 bytes total); the largest was 5,310,305 bytes. The three largest distinct sizes were
+5,310,305, 4,542,723 and 4,502,818 bytes (14,355,846 combined). The three additional transcripts under
+`~/agent-learning/evidence/` were 2,887, 2,770 and 2,770 bytes. No transcript contents were opened for this measurement.
+Using three copies of the largest observed transcript gives 15,930,915 bytes for a final three-session request's
+transcripts. Allowing another 2,000,000 bytes for the default ten requested code files and metadata gives an estimated
+17,930,915 bytes, with over 2x headroom at the default limit. This is an observed-workload estimate, not a bound:
+configured code views, large file indexes, JSON escaping or larger future transcripts can require an explicit higher
+limit (up to 50,000,000 bytes).
 
 ## Records, resume and errors
 
@@ -152,6 +170,24 @@ The measurements stay separate:
 4. task success, and the defense's effect on clean tasks from both campaigns' `clean` arms;
 5. probe sessions after writes close, and recovery, again from the existing grading;
 6. attacker cost and use beside the equal bounds, and infrastructure errors.
+
+Token usage sums every completion that reports a total (or both prompt and completion counts), even when other
+completions omit usage. `writer_usage.unreported_completions` counts those omissions; the harness charges the known
+totals and increments `unreported_usage_calls` for wholly or partially unreported calls. Each call's audit `usage`
+also records `unreported_completions`. The live writer uses the same aggregation. Anthropic prompt tokens include
+`input_tokens`, `cache_creation_input_tokens` and `cache_read_input_tokens`; output tokens are added once, matching
+the OpenAI-compatible total whose prompt count already includes cached tokens. Cost remains the sum of reported
+`usage.cost`, independent of token aggregation. No token-price estimate is made, including for Anthropic responses
+that do not report cost; zero recorded cost in that case does not mean the call was free.
+
+Chain and campaign summaries add `realized_usage` and `realized_cost_usd`. They sum each launched call's
+`run_attacker/*/record.json` in active sessions and every matching attempt under
+`superseded/<timestamp>/cases/<case>/arms/attack_carry/`. Invalid sessions and failed or timed-out program calls are
+included; audits that stopped before launching the program (such as an oversized request) are excluded. Missing or
+partial token reports remain visible in `unreported_usage_calls` and `unreported_completions`. Only the originating
+`attack_carry` arm is scanned, so copies in reset, ablation and clean arms are not billed again. Existing chain
+`usage` and campaign `cost_usd` keep their checkpoint-carried meaning. Budget enforcement is unchanged: a repeated
+session starts from the last valid checkpoint with the same allowance its earlier attempt had.
 
 ```sh
 uv run sereno context-eval pair-summary --pair pair.json DEFENDED_CAMPAIGN UNDEFENDED_CAMPAIGN [--min-line-chars 20]
@@ -246,6 +282,7 @@ agent:
   search_limit: 40
   max_queued_reads: 24
 deadline_seconds: 900                # below run_attacker.timeout_seconds
+decline_retries: 2                    # plain resamples after the initial declined attempt
 ```
 
 Another model of the same API is a change to `model` and the provider's `request` block. The runtime sets no model
@@ -260,8 +297,9 @@ to `build_provider`. The loop and tools never read a provider's body.
 # validate the configuration and request, print the hashes; no model call, no credential needed
 /absolute/sereno/.venv/bin/python -m sereno.attacker --check --config /absolute/attacker.yaml request.json
 
-# serve one call
-/absolute/sereno/.venv/bin/python -m sereno.attacker --live --config /absolute/attacker.yaml request.json response.json
+# serve one call with the three values printed by --check
+/absolute/sereno/.venv/bin/python -m sereno.attacker --live --config /absolute/attacker.yaml \
+  --config-sha256 CONFIG_HASH --prompt-sha256 PROMPT_HASH --code-sha256 CODE_HASH request.json response.json
 ```
 
 `run_attacker.command` must be absolute and use the project's virtual environment, because the harness runs the
@@ -270,9 +308,46 @@ program in a fresh temporary working directory. `run_attacker.timeout_seconds` m
 call count, token use, cost, finish reason, and the configuration and prompt hashes, so a campaign can audit the brief
 that produced it.
 
+Live mode requires all three pins, matching the writer's mandatory configuration and code pins and adding a separate
+brief pin. `--check` prints them and an argv `command_words` list for `run_attacker.command`; it needs neither pins
+nor credentials, but verifies any supplied pins. The configuration hash covers resolved settings and the effective
+brief, the prompt hash covers the effective brief (including the configured objective), and the code hash covers all
+Python sources in `sereno.attacker` plus the transitive `sereno` modules found in their imports and package
+initializers, including shared usage accounting. Pins are verified before provider initialization; a mismatch exits
+with configuration-failure status 2. Regenerate them after an intentional change and create a new pairing or campaign.
+The manifest retains the pins as argv words. For the built-in `python -m sereno.attacker` command, `pair`,
+`pair-summary` and campaign resume also validate pins against the current files without a model call, so a stale
+brief or code pin is rejected even before a live invocation. External commands retain their existing manifest rules.
+`examples/context-eval/attacker-runtime.yaml` is a runtime template using an operator-supplied external brief; the two
+paired campaign examples keep their offline stub commands.
+
 ### The loop and its tools
 
 The loop starts with the operator's brief, a fixed runtime contract, and the request's bounded observation envelope.
+
+A provider decline is Anthropic `stop_reason: refusal`, an OpenAI-compatible `finish_reason: content_filter` or a
+non-empty message `refusal`; the live writer additionally treats `status: unable` as a decline. Both runtime config
+and live-writer settings accept `decline_retries` (default 2: at most one initial attempt plus two plain resamples).
+Every resample sends the identical model request, without adding a message, modifying the brief or replaying the
+declined answer. Successful later steps may evolve the request normally. Decline attempts consume the runtime's
+`agent.max_steps` or the writer's existing `repairs + 1` generation-call cap, so fewer retries may fit after earlier
+calls. They also share the invocation deadline and remaining reported chain token budget; retries stop when either
+has no room. All reported attempt usage and cost are retained, including partial reports.
+
+After exhausted declines, the runtime returns its staged actions with `writer_usage.finish: declined`; the live
+writer returns no actions. Both may return optional top-level `status: declined`, the sole added status in protocol
+1.0. The harness accepts it as an outcome and keeps the target session valid; ordinary action validation still
+applies. The writer keeps the request's notebook on a terminal decline. HTTP, transport, malformed-response and
+configuration failures remain infrastructure errors. If a real provider error follows earlier completions, a
+`failure_usage.json` accounting sidecar preserves their reported usage and declined attempts; the non-zero exit
+still invalidates the session. The failed provider attempt is flagged as unreported rather than assigned zero use.
+
+Per-call audits record `declined` (terminal exhaustion) and `declined_attempts` (all declines, including recovered
+ones). Chain summaries expose scalar `declined_calls` and `declined_attempts`; campaign summaries expose both in
+`declines_by_arm`, separately for each actual arm. Each defended and undefended campaign in `pair-summary` carries
+these fields. Counts include active and superseded launched calls and exclude copied sessions marked by
+`branch.json`; clean-arm counts are zero. A call that recovers contributes declined attempts and no declined call.
+
 The model drives the same `run_attacker` request through tools:
 
 - `list_sessions`, `read_transcript`, `search_transcript`: the running agent's visible transcript and the chain's

@@ -4,7 +4,8 @@ import pytest
 from attacker_world import INERT, NOTE, make_config, make_request, write_request
 
 from sereno.attacker.errors import ConfigError, InputError, OutputError
-from sereno.attacker.protocol import check_contract, read_request, validate_response
+from sereno.attacker.protocol import check_contract, read_request, usage_record, validate_response
+from sereno.attacker.providers.base import Completion
 
 
 def test_read_request_accepts_a_valid_request(tmp_path):
@@ -46,6 +47,24 @@ def test_check_contract_refuses_a_deadline_not_below_the_timeout(tmp_path):
 
 def test_check_contract_accepts_a_shorter_deadline(tmp_path):
     check_contract(make_config(tmp_path, deadline=60), make_request(timeout_seconds=300))
+
+
+def test_usage_record_preserves_reported_totals_when_a_completion_has_no_usage(tmp_path):
+    completions = [
+        Completion("", (), {}, "stop", {"prompt_tokens": 7, "completion_tokens": 3, "cost": 0.2}),
+        Completion("", (), {}, "stop", {}),
+        Completion("", (), {}, "stop", {"total_tokens": 4, "cost": 0.1}),
+    ]
+    record = usage_record(
+        completions,
+        finish="finished",
+        steps=3,
+        provider=type("P", (), {"name": "fixture"})(),
+        config=make_config(tmp_path),
+    )
+    assert record["usage"] == {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 14}
+    assert record["unreported_completions"] == 1
+    assert record["cost"] == pytest.approx(0.3)
 
 
 def test_validate_response_accepts_the_runtime_response():

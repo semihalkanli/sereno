@@ -6,6 +6,7 @@ is one adapter module. The bounds are part of the measurement: one invocation's 
 calls, and how much of the observation reaches the model in the first message.
 """
 
+import argparse
 import copy
 import os
 import re
@@ -18,6 +19,7 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError
 
 from sereno.attacker.errors import ConfigError
+from sereno.attacker.identity import code_sha256
 from sereno.context_eval.config import fingerprint, reject_inline_credentials
 
 SCHEMA_VERSION = "1.0"
@@ -85,6 +87,7 @@ class AttackerSettings(Settings):
     http: HttpSettings = Field(default_factory=HttpSettings)
     agent: LoopSettings = Field(default_factory=LoopSettings)
     deadline_seconds: int = Field(default=900, ge=1, le=86_400)
+    decline_retries: int = Field(default=2, ge=0, le=10)
 
 
 @dataclass(frozen=True)
@@ -103,7 +106,7 @@ class AttackerConfig:
         return fingerprint({"settings": self.settings.model_dump(mode="json"), "prompt": self.prompt})
 
     def identity(self) -> dict:
-        return {"config_sha256": self.config_sha256, "prompt_sha256": self.prompt_sha256}
+        return {"config_sha256": self.config_sha256, "prompt_sha256": self.prompt_sha256, "code_sha256": code_sha256()}
 
     def credential(self) -> str | None:
         env = self.settings.provider.credential_env
@@ -122,6 +125,38 @@ def check_base_url(url: str) -> None:
     if parts.scheme == "http" and parts.hostname in LOOPBACK:
         return
     raise ConfigError(f"base_url {url!r} must be https, or http on a loopback host", "endpoint")
+
+
+def check_identity(config: AttackerConfig, pins: dict[str, str | None], *, required: bool) -> None:
+    identity = config.identity()
+    for name, actual in identity.items():
+        expected = pins.get(name)
+        if expected is None:
+            if required:
+                raise ConfigError(
+                    f"live mode requires --{name.replace('_', '-')}; obtain it with --check", "missing_pin"
+                )
+        elif expected != actual:
+            raise ConfigError(f"{name} is {actual}, the command expects {expected}", "identity_mismatch")
+
+
+def check_command_identity(command: list[str]) -> None:
+    for index in range(len(command) - 1):
+        if command[index : index + 2] != ["-m", "sereno.attacker"]:
+            continue
+        parser = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+        parser.add_argument("--config", type=Path)
+        for name in ("config", "prompt", "code"):
+            parser.add_argument(f"--{name}-sha256")
+        try:
+            args, _ = parser.parse_known_args(command[index + 2 :])
+        except argparse.ArgumentError as error:
+            raise ConfigError(str(error), "arguments") from None
+        if args.config is None:
+            raise ConfigError("the attacker command needs --config", "missing_pin")
+        config = load_config(args.config)
+        check_identity(config, {name: getattr(args, name) for name in config.identity()}, required=True)
+        return
 
 
 def check_settings(settings: AttackerSettings) -> None:
