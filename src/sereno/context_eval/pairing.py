@@ -363,9 +363,12 @@ def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = Non
 
 
 def summarize_pair(pairing: dict, defended: Path, undefended: Path, *, min_line_chars: int = 20) -> dict:
-    """The attacker-side records of both campaigns of a pair. A campaign whose manifest is not the paired config is
-    refused, and so is one whose recorded attacker (settings, starting strategy and program hashes) is not the
-    pairing's."""
+    """The attacker-side records of both campaigns of a pair. A pairing record that does not say it paired the
+    campaigns is refused with its problems named; a campaign whose manifest is not the paired config is refused, and
+    so is one whose recorded attacker (settings, starting strategy and program hashes) is not the pairing's."""
+    if pairing.get("paired") is not True:
+        problems = pairing.get("problems") or ["the pairing does not record paired: true"]
+        raise ValueError("the pairing did not pair the campaigns: " + "; ".join(str(problem) for problem in problems))
     sides = {"defended": defended, "undefended": undefended}
     manifests = {}
     for side, path in sides.items():

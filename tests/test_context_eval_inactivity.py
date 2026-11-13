@@ -131,7 +131,7 @@ def test_pair_summary_keeps_campaign_and_arm_inactivity_totals_independent(tmp_p
     populated_campaign(defended)
     arm = undefended / "cases" / "first" / "arms" / "attack_carry"
     call(session(arm, "001-empty", 0), "001", ending="plain_text")
-    manifest = {"config_sha256": "fixture", "run_attacker": {"command": ["unused"]}}
+    manifest = {"config_sha256": "fixture", "run_attacker": {"command": ["unused"]}, "paired": True}
     for root in (defended, undefended):
         write_json(root / "manifest.json", manifest)
     monkeypatch.setattr(pairing, "check_command_identity", lambda _: None)
@@ -141,6 +141,7 @@ def test_pair_summary_keeps_campaign_and_arm_inactivity_totals_independent(tmp_p
             "run_attacker": manifest["run_attacker"],
             "result_name": "fixture",
             "independent_unit": "chain",
+            "paired": True,
         },
         defended,
         undefended,

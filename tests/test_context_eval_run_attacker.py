@@ -862,6 +862,13 @@ def test_pairing_and_summary_keep_the_measurements_apart(tmp_path, fixture_world
     assert json.loads(unpaired.read_text())["problems"] == ["repeats differs"]
 
 
+def test_summary_refuses_a_pairing_that_did_not_pair(tmp_path):
+    with pytest.raises(ValueError, match="repeats differs"):
+        summarize_pair({"paired": False, "problems": ["repeats differs"]}, tmp_path / "d", tmp_path / "u")
+    with pytest.raises(ValueError, match="paired: true"):
+        summarize_pair({"problems": []}, tmp_path / "d", tmp_path / "u")
+
+
 def test_clean_infrastructure_errors_are_counted_once_at_the_origin(tmp_path):
     origin = tmp_path / "clean" / "first--r001" / "sessions" / "001-exposure"
     origin.mkdir(parents=True)

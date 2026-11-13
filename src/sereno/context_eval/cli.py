@@ -207,9 +207,9 @@ def add_parser(parent):
         help="the run-local attacker's records of both campaigns of a pair, measurements kept apart",
         description="Reads the attacker records of a finished defended and undefended campaign with no model call and "
         "no container, and prints per chain the calls and what their actions came to, the use beside the budget, "
-        "whether each applied write was later seen, carried or copied, and infrastructure errors. Refuses a campaign "
-        "that does not run the paired config or the pairing's attacker. Task success and the attack objective come "
-        "from grade, report and harm-count.",
+        "whether each applied write was later seen, carried or copied, and infrastructure errors. Refuses a pairing "
+        "record that did not pair the campaigns, and a campaign that does not run the paired config or the pairing's "
+        "attacker. Task success and the attack objective come from grade, report and harm-count.",
     )
     pair_summary.add_argument("--pair", type=Path, required=True, help="the pairing manifest")
     pair_summary.add_argument("defended", type=Path, help="the defended campaign directory")
