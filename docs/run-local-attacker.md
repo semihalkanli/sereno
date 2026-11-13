@@ -80,9 +80,13 @@ The program's environment is built from an allowlist instead of being inherited:
 `TZ`, the credential variable its own configuration names (`provider.credential_env` in the attacker runtime's
 configuration, `credential_env_name` in the writer design's) and any name `run_attacker.env` lists. `TMPDIR`, `TEMP`
 and `TMP` are pinned to the scratch directory. `PWD`, `OLDPWD` and every other variable of the harness stay out. A
-paid run through the cost wrapper lists `PYTHONPATH` and `SERENO_COST_CALLS` in `run_attacker.env`, because those are
-how the wrapper's meter reaches the program (`scripts/cost.py` sets both); without them the ledger does not see the
-program's provider calls.
+harness running under the cost wrapper forwards its meter with no campaign entry: when `SERENO_COST_CALLS` is set, the
+program receives that ledger path and, on its `PYTHONPATH`, the hook directory — the parent's `PYTHONPATH` entry
+holding the cost hook's `sitecustomize.py`, or this checkout's `scripts/cost_hook` — as its only `PYTHONPATH` entry
+unless the campaign lists `PYTHONPATH` itself, whose entries are then kept behind the hook.
+Both forwarded values are resolved and refused when they name a path inside the run tree, as the temporary base is: a
+`cost_meter` infrastructure error. A wrapper whose hook cannot be found fails closed the same way, since a ledger
+without the hook would collect nothing.
 
 After the program exits, its response, usage sidecar and captured output are copied into the session's
 `run_attacker/NNNN/` folder, and the scratch directory is removed. The copy refuses a symlink or any other non-regular
@@ -214,15 +218,15 @@ If rollback fails and the resulting application count cannot be established, the
 than zero. An application failure leaves `response.json` and the `incomplete` skeleton, never a completed record;
 existing call and usage aggregation is unchanged, because only a record with a `program` entry counts as a call.
 
-A program, configuration or provider problem (exit status, program timeout, a temporary base inside the run tree, a
-container or host failure while reading the code or the response, a staged or audit file that cannot be written,
-copied or read, an answer not in the protocol's form, an input over the limit, a request that cannot be
-encoded as UTF-8) is not an attack failure: the session ends invalid with `result.json`'s `infrastructure_error`, the
-call's record holds `status: infrastructure_error` where one was written, and a resume runs the session again from the
-last checkpoint. The codes are `writer_failed` (exit status), `timeout`, `temp_base`, `code_index`, `code_realpath`,
-`code_size`, `read_code`, `response_read`, `response_hash`, `invalid_response`, `input_over_limit`,
-`request_encoding`, `audit_copy` (a staged or audit file that cannot be written, copied or read, is not a regular
-file, or is over its byte limit) and `write_failed`.
+A program, configuration or provider problem (exit status, program timeout, a temporary base or a cost-meter path
+inside the run tree, a cost wrapper whose hook cannot be found, a container or host failure while reading the code or
+the response, a staged or audit file that cannot be written, copied or read, an answer not in the protocol's form, an
+input over the limit, a request that cannot be encoded as UTF-8) is not an attack failure: the session ends invalid
+with `result.json`'s `infrastructure_error`, the call's record holds `status: infrastructure_error` where one was
+written, and a resume runs the session again from the last checkpoint. The codes are `writer_failed` (exit status),
+`timeout`, `temp_base`, `cost_meter`, `code_index`, `code_realpath`, `code_size`, `read_code`, `response_read`,
+`response_hash`, `invalid_response`, `input_over_limit`, `request_encoding`, `audit_copy` (a staged or audit file that
+cannot be written, copied or read, is not a regular file, or is over its byte limit) and `write_failed`.
 
 ## Measurement
 
@@ -344,9 +348,9 @@ frozen design's system prompt, objective, provider and limits; the hashes come f
 --config writer.json`, and `run_attacker.timeout_seconds` must be larger than the writer's `deadline_seconds`. Each
 call makes one author call and at most the design's structural repairs; a harness rule is never repaired there, the
 harness rejects and the next request reports it. The adapter keeps no state of its own, and its provider usage is
-returned in `writer_usage`. Calls using paid models go through the existing experiment cost wrapper; the wrapper's
-meter reaches the program only when the campaign lists its two variables, `run_attacker.env: [PYTHONPATH,
-SERENO_COST_CALLS]` (see Protocol). Enabling or testing this feature offline starts no paid run.
+returned in `writer_usage`. Calls using paid models go through the existing experiment cost wrapper, which the harness
+recognises from its own environment and forwards to the program: the wrapper's ledger and hook reach the command with
+no `run_attacker.env` entry (see Protocol). Enabling or testing this feature offline starts no paid run.
 
 `pair` loads the writer configuration named by the command's `--config` with no API key and, before any paid call,
 checks that `run_attacker.limits.forbidden_patterns` equals the design's and that the command's `--config-sha256` and

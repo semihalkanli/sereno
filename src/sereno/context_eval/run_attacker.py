@@ -229,6 +229,12 @@ CAMPAIGN_MANIFEST = "manifest.json"
 CHILD_ENV_NAMES = ("PATH", "HOME", "LANG", "TZ")
 CHILD_ENV_PREFIXES = ("LC_",)
 CHILD_TEMP_NAMES = ("TMPDIR", "TEMP", "TMP")
+# The cost wrapper's meter: the ledger it appends each paid call to and the hook directory that records it. A harness
+# running under `scripts/cost.py run` has both in its own environment, and the program inherits them from here.
+COST_CALLS_NAME = "SERENO_COST_CALLS"
+COST_HOOK_MODULE = "sitecustomize.py"
+COST_HOOK_MARKER = "SERENO_COST_CALLS"
+COST_HOOK_DIR = Path(__file__).resolve().parents[3] / "scripts" / "cost_hook"
 
 
 def run_tree(directory: Path) -> Path:
@@ -247,6 +253,40 @@ def checked_temp_base(directory: Path) -> Path:
     if base.is_relative_to(root):
         raise AttackerInfrastructureError("temp_base", f"the temporary directory {base} is inside the run tree {root}")
     return base
+
+
+def cost_hook_directory() -> Path | None:
+    """The directory holding the cost wrapper's `sitecustomize.py`: the parent's `PYTHONPATH` entry whose
+    `sitecustomize.py` names `SERENO_COST_CALLS`, else this checkout's `scripts/cost_hook`, else None. Only this
+    directory is ever forwarded, never another entry of the parent's `PYTHONPATH`."""
+    for entry in filter(None, os.environ.get("PYTHONPATH", "").split(os.pathsep)):
+        try:
+            text = (Path(entry) / COST_HOOK_MODULE).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if COST_HOOK_MARKER in text:
+            return Path(entry).resolve()
+    return COST_HOOK_DIR if (COST_HOOK_DIR / COST_HOOK_MODULE).is_file() else None
+
+
+def cost_meter(directory: Path) -> tuple[str, str] | None:
+    """The cost wrapper's meter as the program must receive it: the ledger path and the hook directory, or None when
+    the harness does not run under the wrapper. Both resolved values are refused inside the run tree, as the
+    temporary base is: a ledger or a hook there would name the campaign the program must not see. A wrapper whose
+    hook cannot be found fails closed too, since a ledger alone would collect nothing."""
+    calls = os.environ.get(COST_CALLS_NAME)
+    if not calls:
+        return None
+    hook = cost_hook_directory()
+    if hook is None:
+        raise AttackerInfrastructureError(
+            "cost_meter", f"{COST_CALLS_NAME} is set but the cost hook's {COST_HOOK_MODULE} was not found"
+        )
+    ledger, root = Path(calls).resolve(), run_tree(directory).resolve()
+    for name, path in ((COST_CALLS_NAME, ledger), ("PYTHONPATH", hook)):
+        if path.is_relative_to(root):
+            raise AttackerInfrastructureError("cost_meter", f"{name} names {path}, inside the run tree {root}")
+    return str(ledger), str(hook)
 
 
 def config_argument(command: list[str]) -> str | None:
@@ -277,15 +317,22 @@ def credential_variables(command: list[str]) -> list[str]:
     return [name] if isinstance(name, str) and ENV_NAME.fullmatch(name) else []
 
 
-def child_environment(config, scratch: Path) -> dict[str, str]:
+def child_environment(config, scratch: Path, directory: Path) -> dict[str, str]:
     """The program's environment, built from an allowlist instead of inherited: the fixed names above, the LC_* family,
     the credential variables the attacker configuration names and the variables the campaign config lists, and the
-    temporary-directory variables pinned to the call's scratch. PWD, OLDPWD and every other inherited variable are
-    left out."""
+    temporary-directory variables pinned to the call's scratch. A harness running under the cost wrapper forwards its
+    meter without a campaign entry: the ledger path and the hook directory once on `PYTHONPATH`, ahead of a
+    `PYTHONPATH` the campaign lists. PWD, OLDPWD and every other inherited variable are left out."""
     names = [*CHILD_ENV_NAMES, *credential_variables(config.command), *config.env]
     environment = {name: os.environ[name] for name in names if name in os.environ}
     environment |= {name: value for name, value in os.environ.items() if name.startswith(CHILD_ENV_PREFIXES)}
     environment |= {name: str(scratch) for name in CHILD_TEMP_NAMES}
+    meter = cost_meter(directory)
+    if meter is not None:
+        calls, hook = meter
+        entries = [hook, *(environment.get("PYTHONPATH") or "").split(os.pathsep)]
+        environment[COST_CALLS_NAME] = calls
+        environment["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(p for p in entries if p))
     return environment
 
 
@@ -594,12 +641,16 @@ class RunLocalAttacker:
                 write_bytes_atomic(staged / "request.json", encoded)
             except OSError as error:
                 self.fail(audit, base, "audit_copy", f"cannot stage the request: {error}")
+            try:
+                environment = child_environment(config, staged, runtime.log.path.parent)
+            except AttackerInfrastructureError as error:
+                self.fail(audit, base, error.code, error.message)
             outcome = run_program(
                 [*config.command, str(staged / "request.json"), str(staged / "response.json")],
                 staged,
                 config.timeout_seconds,
                 staged,
-                env=child_environment(config, staged),
+                env=environment,
             )
             seconds = round(time.monotonic() - clock, 3)
             self.state["usage"]["seconds"] = round(self.state["usage"]["seconds"] + seconds, 3)

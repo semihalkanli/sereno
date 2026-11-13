@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -521,6 +522,7 @@ def test_the_program_gets_no_path_inside_the_run_tree_and_an_allowlisted_environ
 ):
     """A real child records what it was given: its argv, its working directory and its environment name nothing in
     the run tree, the environment holds only allowlisted variables, and the audit gets the same files as copies."""
+    monkeypatch.delenv(run_attacker.COST_CALLS_NAME, raising=False)
     command = child_probe(tmp_path_factory, monkeypatch, credential_env="SERENO_FIXTURE_PROVIDER_KEY")
     _, runtime = runtime_for(tmp_path, fixture_world)
     attacker = run_attacker.RunLocalAttacker(
@@ -558,6 +560,91 @@ def test_a_variable_the_config_lists_reaches_the_child(tmp_path, tmp_path_factor
     environment = json.loads((tmp_path / "run_attacker/0001/writer.stdout").read_text())["env"]
     assert environment["SERENO_FIXTURE_LISTED"] == "listed-value"
     assert "SERENO_FIXTURE_UNLISTED" not in environment
+
+
+def cost_hook(outside) -> Path:
+    """An inert stand-in for the cost wrapper's hook directory: a `sitecustomize.py` naming the ledger variable the
+    harness looks for, and nothing else."""
+    hook = outside / "cost_hook"
+    hook.mkdir()
+    (hook / run_attacker.COST_HOOK_MODULE).write_text(f"# {run_attacker.COST_HOOK_MARKER}\n")
+    return hook
+
+
+def test_the_cost_meter_is_forwarded_to_the_program_automatically(
+    tmp_path, tmp_path_factory, fixture_world, monkeypatch
+):
+    """A harness under the cost wrapper forwards its meter with no `run_attacker.env` entry: a real child receives the
+    ledger path and the hook directory alone on PYTHONPATH, and no other entry of the harness's PYTHONPATH."""
+    hook = cost_hook(tmp_path_factory.mktemp("cost-outside"))
+    ledger = tmp_path_factory.mktemp("cost-ledger") / "calls.jsonl"
+    monkeypatch.setenv(run_attacker.COST_CALLS_NAME, str(ledger))
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(hook), "/fixture/other-entry"]))
+    command = child_probe(tmp_path_factory, monkeypatch)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings(command=command)), runtime, "fixture task", "first"
+    ).advance([])
+    environment = json.loads((tmp_path / "run_attacker/0001/writer.stdout").read_text())["env"]
+    assert Path(environment[run_attacker.COST_CALLS_NAME]) == ledger.resolve()
+    assert [Path(entry).resolve() for entry in environment["PYTHONPATH"].split(os.pathsep)] == [hook.resolve()]
+
+
+def test_a_pythonpath_the_campaign_lists_is_kept_beside_the_hook(
+    tmp_path, tmp_path_factory, fixture_world, monkeypatch
+):
+    """The campaign's own PYTHONPATH entries are forwarded as listed, with the hook directory once, ahead of them."""
+    hook = cost_hook(tmp_path_factory.mktemp("cost-outside"))
+    ledger = tmp_path_factory.mktemp("cost-ledger") / "calls.jsonl"
+    monkeypatch.setenv(run_attacker.COST_CALLS_NAME, str(ledger))
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(hook), "/fixture/listed-entry"]))
+    command = child_probe(tmp_path_factory, monkeypatch)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    config = RunAttacker(**attacker_settings(command=command, env=["PYTHONPATH"]))
+    run_attacker.RunLocalAttacker(config, runtime, "fixture task", "first").advance([])
+    environment = json.loads((tmp_path / "run_attacker/0001/writer.stdout").read_text())["env"]
+    assert environment["PYTHONPATH"] == os.pathsep.join([str(hook.resolve()), "/fixture/listed-entry"])
+
+
+def test_no_cost_meter_is_forwarded_outside_the_wrapper(tmp_path, tmp_path_factory, fixture_world, monkeypatch):
+    """A harness that does not run under the cost wrapper forwards neither the ledger variable nor a PYTHONPATH."""
+    monkeypatch.delenv(run_attacker.COST_CALLS_NAME, raising=False)
+    monkeypatch.setenv("PYTHONPATH", "/fixture/other-entry")
+    command = child_probe(tmp_path_factory, monkeypatch)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings(command=command)), runtime, "fixture task", "first"
+    ).advance([])
+    environment = json.loads((tmp_path / "run_attacker/0001/writer.stdout").read_text())["env"]
+    assert run_attacker.COST_CALLS_NAME not in environment and "PYTHONPATH" not in environment
+
+
+@pytest.mark.parametrize("forwarded", ["calls", "hook"])
+def test_a_cost_meter_path_inside_the_run_tree_is_refused(
+    tmp_path, tmp_path_factory, fixture_world, monkeypatch, forwarded
+):
+    """A ledger path or a hook directory inside the run tree fails the call closed as `cost_meter`, before any
+    program runs."""
+    inside = tmp_path / "cost"
+    inside.mkdir()
+    outside = tmp_path_factory.mktemp("cost-outside")
+    if forwarded == "calls":
+        ledger, hook = inside / "calls.jsonl", cost_hook(outside)
+    else:
+        ledger, hook = outside / "calls.jsonl", cost_hook(inside)
+    monkeypatch.setenv(run_attacker.COST_CALLS_NAME, str(ledger))
+    monkeypatch.setenv("PYTHONPATH", str(hook))
+    command = child_probe(tmp_path_factory, monkeypatch)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings(command=command)), runtime, "fixture task", "first"
+    )
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="cost_meter"):
+        attacker.advance([])
+    audit = tmp_path / "run_attacker/0001"
+    record = json.loads((audit / "record.json").read_text())
+    assert record["status"] == "infrastructure_error" and record["error"]["code"] == "cost_meter"
+    assert (audit / "request.json").exists() and not (audit / "writer.stdout").exists()
 
 
 def test_an_audit_copy_failure_is_an_infrastructure_error(tmp_path, fixture_world, monkeypatch):
