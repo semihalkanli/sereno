@@ -295,6 +295,7 @@ def run_session(
             memory = runtime.capture_memory("agent")
             if runtime.guard:
                 runtime.guard.task_end()
+        state = None
         if runtime.run_attacker and result["status"] == "complete":
             # The session-end evaluation sees the final memory; its checkpoint makes the session complete.
             summary = {
@@ -305,8 +306,6 @@ def run_session(
                 "task_success": "not_evaluated",
             }
             state = runtime.run_attacker.finish(agent_result["messages"], summary)
-            write_atomic(directory / ATTACKER_STATE, state)
-            engine.run_attacker_state = state
         for check in config.checks:
             if check.source == "workspace" and (not check.sessions or session.id in check.sessions):
                 result["workspace"][check.path] = env.read(check.path) or ""
@@ -318,6 +317,10 @@ def run_session(
         except ValueError as error:
             result["patch_status"] = "ambiguous"
             result["patch_error"] = str(error)
+        if state is not None:
+            # Written after the session's last fallible step, so an invalid session never holds a checkpoint.
+            write_atomic(directory / ATTACKER_STATE, state)
+            engine.run_attacker_state = state
     except Exception as error:
         result["status"] = "invalid"
         result["error"] = str(error)

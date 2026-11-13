@@ -395,6 +395,35 @@ def test_resume_uses_only_completed_checkpoints(tmp_path, fixture_world, monkeyp
     assert again and again[0]["notebook"] == "" and again[0]["strategy"]["version"] == 0
 
 
+def test_a_session_that_fails_after_the_attacker_finished_leaves_no_checkpoint(tmp_path, fixture_world, monkeypatch):
+    failing = {"armed": False, "fired": False}
+
+    class BrokenAfterFinish(fixture_world[1]):
+        def collect_patch(self, base_commit):
+            if failing["armed"]:
+                failing["armed"], failing["fired"] = False, True
+                raise RuntimeError("fixture collection failed")
+            return super().collect_patch(base_commit)
+
+    def policy(request):
+        session = request["observation"]["session"]["id"]
+        if session == "probe" and request["contract"]["kind"] == "session_end" and not failing["fired"]:
+            failing["armed"] = True
+        return counting(request)
+
+    monkeypatch.setattr(run_attacker, "run_program", FakeWriter(policy))
+    root = tmp_path / "campaign"
+    config = ExperimentConfig.model_validate(raw_config(fixture_world[0]))
+    run_campaign(config, root, default_registry(), env_factory=BrokenAfterFinish, identities=IDS)
+    exposure, probe = chain(root) / "001-exposure", chain(root) / "002-probe"
+    assert json.loads((probe / "result.json").read_text())["status"] == "invalid"
+    assert not (probe / run_attacker.STATE_FILE).exists()
+    summary = campaign_summary(root, 8)["chains"]["first--default--r001"]
+    assert [s["checkpoint"] for s in summary["sessions"]] == [True, False]
+    assert summary["sessions"][1]["strategy_version_end"] is None
+    assert summary["usage"] == json.loads((exposure / run_attacker.STATE_FILE).read_text())["usage"]
+
+
 def test_code_access_stays_in_bounds_and_is_never_cut(tmp_path, fixture_world, monkeypatch):
     env, runtime = runtime_for(tmp_path, fixture_world)
     env.write("/app/big.txt", "x" * 50)
