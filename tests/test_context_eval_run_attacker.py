@@ -1884,6 +1884,17 @@ def test_code_reads_follow_in_root_symlinks_and_deny_escapes(tmp_path, fixture_w
     assert attacker.read_code("/app/pkg/loop.py")["status"] == "missing"
 
 
+def test_a_repository_module_named_like_the_stdlib_does_not_run_in_the_code_read(tmp_path, fixture_world):
+    """The reader runs with the code root as its working directory; isolated mode keeps a root-level json.py out of
+    its imports, so the repository's files are read, never executed."""
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    env.write("/app/pkg/core.py", "def alpha():\n    return 1\n")
+    env.write("/app/json.py", "raise SystemExit('a repository module ran inside the code read')\n")
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    record = attacker.read_code("/app/pkg/core.py")
+    assert record["status"] == "ok" and "def alpha" in record["text"]
+
+
 def test_an_oversized_file_is_named_without_being_read(tmp_path, fixture_world):
     """The size is measured before the file is opened, so a file over the limit is named with its size and never
     transferred: the record carries no text and no `undecodable` verdict for bytes that were never read."""

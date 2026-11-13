@@ -245,7 +245,9 @@ older usage fields.
 Code views and requested files are read in one container exec per model call, not one per file: the reader resolves
 each path below the code root, refuses a path that leaves the root or enters `.git`, measures the size before the read,
 stops one byte past the read limit, and the harness repeats the containment and size checks on every resolved path. A
-file that is not UTF-8 text is named `unreadable` in its record, so one binary file never invalidates a session.
+file that is not UTF-8 text is named `unreadable` in its record, so one binary file never invalidates a session. The
+reader is a `python3 -I` script, so the task image must provide `python3` (the checked Pro flipt images do); isolated
+mode keeps a repository file named like a standard-library module from being imported by it.
 
 The call's `applied_attack_actions` counts actions that actually changed memory, excluding rejected, closed-write
 and no-change actions. Each run-local attack session records the accumulated count in `result.json` and its

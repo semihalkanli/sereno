@@ -804,7 +804,9 @@ class RunLocalAttacker:
         `read_code` infrastructure error, never a missing file."""
         root, limit = self.config.code_root, self.config.max_read_bytes
         arguments = " ".join(shlex.quote(relative) for relative in relatives)
-        command = f"cd {shlex.quote(root)} && python3 -c {shlex.quote(CODE_READER)} {limit} {arguments}"
+        # Isolated mode: the code root is the working directory, so without -I a repository file named like a stdlib
+        # module (json.py, stat.py) would be imported by the reader; -I also ignores the image's PYTHON* variables.
+        command = f"cd {shlex.quote(root)} && python3 -I -c {shlex.quote(CODE_READER)} {limit} {arguments}"
         try:
             result = self.runtime.env.execute(command)
         except (OSError, RuntimeError, subprocess.SubprocessError) as error:
