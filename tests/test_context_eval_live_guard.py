@@ -3,6 +3,7 @@
 import collections
 import json
 import threading
+from pathlib import Path
 
 import httpx
 import pytest
@@ -465,6 +466,15 @@ def test_test_facts_load_from_their_file_and_rule_4_needs_them(tmp_path, fixture
     facts.write_text(json.dumps({"first": {"test_cookie_jar": "yes"}}))
     with pytest.raises(ValidationError):
         load_config(path)
+
+
+def test_the_judge_stays_on_openrouter_while_the_deepseek_paths_move_to_opencode():
+    """The writer and the run-local attacker gained the opencode Go API; the guard's judge keeps its OpenRouter
+    decisions endpoint, its pinned build and its OpenRouter credential."""
+    assert guard_judge.API == "https://openrouter.ai/api/alpha/decisions"
+    assert (guard_judge.BUILD, guard_judge.PROVIDER) == ("typesafe/jev-1.14-20261014", "TypeSafe")
+    source = Path(guard_judge.__file__).read_text()
+    assert "opencode" not in source.lower() and "OPENCODE_API_KEY" not in source
 
 
 def test_the_judge_client_pins_the_provider_and_retries_a_busy_server(monkeypatch):
