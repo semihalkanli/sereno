@@ -768,6 +768,22 @@ def test_code_access_stays_in_bounds_and_is_never_cut(tmp_path, fixture_world, m
     assert not (tmp_path / "tiny" / "run_attacker/0001/request.json").exists()
 
 
+def test_a_zero_read_contract_serves_no_queued_reads(tmp_path, fixture_world, monkeypatch):
+    """max_reads_per_call: 0 is how a campaign turns queued code reads off; every pending path is denied."""
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    reads = ["/app/README.md", "/app/pkg/core.py"]
+    writer = FakeWriter(lambda request: {"reads": reads})
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    attacker = run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings(max_reads_per_call=0)), runtime, "fixture task", "first"
+    )
+    attacker.advance([{"role": "user", "content": "one"}])
+    attacker.advance([{"role": "user", "content": "two"}])
+    assert writer.requests[0]["contract"]["max_reads_per_call"] == 0
+    denied = {"status": "denied", "reason": "over max_reads_per_call"}
+    assert writer.requests[1]["observation"]["requested_files"] == dict.fromkeys(reads, denied)
+
+
 def test_code_reads_follow_in_root_symlinks_and_deny_escapes(tmp_path, fixture_world):
     env, runtime = runtime_for(tmp_path, fixture_world)
     env.write("/app/pkg/core.py", "def alpha():\n    return 1\n")

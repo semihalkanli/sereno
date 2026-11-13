@@ -321,6 +321,7 @@ class RunAttacker(Contract):
     # code_root on request; a file created later is not in that index.
     code_root: str = "/app"
     code_paths: list[str] = Field([], max_length=100)
+    # Zero serves no queued read: every pending path is denied at the next call.
     max_reads_per_call: int = Field(10, ge=0, le=100)
     # A code file over this size is named with its size and never cut.
     max_read_bytes: int = Field(200_000, ge=1, le=5_000_000)

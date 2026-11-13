@@ -49,6 +49,25 @@ def test_check_contract_accepts_a_shorter_deadline(tmp_path):
     check_contract(make_config(tmp_path, deadline=60), make_request(timeout_seconds=300))
 
 
+@pytest.mark.parametrize("reads", [0, 1, 100])
+def test_check_contract_accepts_a_non_negative_queued_read_count(tmp_path, reads):
+    """A campaign disables queued code reads with max_reads_per_call: 0, so zero must reach the program."""
+    check_contract(make_config(tmp_path), make_request(max_reads_per_call=reads))
+
+
+@pytest.mark.parametrize("reads", [-1, True, "10", None])
+def test_check_contract_refuses_a_bad_queued_read_count(tmp_path, reads):
+    with pytest.raises(InputError):
+        check_contract(make_config(tmp_path), make_request(max_reads_per_call=reads))
+
+
+@pytest.mark.parametrize("size", [0, -1, True, "200000", None])
+def test_check_contract_still_requires_a_positive_read_size(tmp_path, size):
+    """max_read_bytes is a size bound, not a count, so zero stays refused."""
+    with pytest.raises(InputError):
+        check_contract(make_config(tmp_path), make_request(max_read_bytes=size))
+
+
 def test_usage_record_preserves_reported_totals_when_a_completion_has_no_usage(tmp_path):
     completions = [
         Completion("", (), {}, "stop", {"prompt_tokens": 7, "completion_tokens": 3, "cost": 0.2}),
@@ -77,6 +96,17 @@ def test_validate_response_accepts_the_runtime_response():
         "writer_usage": {"calls": 1},
     }
     validate_response(response, make_request()["contract"])
+
+
+def test_validate_response_accepts_a_zero_read_contract():
+    """The response of a call under max_reads_per_call: 0 keeps the same form, with an empty reads list."""
+    response = {
+        "schema_version": "1.0",
+        "actions": [{"op": "write", "path": NOTE, "content": INERT}],
+        "reads": [],
+        "writer_usage": {"calls": 1},
+    }
+    validate_response(response, make_request(max_reads_per_call=0)["contract"])
 
 
 @pytest.mark.parametrize(

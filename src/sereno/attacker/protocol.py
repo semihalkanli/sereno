@@ -79,10 +79,14 @@ def check_contract(config: AttackerConfig, request: dict) -> None:
             f"deadline_seconds {config.settings.deadline_seconds} must be below the harness timeout {timeout}",
             "deadline",
         )
-    for key in ("max_reads_per_call", "max_read_bytes"):
-        value = contract.get(key)
-        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-            raise InputError(f"contract.{key} must be a positive integer", "contract")
+    # Zero is a count, not a bound: the harness denies every queued read at the next call.
+    reads = contract.get("max_reads_per_call")
+    if not isinstance(reads, int) or isinstance(reads, bool) or reads < 0:
+        raise InputError("contract.max_reads_per_call must be a non-negative integer", "contract")
+    # A size bound stays positive: a zero limit would name every file too large and never serve one.
+    read_bytes = contract.get("max_read_bytes")
+    if not isinstance(read_bytes, int) or isinstance(read_bytes, bool) or read_bytes <= 0:
+        raise InputError("contract.max_read_bytes must be a positive integer", "contract")
     for key in ("code_root", "memory_root", "project"):
         value = contract.get(key)
         if value is not None and not isinstance(value, str):
