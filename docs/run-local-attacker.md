@@ -228,9 +228,14 @@ Chain and campaign summaries add `realized_usage` and `realized_cost_usd`. They 
 `superseded/<timestamp>/cases/<case>/arms/attack_carry/`. Invalid sessions and failed or timed-out program calls are
 included; audits that stopped before launching the program (such as an oversized request) are excluded. Missing or
 partial token reports remain visible in `unreported_usage_calls` and `unreported_completions`. Only the originating
-`attack_carry` arm is scanned, so copies in reset, ablation and clean arms are not billed again. Existing chain
-`usage` and campaign `cost_usd` keep their checkpoint-carried meaning. Budget enforcement is unchanged: a repeated
-session starts from the last valid checkpoint with the same allowance its earlier attempt had.
+`attack_carry` arm is scanned, so copies in reset, ablation and clean arms are not billed again. `infrastructure_errors` counts sessions whose `result.json` records an `infrastructure_error`, across active and
+superseded attempts of every attack chain; each chain carries the same attempt-inclusive scalar, while its `sessions`
+list still describes only the active attempt. `clean_infrastructure_errors` covers the clean arm's active attempts
+under `clean/<case>/` and its superseded attempts under `superseded/<timestamp>/clean/<case>/`. Copied sessions marked
+by `branch.json` are excluded, so an error is counted once, at its origin; a re-run that succeeds adds no error of its
+own, and the earlier attempt remains counted. Existing chain `usage` and campaign `cost_usd` keep their
+checkpoint-carried meaning. Budget enforcement is unchanged: a repeated session starts from the last valid checkpoint
+with the same allowance its earlier attempt had.
 
 ```sh
 uv run sereno context-eval pair-summary --pair pair.json DEFENDED_CAMPAIGN UNDEFENDED_CAMPAIGN [--min-line-chars 20]

@@ -768,6 +768,58 @@ def test_clean_infrastructure_errors_are_counted_once_at_the_origin(tmp_path):
     assert campaign_summary(tmp_path, 20)["clean_infrastructure_errors"] == 1
 
 
+def test_a_superseded_attempts_infrastructure_error_is_counted(tmp_path):
+    case = "first--default--r001"
+    folder = tmp_path / "superseded/one/cases" / case / "arms/attack_carry/sessions/001-exposure"
+    folder.mkdir(parents=True)
+    (folder / "result.json").write_text(json.dumps({"status": "invalid", "infrastructure_error": {"code": "timeout"}}))
+    summary = campaign_summary(tmp_path, 20)
+    assert summary["infrastructure_errors"] == 1
+    assert summary["chains"][case]["sessions"] == []
+    assert summary["chains"][case]["infrastructure_errors"] == 1
+
+
+def test_a_successful_rerun_adds_no_extra_infrastructure_error(tmp_path):
+    case = "first--default--r001"
+    relative = Path("cases") / case / "arms/attack_carry"
+    results = {
+        tmp_path / "superseded/one" / relative: {"status": "invalid", "infrastructure_error": {"code": "timeout"}},
+        tmp_path / relative: {"status": "complete"},
+    }
+    for arm, result in results.items():
+        folder = arm / "sessions/001-exposure"
+        folder.mkdir(parents=True)
+        (folder / "result.json").write_text(json.dumps(result))
+    summary = campaign_summary(tmp_path, 20)
+    assert summary["infrastructure_errors"] == 1
+    assert summary["chains"][case]["infrastructure_errors"] == 1
+    assert [session["infrastructure_error"] for session in summary["chains"][case]["sessions"]] == [None]
+
+
+def test_a_copied_clean_result_is_counted_once(tmp_path):
+    origin = tmp_path / "clean/first/sessions/001-exposure"
+    origin.mkdir(parents=True)
+    (origin / "result.json").write_text(json.dumps({"infrastructure_error": {"code": "writer_failed"}}))
+    for copy in (
+        tmp_path / "cases/first--default--r001/arms/clean/sessions/001-exposure",
+        tmp_path / "superseded/one/cases/first--default--r001/arms/clean/sessions/001-exposure",
+    ):
+        shutil.copytree(origin, copy)
+        (copy / "branch.json").write_text(json.dumps({"shared_from": str(origin)}))
+    assert campaign_summary(tmp_path, 20)["clean_infrastructure_errors"] == 1
+
+
+def test_a_superseded_clean_attempt_is_counted(tmp_path):
+    for root, result in (
+        (tmp_path / "superseded/one/clean/first", {"infrastructure_error": {"code": "writer_failed"}}),
+        (tmp_path / "clean/first", {"status": "complete"}),
+    ):
+        folder = root / "sessions/001-exposure"
+        folder.mkdir(parents=True)
+        (folder / "result.json").write_text(json.dumps(result))
+    assert campaign_summary(tmp_path, 20)["clean_infrastructure_errors"] == 1
+
+
 STUB = Path(__file__).parent / "run_attacker_stub.py"
 
 

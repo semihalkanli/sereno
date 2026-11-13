@@ -162,6 +162,23 @@ def realized_usage(arm_dirs: list[Path]) -> dict:
     return totals
 
 
+def attempt_sessions(arm_dirs: list[Path]) -> list[Path]:
+    """Session folders across active and superseded attempts, one per origin; branch.json copies are excluded."""
+    sessions = {path.resolve() for arm in arm_dirs for path in arm.glob("sessions/*") if path.is_dir()}
+    return [path for path in sorted(sessions) if not (path / "branch.json").is_file()]
+
+
+def clean_sessions(campaign: Path) -> list[Path]:
+    """Clean-arm session folders across active and superseded attempts; branch.json copies are excluded."""
+    sessions = {
+        path.resolve()
+        for pattern in ("clean/*/sessions/*", "superseded/*/clean/*/sessions/*")
+        for path in campaign.glob(pattern)
+        if path.is_dir()
+    }
+    return [path for path in sorted(sessions) if not (path / "branch.json").is_file()]
+
+
 def inactivity_counts(arm_dirs: list[Path]) -> dict[str, int]:
     """Observed inactivity across active and superseded attempts, excluding copied sessions."""
     counts = {
@@ -170,10 +187,7 @@ def inactivity_counts(arm_dirs: list[Path]) -> dict[str, int]:
         "unknown_ending_calls": 0,
         "sessions_without_applied_actions": 0,
     }
-    sessions = {path.resolve() for arm in arm_dirs for path in arm.glob("sessions/*") if path.is_dir()}
-    for session in sorted(sessions):
-        if (session / "branch.json").is_file():
-            continue
+    for session in attempt_sessions(arm_dirs):
         result = read_json(session / "result.json") or {}
         applied = result.get("applied_attack_actions")
         counts["sessions_without_applied_actions"] += type(applied) is int and applied == 0
@@ -261,6 +275,10 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
         ]
     usage = (last_state or {}).get("usage", {})
     realized = realized_usage([arm_dir, *attempts])
+    infrastructure = sum(
+        bool((read_json(folder / "result.json") or {}).get("infrastructure_error"))
+        for folder in attempt_sessions([arm_dir, *attempts])
+    )
     return {
         "sessions": sessions,
         "usage": usage,
@@ -268,6 +286,7 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
         "realized_cost_usd": realized["cost_usd"],
         "declined_calls": realized["declined_calls"],
         "declined_attempts": realized["declined_attempts"],
+        "infrastructure_errors": infrastructure,
         **inactivity_counts([arm_dir, *attempts]),
         "budget": budget,
         "writes": writes,
@@ -284,7 +303,6 @@ def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = Non
             manifest = {}
     budget = (manifest.get("run_attacker") or {}).get("budget") or {}
     chains = {}
-    clean_errors = 0
     case_names = {case.name for case in (campaign / "cases").glob("*")}
     case_names |= {arm.parents[1].name for arm in (campaign / "superseded").glob("*/cases/*/arms/attack_carry")}
     for name in sorted(case_names):
@@ -292,11 +310,11 @@ def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = Non
         attempts = tuple(sorted((campaign / "superseded").glob(f"*/cases/{name}/arms/attack_carry")))
         if arm.is_dir() or attempts:
             chains[name] = chain_summary(arm, budget, min_chars, attempts=attempts)
-    for result in campaign.glob("clean/*/sessions/*/result.json"):
-        clean_errors += bool((read_json(result) or {}).get("infrastructure_error"))
-    infrastructure = sum(
-        bool(session["infrastructure_error"]) for chain in chains.values() for session in chain["sessions"]
+    clean_errors = sum(
+        bool((read_json(folder / "result.json") or {}).get("infrastructure_error"))
+        for folder in clean_sessions(campaign)
     )
+    infrastructure = sum(chain["infrastructure_errors"] for chain in chains.values())
     realized = {key: sum(chain["realized_usage"][key] for chain in chains.values()) for key in realized_usage([])}
     realized["seconds"] = round(realized["seconds"], 3)
     realized["cost_usd"] = round(realized["cost_usd"], 6)
