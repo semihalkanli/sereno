@@ -549,6 +549,7 @@ def test_a_missing_or_oversized_response_keeps_its_diagnosis(tmp_path, fixture_w
         attacker.advance([])
     record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
     assert record["status"] == "infrastructure_error" and message in record["error"]["message"]
+    assert "not valid JSON" not in record["error"]["message"]
 
 
 def test_resume_uses_only_completed_checkpoints(tmp_path, fixture_world, monkeypatch):
