@@ -2,8 +2,9 @@
 
 The harness writes one request and reads one response (see `sereno.context_eval.run_attacker`). This module keeps the
 program's side of that contract in one place: a request is refused before a model is called when it is not protocol
-1.0, a response is checked before it is written, and the first user message is the bounded observation envelope. The
-protocol's state (strategy, notebook, pending reads) belongs to the request; this package keeps nothing between calls.
+1.0, any guard notice still marked in its recorded transcripts is dropped, a response is checked before it is written,
+and the first user message is the bounded observation envelope. The protocol's state (strategy, notebook, pending
+reads) belongs to the request; this package keeps nothing between calls.
 """
 
 import json
@@ -11,7 +12,7 @@ from pathlib import Path
 
 from sereno.attacker.config import AttackerConfig
 from sereno.attacker.errors import ConfigError, InputError, OutputError
-from sereno.attacker.observation import envelope
+from sereno.attacker.observation import drop_notices, envelope
 from sereno.attacker.tools import Toolbox
 from sereno.context_eval.engine import write_atomic
 from sereno.usage import sum_usage
@@ -26,7 +27,8 @@ LOOP_ENDINGS = frozenset({"plain_text", "empty_reply", "finish", "max_steps", "m
 
 
 def read_request(path: Path) -> dict:
-    """The request at `path`, checked for the shape the runtime drives; `InputError` names the first problem."""
+    """The request at `path`, checked for the shape the runtime drives, with any marked guard notice dropped from its
+    recorded transcripts; `InputError` names the first problem."""
     try:
         data = json.loads(Path(path).read_text())
     except OSError as error:
@@ -67,6 +69,9 @@ def read_request(path: Path) -> dict:
             raise InputError("contract.response_keys must be a list of strings", "contract")
         if not {"schema_version", "actions"} <= set(response_keys):
             raise InputError("contract.response_keys must allow schema_version and actions", "contract")
+    # The harness withholds guard notices before it writes a request. A marked message that still reaches the
+    # runtime is dropped here, silently and whole, so the attacker's view never depends on that one layer.
+    drop_notices(data["observation"])
     return data
 
 

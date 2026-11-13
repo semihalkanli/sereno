@@ -65,9 +65,40 @@ def flatten_content(value: object) -> str:
     return str(value)
 
 
+def is_guard_notice(message: object) -> bool:
+    """A message carrying a guard notice's mark: the engine's `extra.notice_id`, or the top-level `notice_id` of a
+    transcript recorded before notices were withheld. The mark's presence is the test, not its value."""
+    if not isinstance(message, dict):
+        return False
+    extra = message.get("extra")
+    return "notice_id" in message or (isinstance(extra, dict) and "notice_id" in extra)
+
+
+def recorded_messages(messages: object) -> list[dict]:
+    """The messages of a recorded list the runtime keeps: dictionaries that carry no guard-notice mark."""
+    if not isinstance(messages, list):
+        return []
+    return [message for message in messages if isinstance(message, dict) and not is_guard_notice(message)]
+
+
+def drop_notices(observation: dict) -> None:
+    """Guard notices dropped in place from a request's observation: the running transcript and every completed
+    session's transcript. The harness withholds them before it writes a request; this is the runtime's own second
+    layer, applied when a request is read, so a stale or hand-built request cannot reach the model with a notice in
+    it. The drop is silent: nothing the runtime shows or returns names a removed message."""
+    transcript = observation.get("transcript")
+    if isinstance(transcript, list):
+        observation["transcript"] = recorded_messages(transcript)
+    sessions = observation.get("completed_sessions")
+    if isinstance(sessions, list):
+        for session in sessions:
+            if isinstance(session, dict) and isinstance(session.get("transcript"), list):
+                session["transcript"] = recorded_messages(session["transcript"])
+
+
 def render_message(index: int, message: object) -> str:
     """One recorded message as a line: its position, its role, its readable thinking summary, its text and its tool
-    interactions. The harness leaves guard notices out of the request, so nothing here names one."""
+    interactions. Both layers leave guard notices out of a request, so nothing here names one."""
     if not isinstance(message, dict):
         return f"[{index:04d}] {message!s}"
     role = message.get("role", "?")
@@ -113,13 +144,16 @@ class Transcript:
     other reference is an earlier session's id or list position."""
 
     def __init__(self, observation: dict):
-        self.current = [message for message in observation.get("transcript") or [] if isinstance(message, dict)]
+        self.current = recorded_messages(observation.get("transcript"))
         self.sessions = [
             session for session in observation.get("completed_sessions") or [] if isinstance(session, dict)
         ]
+        # The same predicate as the harness, applied again: a transcript built straight from an uncleaned request is
+        # as clean as one built from a validated request, and the drop leaves no gap to notice.
+        self.transcripts = [recorded_messages(session.get("transcript")) for session in self.sessions]
         self.by_ref: dict[str, list] = {}
-        for position, session in enumerate(self.sessions):
-            messages = [message for message in session.get("transcript") or [] if isinstance(message, dict)]
+        for position, messages in enumerate(self.transcripts):
+            session = self.sessions[position]
             for ref in (str(position), session.get("id"), session.get("session_id")):
                 if isinstance(ref, str) and ref and ref not in self.by_ref:
                     self.by_ref[ref] = messages
@@ -135,7 +169,7 @@ class Transcript:
                 "task_id": session.get("task_id"),
                 "stage": session.get("stage"),
                 "instruction": bounded_text(str(session.get("instruction") or ""), 300),
-                "messages": len(session.get("transcript") or []),
+                "messages": len(self.transcripts[position]),
                 "calls": session.get("calls"),
             }
             for position, session in enumerate(self.sessions)
@@ -185,10 +219,7 @@ class Transcript:
             return {"status": "denied", "reason": f"the pattern does not compile: {error}"}
         if ref in (None, "all"):
             targets = [("current", self.current)]
-            targets += [
-                (str(position), messages)
-                for position, messages in enumerate([s.get("transcript") or [] for s in self.sessions])
-            ]
+            targets += [(str(position), messages) for position, messages in enumerate(self.transcripts)]
         else:
             key, messages = self.select(ref)
             targets = [(key, messages)]
@@ -286,7 +317,7 @@ def session_summaries(sessions: object, cap: int) -> dict:
                 "stage": session.get("stage"),
                 "instruction": bounded_text(str(session.get("instruction") or ""), 600),
                 "calls": session.get("calls"),
-                "messages": len(session.get("transcript") or []),
+                "messages": len(recorded_messages(session.get("transcript"))),
                 "summary": bounded_text(
                     summary if isinstance(summary, str) else json.dumps(summary, ensure_ascii=False, sort_keys=True),
                     4_000,
@@ -373,7 +404,7 @@ def envelope(request: dict, settings) -> dict:
     }
     remaining = budget - json_bytes(base) - 200
     view["transcript"] = transcript_tail(
-        [message for message in observation.get("transcript") or [] if isinstance(message, dict)],
+        recorded_messages(observation.get("transcript")),
         remaining,
         max(settings.transcript_page_bytes // 4, 500),
     )

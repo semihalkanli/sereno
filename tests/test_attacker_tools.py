@@ -2,11 +2,14 @@
 
 import json
 
-from attacker_world import CODE, INERT, NOTE, make_request
+from attacker_world import CODE, INERT, NOTE, make_config, make_request, write_request
 
 from sereno.attacker.config import LoopSettings
-from sereno.attacker.observation import envelope, render_message
+from sereno.attacker.observation import Transcript, envelope, render_message
+from sereno.attacker.protocol import envelope_text, read_request
 from sereno.attacker.tools import Toolbox
+
+NOTICE_TEXT = "GUARD_NOTICE_FIXTURE_TEXT"
 
 
 def toolbox(**contract) -> Toolbox:
@@ -95,6 +98,55 @@ def test_render_message_has_no_notice_marker():
     """Notices never reach the request, so the renderer names none; a stray mark would announce one."""
     line = render_message(0, {"role": "system", "content": "text", "notice_id": "guard-fixture"})
     assert "notice" not in line.lower() and line == "[0000] system: text"
+
+
+def test_a_hand_built_request_with_a_marked_notice_is_cleaned(tmp_path):
+    """The runtime's second layer: a notice that reaches a request in either recorded form is dropped, silently."""
+    request = make_request()
+    transcript = request["observation"]["transcript"]
+    transcript.insert(1, {"role": "system", "content": NOTICE_TEXT, "extra": {"notice_id": "guard-a"}})
+    transcript.insert(2, {"role": "system", "content": NOTICE_TEXT, "notice_id": "guard-b"})
+    request["observation"]["completed_sessions"][0]["transcript"].insert(
+        1, {"role": "system", "content": NOTICE_TEXT, "extra": {"notice_id": "guard-c"}}
+    )
+    # The envelope applies the same predicate even before validation, on the transcript and the session cards.
+    raw = envelope(request, LoopSettings())
+    assert raw["observation"]["transcript"]["total"] == 3
+    assert NOTICE_TEXT not in json.dumps(raw) and "notice_id" not in json.dumps(raw)
+    assert raw["observation"]["completed_sessions"]["sessions"][0]["messages"] == 2
+    cleaned = read_request(write_request(tmp_path, request))
+    assert [message["content"] for message in cleaned["observation"]["transcript"]] == [
+        "fixture task",
+        "fixture answer",
+        "fixture tool result",
+    ]
+    assert [message["content"] for message in cleaned["observation"]["completed_sessions"][0]["transcript"]] == [
+        "earlier task",
+        "earlier answer",
+    ]
+    # Nothing the model sees or the tools return names a removed message.
+    text = envelope_text(make_config(tmp_path), cleaned)
+    assert NOTICE_TEXT not in text and "notice_id" not in text and "[notice" not in text
+    tools = Toolbox(cleaned, LoopSettings())
+    page = json.loads(tools.execute("read_transcript", json.dumps({"session": "current", "limit": 40}))[0])
+    assert page["total"] == 3
+    assert [line.split(" ", 1)[0] for line in page["messages"]] == ["[0000]", "[0001]", "[0002]"]
+    listed = json.loads(tools.execute("list_sessions", "{}")[0])
+    assert listed["current"]["messages"] == 3 and listed["sessions"][0]["messages"] == 2
+
+
+def test_transcript_drops_a_marked_notice_without_a_validated_request():
+    """A Transcript built straight from an uncleaned observation applies the same predicate and counts the kept."""
+    request = make_request()
+    request["observation"]["transcript"].insert(1, {"role": "system", "content": NOTICE_TEXT, "notice_id": ""})
+    request["observation"]["completed_sessions"][0]["transcript"].insert(
+        1, {"role": "system", "content": NOTICE_TEXT, "extra": {"notice_id": ""}}
+    )
+    transcript = Transcript(request["observation"])
+    assert len(transcript.current) == 3
+    described = transcript.describe()
+    assert described["current"]["messages"] == 3 and described["sessions"][0]["messages"] == 2
+    assert transcript.search(NOTICE_TEXT, "all", 10)["matches"] == []
 
 
 def test_memory_lists_and_reads():
