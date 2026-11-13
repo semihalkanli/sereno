@@ -21,7 +21,8 @@ paths stay configured and tested, so a campaign switches back by configuration a
   from the request's run and chain identity (the campaign directory's name, the case, the arm, the repeat, the agent
   id and the next session with its position), so a resumed step reuses it; it contains no path. The response's
   returned `model` is recorded per call, and `usage.opencode.allowance` is the charge, recorded with its
-  `billing_source` and `billing: allowance`: a subscription allowance, never a cash cost.
+  `billing_source` and `billing: allowance`: a subscription allowance, never a cash cost. The DeepSeek allowance is
+  USD 100 a month, at most 20 % of it in a five-hour window and 50 % in a week; the ledger keeps every charge.
 
 The opencode model id is an undated alias whose build can change, so every call records the build the API says it
 served. Jev, the guard's judge, stays on OpenRouter's decisions endpoint pinned to TypeSafe (`guard_judge.py`); nothing
