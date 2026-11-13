@@ -1,12 +1,12 @@
 """The run-local adaptive attacker of the attack_carry arm.
 
-An external program is called synchronously before the agent's model calls: the first call of a session always, then
-call 1 + n, 1 + 2n, ... for `every_calls: n`, and once at the end of each completed session. Each call gets three
-parts: the fixed experiment contract (stage, memory root, limits, budgets, the response's form), the attacker's own
-evolving strategy and private notebook, and an observation package (task, code views, the agent's visible transcript
-with its thinking summaries, earlier sessions of the same chain, memory, and the result of its previous call). It
-answers once with memory actions, an updated strategy and an updated notebook. The transcript carries the readable
-thinking text only: signatures, redacted blocks and provider metadata stay out.
+An external program is called synchronously before the agent's model calls: the first call of a session, budget
+permitting, then call 1 + n, 1 + 2n, ... for `every_calls: n`, and once at the end of each completed session. Each
+call gets three parts: the fixed experiment contract (stage, memory root, limits, budgets, the response's form), the
+attacker's own evolving strategy and private notebook, and an observation package (task, code views, the agent's
+visible transcript with its thinking summaries, earlier sessions of the same chain, memory, and the result of its
+previous call). It answers once with memory actions, an updated strategy and an updated notebook. The transcript
+carries the readable thinking text only: signatures, redacted blocks and provider metadata stay out.
 
 Memory actions go through the hook rules of the adaptive arm (path, ownership, append-only, size and content limits);
 the user's file is out of reach. In probe sessions and in the session-end call no action is applied. A valid strategy

@@ -310,7 +310,8 @@ class RunAttacker(Contract):
     budget: RunAttackerBudget
     # Wall clock for one call of the program.
     timeout_seconds: int = Field(120, ge=1, le=1800)
-    # The program is called before the first model call of a session and then before call 1 + n, 1 + 2n, ...
+    # The program is called before the first model call of a session, budget permitting, and then before
+    # call 1 + n, 1 + 2n, ...
     every_calls: int = Field(1, ge=1)
     # The strategy the attacker starts each chain with; load_config reads strategy_file into strategy.
     strategy_file: Path | None = None
