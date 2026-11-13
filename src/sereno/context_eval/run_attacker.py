@@ -26,6 +26,7 @@ import copy
 import hashlib
 import json
 import shlex
+import shutil
 import subprocess
 import time
 from datetime import UTC, datetime
@@ -62,6 +63,8 @@ ACTION_RESULTS = ("applied", "no_change", "no_action", "rejected", "not_applied"
 VISIBLE_KEYS = ("role", "content", "tool_calls", "tool_call_id", "name")
 HIDDEN_BLOCKS = frozenset({"thinking", "redacted_thinking"})
 EVENT_OWN = frozenset({"schema_version", "kind", "step", "session_id"})
+# What a call's scratch directory can hold and the audit folder receives once the program has exited.
+CALL_FILES = ("response.json", "failure_usage.json", "writer.stdout", "writer.stderr")
 
 
 class AttackerInfrastructureError(RuntimeError):
@@ -108,11 +111,12 @@ def read_state(path: Path) -> dict | None:
 
 def is_guard_notice(message: object) -> bool:
     """A guard notice: the engine's mid-conversation system message carries `extra.notice_id`, and a transcript
-    recorded before notices were withheld carries the same mark at the top level of the recorded message."""
+    recorded before notices were withheld carries the same mark at the top level of the recorded message. The mark's
+    presence is the test, not its value: an empty id is still a notice and never renders as ordinary text."""
     if not isinstance(message, dict):
         return False
     extra = message.get("extra")
-    return bool(message.get("notice_id") or (isinstance(extra, dict) and extra.get("notice_id")))
+    return "notice_id" in message or (isinstance(extra, dict) and "notice_id" in extra)
 
 
 def without_notices(sessions: list) -> int:
@@ -203,6 +207,22 @@ def did_not_finish(result: dict) -> bool:
         return True
     code = result["returncode"]
     return code < 0 or code in UNAVAILABLE or SIGNAL_BASE < code <= SIGNAL_BASE + SIGNAL_MAX
+
+
+def collect_call(staged: Path, audit: Path, encoded: bytes) -> None:
+    """Copy a call's files out of its scratch directory into the audit folder once the program has exited: the
+    request's recorded bytes and, when the program wrote them, its response, usage sidecar and captured output.
+    The program is never given a path in the audit folder, so the run tree stays outside its reach."""
+    try:
+        partial = audit / ".request.json.partial"
+        partial.write_bytes(encoded)
+        partial.replace(audit / "request.json")
+        for name in CALL_FILES:
+            source = staged / name
+            if source.is_file():
+                shutil.copyfile(source, audit / name)
+    except OSError as error:
+        raise OSError(f"cannot collect the call's files: {error}") from error
 
 
 class RunLocalAttacker:
@@ -364,7 +384,7 @@ class RunLocalAttacker:
         )
         return copy.deepcopy(self.state)
 
-    def call(self, kind: str, transcript: list[dict], summary: dict | None = None, *, withheld: int = 0) -> None:
+    def call(self, kind: str, transcript: list[dict], summary: dict | None = None, *, withheld: int) -> None:
         if reason := self.exhausted(kind):
             self.state["usage"]["skipped_calls"] += 1
             if reason not in self.skipped:
@@ -408,24 +428,31 @@ class RunLocalAttacker:
                 "input_over_limit",
                 f"the request is {len(encoded)} bytes, over max_input_bytes={config.max_input_bytes}",
             )
-        partial = audit / ".request.json.partial"
-        partial.write_bytes(encoded)
-        partial.replace(audit / "request.json")
         clock = time.monotonic()
-        # A fresh working directory on every call: the program keeps nothing of its own between calls.
+        # A fresh scratch directory on every call, outside the run tree: the program keeps nothing between calls,
+        # and no path it is given names the session, its audit folder or its event log (decision 409). Its files
+        # reach the audit folder only as copies made after it exits.
         with TemporaryDirectory(prefix="sereno-run-attacker-") as scratch:
+            staged = Path(scratch)
+            partial = staged / ".request.json.partial"
+            partial.write_bytes(encoded)
+            partial.replace(staged / "request.json")
             outcome = run_program(
-                [*config.command, str(audit / "request.json"), str(audit / "response.json")],
-                Path(scratch),
+                [*config.command, str(staged / "request.json"), str(staged / "response.json")],
+                staged,
                 config.timeout_seconds,
-                audit,
+                staged,
             )
-        seconds = round(time.monotonic() - clock, 3)
-        self.state["usage"]["seconds"] = round(self.state["usage"]["seconds"] + seconds, 3)
-        base["seconds"] = seconds
-        base["program"] = {
-            key: outcome.get(key) for key in ("exit_code", "timed_out", "error", "stdout_bytes", "stderr_bytes")
-        }
+            seconds = round(time.monotonic() - clock, 3)
+            self.state["usage"]["seconds"] = round(self.state["usage"]["seconds"] + seconds, 3)
+            base["seconds"] = seconds
+            base["program"] = {
+                key: outcome.get(key) for key in ("exit_code", "timed_out", "error", "stdout_bytes", "stderr_bytes")
+            }
+            try:
+                collect_call(staged, audit, encoded)
+            except OSError as error:
+                self.fail(audit, base, "audit_copy", str(error))
         if outcome["timed_out"] or outcome["error"] or outcome["exit_code"] != 0:
             failure = audit / "failure_usage.json"
             try:

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -337,6 +338,8 @@ def test_a_guard_notice_reaches_no_part_of_the_attacker_view(tmp_path, fixture_w
     observation = request["observation"]
     assert observation["transcript"] == run_attacker.visible_transcript(target)
     assert NOTICE_TEXT not in json.dumps(request) and "notice_id" not in json.dumps(request)
+    # The per-view count is host-side only: no request field carries it, under any nesting.
+    assert '"notices_withheld"' not in json.dumps(request, sort_keys=True)
     settings = LoopSettings()
     tail = envelope(request, settings)["observation"]["transcript"]
     assert tail["total"] == len(target) and tail["dropped"] == 0
@@ -344,6 +347,8 @@ def test_a_guard_notice_reaches_no_part_of_the_attacker_view(tmp_path, fixture_w
     tools = Toolbox(request, settings)
     paged = json.loads(tools.execute("read_transcript", json.dumps({"session": "current", "limit": 40}))[0])
     assert paged["total"] == len(target)
+    # Paging enumerates the cleaned list, so the rendered positions are contiguous with no gap at the notice.
+    assert [message.split(" ", 1)[0] for message in paged["messages"]] == ["[0000]", "[0001]", "[0002]"]
     assert [message.split("] ", 1)[1] for message in paged["messages"]] == [
         "user: the task",
         "assistant: a reply",
@@ -406,6 +411,9 @@ def test_a_checkpoint_written_before_withholding_is_cleaned_on_load(tmp_path, fi
     page = json.loads(tools.execute("read_transcript", json.dumps({"session": "earlier", "limit": 40}))[0])
     assert page["total"] == 2
     assert all(NOTICE_TEXT not in message and "[notice" not in message for message in page["messages"])
+    # The session list counts the cleaned lists too: the earlier session and the running one each lost one message.
+    described = json.loads(tools.execute("list_sessions", "{}")[0])
+    assert described["sessions"][0]["messages"] == 2 and described["current"]["messages"] == 2
     found = json.loads(tools.execute("search_transcript", json.dumps({"query": NOTICE_TEXT, "session": "all"}))[0])
     assert found["matches"] == []
     markers = json.loads(tools.execute("search_transcript", json.dumps({"query": "[notice", "session": "all"}))[0])
@@ -414,6 +422,128 @@ def test_a_checkpoint_written_before_withholding_is_cleaned_on_load(tmp_path, fi
     checkpoint = attacker.finish(messages, {"exit_status": "script_complete"})
     assert NOTICE_TEXT not in json.dumps(checkpoint)
     assert checkpoint["sessions"][0]["transcript"] == completed
+    # The session-end record carries the session's total: the load-time notice plus the running session's one.
+    assert json.loads((tmp_path / "run_attacker/0002/record.json").read_text())["notices_withheld"] == 2
+
+
+@pytest.mark.parametrize(
+    "marked",
+    [
+        {"role": "system", "content": NOTICE_TEXT, "extra": {"notice_id": "guard-fixture"}},
+        {"role": "system", "content": NOTICE_TEXT, "notice_id": "guard-fixture"},
+        {"role": "system", "content": NOTICE_TEXT, "extra": {"notice_id": ""}},
+        {"role": "system", "content": NOTICE_TEXT, "notice_id": ""},
+    ],
+)
+def test_both_notice_forms_are_dropped_on_the_live_and_checkpoint_paths(marked):
+    """The live builder and the checkpoint cleaner share the predicate: both marks go, on both paths."""
+    opening = {"role": "system", "content": "the opening instructions"}
+    kept = [{"role": "user", "content": "the task"}, opening, {"role": "assistant", "content": "a reply"}]
+    messages = [kept[0], dict(marked), kept[1], kept[2]]
+    visible = run_attacker.visible_transcript(messages)
+    assert visible == run_attacker.visible_transcript(kept)
+    # An ordinary system message, the opening instructions, survives on both paths.
+    assert [message["content"] for message in visible] == ["the task", "the opening instructions", "a reply"]
+    sessions = [{"session_id": "earlier", "transcript": [dict(message) for message in messages]}]
+    assert run_attacker.without_notices(sessions) == 1
+    assert sessions[0]["transcript"] == kept
+
+
+def test_the_harness_and_runtime_notice_predicates_agree():
+    """Two copies of the predicate, one per package: they must agree on presence, on empty ids and on misses."""
+    from sereno.attacker.observation import is_guard_notice as runtime_notice
+
+    cases = [
+        None,
+        "not a message",
+        {},
+        {"role": "system", "content": "the opening instructions"},
+        {"role": "system", "content": NOTICE_TEXT, "notice_id": "guard-fixture"},
+        {"role": "system", "content": NOTICE_TEXT, "notice_id": ""},
+        {"role": "system", "content": NOTICE_TEXT, "extra": {"notice_id": "guard-fixture"}},
+        {"role": "system", "content": NOTICE_TEXT, "extra": {"notice_id": ""}},
+        {"role": "system", "content": NOTICE_TEXT, "extra": {"other": "x"}},
+        {"role": "system", "content": NOTICE_TEXT, "extra": None},
+    ]
+    expected = [False, False, False, False, True, True, True, True, False, False]
+    assert [run_attacker.is_guard_notice(case) for case in cases] == expected
+    assert [runtime_notice(case) for case in cases] == expected
+
+
+def test_a_clean_checkpoint_reloads_with_zero_withheld_and_the_same_view(tmp_path, fixture_world, monkeypatch):
+    messages = [{"role": "user", "content": "the task"}, {"role": "assistant", "content": "a reply"}]
+    writer = FakeWriter()
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    first = tmp_path / "first"
+    first.mkdir()
+    _, runtime = runtime_for(first, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    state = attacker.finish(messages, {"exit_status": "script_complete"})
+    assert state["sessions"][0]["transcript"] == run_attacker.visible_transcript(messages)
+    path = tmp_path / "run_attacker_state.json"
+    path.write_text(json.dumps(state))
+    loaded = run_attacker.read_state(path)
+    assert loaded is not None
+    resumed_dir = tmp_path / "resumed"
+    resumed_dir.mkdir()
+    _, resumed_runtime = runtime_for(resumed_dir, fixture_world)
+    resumed = run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings()), resumed_runtime, "fixture task", "first", loaded
+    )
+    assert resumed.notices_withheld_in_state == 0
+    resumed.advance([{"role": "user", "content": "the next task"}])
+    request = writer.requests[-1]
+    assert request["observation"]["completed_sessions"] == state["sessions"]
+    assert json.loads((resumed_dir / "run_attacker/0001/record.json").read_text())["notices_withheld"] == 0
+
+
+def test_the_program_is_given_no_path_inside_the_run_tree(tmp_path, fixture_world, monkeypatch):
+    """The request and response are staged in a scratch directory outside the session folder; the audit gets copies."""
+    seen = {}
+
+    def program(argv, cwd, timeout, folder):
+        seen["argv"], seen["cwd"], seen["folder"] = list(argv), Path(cwd), Path(folder)
+        seen["request"] = json.loads(Path(argv[-2]).read_text())
+        Path(argv[-1]).write_text(json.dumps({"schema_version": "1.0", "actions": []}))
+        return {"exit_code": 0, "timed_out": False, "error": None, "seconds": 0.01}
+
+    monkeypatch.setattr(run_attacker, "run_program", program)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    attacker.advance([{"role": "user", "content": "the task"}])
+    # No argv word, working directory or inherited environment value names a path inside the run tree.
+    given = [*seen["argv"], str(seen["cwd"]), str(seen["folder"]), *os.environ.values()]
+    assert all(str(tmp_path) not in value for value in given)
+    # The scratch directory is gone after the call, and the audit folder holds the same files as copies.
+    assert not seen["cwd"].exists() and not seen["folder"].exists()
+    audit = tmp_path / "run_attacker/0001"
+    assert json.loads((audit / "request.json").read_text()) == seen["request"]
+    assert json.loads((audit / "response.json").read_text()) == {"schema_version": "1.0", "actions": []}
+    record = json.loads((audit / "record.json").read_text())
+    assert record["request_sha256"] == hashlib.sha256((audit / "request.json").read_bytes()).hexdigest()
+
+
+def test_an_audit_copy_failure_is_an_infrastructure_error(tmp_path, fixture_world, monkeypatch):
+    def program(argv, cwd, timeout, folder):
+        Path(argv[-1]).write_text(json.dumps({"schema_version": "1.0", "actions": []}))
+        return {"exit_code": 0, "timed_out": False, "error": None, "seconds": 0.01}
+
+    original_copy = shutil.copyfile
+
+    def failing_copy(source, target, **kwargs):
+        if Path(target).parent.parent.name == run_attacker.AUDIT_DIR:
+            raise OSError("fixture copy failure")
+        return original_copy(source, target, **kwargs)
+
+    monkeypatch.setattr(run_attacker, "run_program", program)
+    monkeypatch.setattr(run_attacker.shutil, "copyfile", failing_copy)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="audit_copy"):
+        attacker.advance([])
+    record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
+    assert record["status"] == "infrastructure_error" and record["error"]["code"] == "audit_copy"
+    assert not (tmp_path / "run_attacker/0001/response.json").exists()
 
 
 def test_request_carries_a_transcript_thinking_summary(tmp_path, fixture_world):
@@ -562,7 +692,7 @@ def test_chain_call_budget_reserves_its_last_call_for_current_session_end(tmp_pa
     final = attacker.finish([], {})
     assert len(attacker.calls) == 1 and attacker.calls[0]["kind"] == "session_end"
     assert final["usage"]["calls"] == 5
-    attacker.call("session_end", [])
+    attacker.call("session_end", [], withheld=0)
     assert len(attacker.calls) == 1
 
 
