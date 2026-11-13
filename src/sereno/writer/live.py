@@ -175,6 +175,21 @@ def run_live(config, request_path: Path, response_path: Path, *, transport=None)
             },
         )
         raise
+    except Exception:
+        # A failure after the provider answered, such as an input over the cap on a repair message, still leaves the
+        # completions already paid for in the sidecar; the failing operation made no additional model call.
+        if completions:
+            totals, missing, cost = sum_usage(completion.usage for completion in completions)
+            write_atomic(
+                response_path.with_name("failure_usage.json"),
+                {
+                    "usage": totals,
+                    "unreported_completions": missing,
+                    "cost": cost,
+                    "declined_attempts": declined_attempts,
+                },
+            )
+        raise
     finally:
         provider.close()
     if codes:

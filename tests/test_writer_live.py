@@ -7,7 +7,7 @@ import pytest
 from writer_world import KEY_ENV, LIMITS, Transport, World, reply
 
 from sereno.writer import live
-from sereno.writer.errors import OutputError
+from sereno.writer.errors import InputError, OutputError
 
 
 def request(tmp_path: Path, **contract) -> Path:
@@ -41,6 +41,35 @@ def request(tmp_path: Path, **contract) -> Path:
 
 def answer(**changes) -> str:
     return json.dumps({"status": "no_change", "actions": [], "notebook": "next revision", "explanation": "e"} | changes)
+
+
+def test_an_input_limit_after_a_completion_keeps_the_failure_usage(tmp_path, monkeypatch):
+    monkeypatch.setenv(KEY_ENV, "fixture-key")
+    world = World(tmp_path)
+    req = request(tmp_path)
+    response = tmp_path / "live-response.json"
+    sizes = []
+    original = live.check_size
+
+    def recording(config, messages):
+        size = original(config, messages)
+        sizes.append(size)
+        return size
+
+    monkeypatch.setattr(live, "check_size", recording)
+    live.run_live(
+        world.config(), req, response, transport=Transport(reply(answer(strategy=7)), reply(answer())).transport
+    )
+    first, second = sizes[0], sizes[1]
+    assert second > first
+    transport = Transport(reply(answer(strategy=7)), reply(answer()))
+    with pytest.raises(InputError) as caught:
+        live.run_live(world.config(max_input=first), req, response, transport=transport.transport)
+    assert caught.value.exit_code == 3
+    usage = json.loads((tmp_path / "failure_usage.json").read_text())
+    assert usage["usage"]["total_tokens"] == 15
+    assert usage["cost"] == 0.0123
+    assert usage["unreported_completions"] == 0
 
 
 def test_live_adapter_passes_three_parts_and_returns_state_and_usage(tmp_path, monkeypatch):
