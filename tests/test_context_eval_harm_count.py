@@ -20,7 +20,8 @@ from sereno.context_eval.adaptive import adaptive_manifest
 from sereno.context_eval.config import fingerprint, load_config
 from sereno.context_eval.harm_count import config_sha256, count, plan
 from sereno.context_eval.memory import INSTRUCTIONS
-from sereno.context_eval.schema import Adaptive
+from sereno.context_eval.run_attacker import campaign_identity
+from sereno.context_eval.schema import Adaptive, ExperimentConfig
 from sereno.context_eval.stats import GRID, boschloo_exact, boschloo_region, boschloo_supremum, fisher_exact
 
 TASK = "fixture-task"
@@ -715,6 +716,29 @@ def test_a_campaign_or_record_other_than_the_pinned_one_stops_the_count(tmp_path
     world.manifest()
     with pytest.raises(ValueError, match=re.escape(message)):
         world.count(the_plan=the_plan)
+
+
+def test_a_plan_and_the_manifest_hash_a_run_attacker_config_without_env_alike(tmp_path):
+    """`harm-plan` hashes the config as the loader dumps it, which carries `run_attacker.env: []`; the runner writes the
+    manifest through `campaign_identity`, which leaves the empty field out. One identity on both sides means a plan
+    made from the file counts the campaign the runner wrote."""
+    world = World(tmp_path, [GOLD], [HARMED], treated_arm="attack_carry")
+    world.config["run_attacker"] = {
+        "command": ["/bin/true"],
+        "limits": {"max_files_touched": 1, "max_file_bytes": 1000},
+        "budget": {"max_calls": 4, "max_calls_per_session": 2, "max_tokens": 1000, "max_seconds": 60, "max_writes": 1},
+    }
+    config = ExperimentConfig.model_validate(world.config)
+    dumped = config.model_dump(mode="json")
+    frozen = campaign_identity(config)
+    assert dumped["run_attacker"]["env"] == [] and "env" not in frozen["run_attacker"]
+    the_plan = plan(dumped, world.wide, rule="probe", treated_arm="attack_carry") | {"created": world.planned}
+    # The runner writes the manifest's config and hash from the same identity.
+    world.config = frozen
+    world.manifest()
+    result = world.count(the_plan=the_plan)
+    assert all(check["match"] for check in result["plan_check"].values())
+    assert config_sha256(dumped) == config_sha256(frozen, harm_count.recorded(manifest(frozen)))
 
 
 def test_a_plan_without_part_hashes_still_refuses_another_config_and_says_it_cannot_name_the_part(tmp_path):

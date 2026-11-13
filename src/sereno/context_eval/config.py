@@ -1,5 +1,6 @@
 """Resolve configs without model calls or implicit plugin imports."""
 
+import copy
 import hashlib
 import importlib
 import json
@@ -82,6 +83,24 @@ def resolve_word(root: Path, word: str) -> str:
 def fingerprint(value) -> str:
     raw = value if isinstance(value, str) else json.dumps(value, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def without_empty_env(dumped: dict) -> dict:
+    """A dumped attacker configuration with `env` left out while it is empty, so a campaign written before the field
+    existed keeps its identity: its manifest entry and its config hash."""
+    if not dumped.get("env"):
+        dumped.pop("env", None)
+    return dumped
+
+
+def config_identity(config: dict) -> dict:
+    """A dumped experiment config in the one form its hashes are taken in: the attacker's empty `env` left out. The
+    manifest, resume, pairing, `harm-plan` and `harm-count` all hash this form, so a config that never carried the
+    field and one whose dump carries `env: []` are the same experiment."""
+    dumped = copy.deepcopy(config)
+    if isinstance(dumped.get("run_attacker"), dict):
+        without_empty_env(dumped["run_attacker"])
+    return dumped
 
 
 def default_registry(plugins: list[str] = ()) -> Registry:

@@ -82,18 +82,24 @@ tree, or a private root or call scratch that cannot be created, fails the call c
 
 The program's environment is built from an allowlist instead of being inherited: `PATH`, `HOME`, `LANG`, `LC_*` and
 `TZ`, the live-mode network variables `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY` (and their lowercase
-forms) and `SSL_CERT_FILE`, `SSL_CERT_DIR` and `REQUESTS_CA_BUNDLE`, the credential variable its own configuration
-names (`provider.credential_env` in the attacker runtime's configuration, `credential_env_name` in the writer
-design's) and any name `run_attacker.env` lists. `TMPDIR`, `TEMP` and `TMP` are pinned to the scratch directory.
+forms), `SSL_CERT_FILE` and `SSL_CERT_DIR` (which `httpx` and OpenSSL read) and `REQUESTS_CA_BUNDLE` (which
+`requests`-based programs read), the credential variable its own configuration names (`provider.credential_env` in the
+attacker runtime's configuration, `credential_env_name` in the writer design's) and any name `run_attacker.env` lists.
+`TMPDIR`, `TEMP` and `TMP` are pinned to the scratch directory.
 `PWD`, `OLDPWD` and every other variable of the harness stay out. A credential variable name, or a `run_attacker.env`
 entry, that names a harness-controlled variable (`PATH`, `HOME`, `PWD`, `OLDPWD`, `PYTHONPATH`, `PYTHONHOME`,
 `TMPDIR`, `TEMP`, `TMP`, `LANG`, `TZ`, and the `LD_*`, `LC_*` and `SERENO_*` families) is refused at configuration
-validation, by the schema or by the validation that reads the program's configuration, before a session starts.
+validation, by the schema or by the validation that reads the program's configuration, before a session starts. The
+credential variable is read from the command's configuration again before every call, under the same bounded,
+non-following read as a staged file, and a name the harness sets is dropped there too: a program that rewrites its
+configuration between calls still cannot make the harness forward one. Because every `LD_*` name is harness-controlled,
+a program that needs a non-default library path cannot be given one through this mechanism.
 
 Every value the program receives is checked against the campaign's run tree before it is launched: each `command`
 word, the value of a `key=value` word, and every environment value. An absolute path that resolves (symlinks
-included) inside the run tree is refused, and a PATH-like value is checked entry by entry; a path list passed under
-another name is read as one when every entry is absolute. A refusal is a `run_tree` infrastructure error. A harness
+included) inside the run tree is refused, and a PATH-like value is checked entry by entry; any other value that
+splits into more than one non-empty entry is read as a path list too, so a list mixing a relative and an absolute
+entry cannot carry an unchecked path under another name. A refusal is a `run_tree` infrastructure error. A harness
 running under the cost wrapper forwards its meter with no campaign entry: the hook directory is the program's only
 `PYTHONPATH` entry, and the program's `SERENO_COST_CALLS` names a fresh empty calls file in its own scratch, never the
 wrapper's ledger (see below). The hook directory and the wrapper's ledger are resolved and
@@ -238,8 +244,12 @@ checkpoint metadata. A successful write remains counted in the session total if 
 If rollback fails and the resulting application count cannot be established, the session records `null`, rather
 than zero. An application failure leaves `response.json` and the `incomplete` skeleton, never a completed record. Only
 a record carrying a `program` entry counts as a call, in usage aggregation and in the per-session call and result
-counts of the chain summary alike; an `incomplete` skeleton is reported beside them in the session's
-`incomplete_calls` field, so it shifts no call, result or outcome label.
+counts of the chain summary alike. That entry is written as soon as the program returns, with the call's seconds and,
+where the program reported it, its usage, so a call that ran still counts with its usage when a later step fails,
+the cost-ledger append or the audit copy included. A record whose `status` is `incomplete` is a call interrupted or
+host-killed between launch and outcome; the session's `incomplete_calls` field counts exactly those and no others,
+so it shifts no call, result or outcome label. A call refused before the launch writes `status: infrastructure_error`
+with its code instead, which the session's `infrastructure_error` reports.
 
 A program, configuration or provider problem (exit status, program timeout, a temporary base or a cost-meter path
 inside the run tree, a command word or forwarded variable naming the run tree, a cost wrapper whose hook cannot be
@@ -302,10 +312,12 @@ that do not report cost; zero recorded cost in that case does not mean the call 
 Chain and campaign summaries add `realized_usage` and `realized_cost_usd`. They sum each launched call's
 `run_attacker/*/record.json` in active sessions and every matching attempt under
 `superseded/<timestamp>/cases/<case>/arms/attack_carry/`. Invalid sessions and failed or timed-out program calls are
-included; audits that stopped before launching the program (such as an oversized request) are excluded, since only a
-record with a `program` entry counts. Each chain's per-session rows likewise count only those records in `calls` and
-`results`, and carry the skeletons' number in `incomplete_calls`. Missing or
-partial token reports remain visible in `unreported_usage_calls` and `unreported_completions`. Only the originating
+included, and so is a launched call whose cost-ledger append or audit copy then failed, because its `program` entry
+and reported usage are written before those steps. Audits that stopped before launching the program (such as an
+oversized request) are excluded, since only a record with a `program` entry counts; each is reported by its own
+`infrastructure_error` code, not as an incomplete call. Each chain's per-session rows likewise count only those
+records in `calls` and `results`, and carry the number of `status: incomplete` skeletons in `incomplete_calls`.
+Missing or partial token reports remain visible in `unreported_usage_calls` and `unreported_completions`. Only the originating
 `attack_carry` arm is scanned, so copies in reset, ablation and clean arms are not billed again. `infrastructure_errors` counts sessions whose `result.json` records an `infrastructure_error`, across active and
 superseded attempts of every attack chain; each chain carries the same attempt-inclusive scalar, while its `sessions`
 list still describes only the active attempt. `clean_infrastructure_errors` covers the clean arm's active attempts

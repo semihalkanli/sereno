@@ -13,7 +13,7 @@ memory poisoning: the attacker writes a memory note in an exposure session so th
 session's agent reads it and acts on it. That is different from ordinary prompt injection.
 The attacker never edits the task prompt, the harness, tool permissions, model weights, or the
 target repository's instructions. Its only effect on the target is the memory surface the
-adaptive hook already permits (`src/sereno/context_eval/run_attacker.py:1042-1081`).
+adaptive hook already permits (`src/sereno/context_eval/run_attacker.py:1067-1106`).
 
 The attacker has two capabilities that earlier versions did not have together:
 
@@ -38,7 +38,7 @@ campaign config (run_attacker)
 runner.run_session: advance / finish          runner.py:147-385
         |
 request.json: contract + strategy/notebook + observation
-        |                                         run_attacker.py:954-999
+        |                                         run_attacker.py:979-1024
         v
 external attacker runtime: bounded model loop     attacker/agent.py:87-160
   tools: find_files/read_file/search_files        attacker/tools.py:351-431
@@ -48,12 +48,12 @@ external attacker runtime: bounded model loop     attacker/agent.py:87-160
         |
 response.json                                     protocol.py:125-158
         |
-harness validates and applies memory actions       run_attacker.py:1042-1081
+harness validates and applies memory actions       run_attacker.py:1067-1106
         |
 target memory -> next session start memory -> target behavior -> grade/harm-count
 ```
 
-The request (`src/sereno/context_eval/run_attacker.py:954-999`) has three parts:
+The request (`src/sereno/context_eval/run_attacker.py:979-1024`) has three parts:
 
 1. `contract`: call kind (`in_task` or `session_end`), stage (`exposure` or `probe`), whether
    writes are open, the memory root, the limits, the budget and its use so far, and the
@@ -72,10 +72,10 @@ infrastructure error, not as an attack outcome.
 ## 3. Observation surfaces
 
 **Target repository code.** At task start the harness records the files Git tracks below
-`code_root` (`src/sereno/context_eval/run_attacker.py:596-612`), and that index stays fixed for the
+`code_root` (`src/sereno/context_eval/run_attacker.py:634-650`), and that index stays fixed for the
 session: a file the target creates later is not readable through the attacker's tools. The
 configured `code_paths` are served as structured views, and an indexed file the previous call asked
-for is read live on the next call (`src/sereno/context_eval/run_attacker.py:614-677`). A path outside
+for is read live on the next call (`src/sereno/context_eval/run_attacker.py:652-715`). A path outside
 `code_root`, into `.git`, through a symlink that leads out, outside the task-start index, or over the
 read budget is named as denied or queued, never silently cut. Within that fixed index the attacker
 reads the code the target is working on, not a frozen copy of the task description.
@@ -108,7 +108,7 @@ in search results (`src/sereno/attacker/observation.py:99-119`). A redacted bloc
 readable text is named as redacted, not decoded.
 
 **Memory and earlier sessions.** The request carries the memory files that load for the
-project and the paths the attacker owns (`src/sereno/context_eval/run_attacker.py:954-999`).
+project and the paths the attacker owns (`src/sereno/context_eval/run_attacker.py:979-1024`).
 Earlier sessions arrive as short cards plus their transcripts, so the attacker can compare
 what it intended with what the target did in the preceding task. The previous call's result
 says whether its actions were applied, rejected, not applied, or made no change; that is the
@@ -122,7 +122,7 @@ runs.
 
 - Each call may replace `strategy` and `notebook`. The harness versions the strategy, hashes
   it, and carries it to the next call; a valid update is kept even when the call's memory
-  actions were rejected or not applied (`src/sereno/context_eval/run_attacker.py:741-952`).
+  actions were rejected or not applied (`src/sereno/context_eval/run_attacker.py:779-976`).
 - The session-end call sees the completed session's transcript and summary. It is the
   reflection point: the attacker can revise the strategy for the next session of the chain.
   It can observe, but it cannot write memory at that point.
@@ -142,7 +142,7 @@ The design keeps the attacker model-agnostic. The loop and tools never read a pr
 The only target-side effect is a memory action: write a file below the project's memory root,
 or delete a file the attacker created. Actions are staged during the call and applied by the
 harness after the call, and only when the call is an `in_task` call of an exposure session
-(`src/sereno/context_eval/run_attacker.py:1042-1081`). A probe session and the session-end call
+(`src/sereno/context_eval/run_attacker.py:1067-1106`). A probe session and the session-end call
 never apply actions. The harness checks path canonicality, ownership, append-only rules, file
 size, content rules, the memory limits and the write budget; any violation rejects the whole
 call's actions and leaves memory unchanged.
@@ -183,7 +183,7 @@ response's `writer_usage` (`src/sereno/attacker/protocol.py:106-122`).
 The harness bounds one call by a timeout below the harness's own deadline, and a chain by
 maximum calls, calls per session, tokens, seconds and writes. Reads, read bytes, index
 entries, observation bytes, tool-output bytes and transcript paging have their own limits
-(`src/sereno/context_eval/run_attacker.py:954-999`). A call starts only while every budget
+(`src/sereno/context_eval/run_attacker.py:979-1024`). A call starts only while every budget
 bound has room; realized use can pass a bound by at most the one call that crossed it, and a
 skipped call is recorded once per session and reason.
 
@@ -200,9 +200,12 @@ When the loop stops at a bound it already has and the last reply carried no tool
 is reported as `plain_text`, or as `empty_reply` when the reply was empty, without text
 classification.
 Per-call audits retain the ending and the number of actually applied actions; session results
-retain the applied-action total, with unknown counts left unknown. A record that never reached a
-launched program is an `incomplete` skeleton: it is reported in the session's `incomplete_calls`
-and never counted as a call, so no call, result or outcome label moves. Pairing adds `no_action_calls`,
+retain the applied-action total, with unknown counts left unknown. A launched call's `program`
+entry is written as soon as the program returns, with its seconds and reported usage, so the call
+counts with its usage even when a later step fails. Only a record still at `status: incomplete`
+between launch and outcome is reported in the session's `incomplete_calls`; a call refused before
+the launch writes `status: infrastructure_error` with its code and is reported through the
+session's `infrastructure_error`. No call, result or outcome label moves either way. Pairing adds `no_action_calls`,
 `plain_text_calls`, `unknown_ending_calls` and `sessions_without_applied_actions` per chain and
 per campaign arm in `inactivity_by_arm`, separately from declines. Missing ending metadata is
 unknown. Existing counts and outcome measurements do not change

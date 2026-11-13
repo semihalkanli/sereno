@@ -632,6 +632,46 @@ def test_the_cost_meter_is_forwarded_to_the_program_automatically(
     assert not private.parent.exists()
 
 
+def test_a_ledger_append_failure_after_a_launched_call_keeps_its_usage(
+    tmp_path, tmp_path_factory, fixture_world, monkeypatch
+):
+    """A call whose cost rows cannot be appended to the wrapper's ledger after the program ran is an `audit_copy`
+    infrastructure error, but the call happened: its record carries `program`, its seconds and the usage the program
+    reported, so `realized_usage` charges it and it is not an incomplete skeleton."""
+    hook = cost_hook(tmp_path_factory.mktemp("cost-outside"))
+    ledger = tmp_path_factory.mktemp("cost-ledger") / "calls.jsonl"
+    monkeypatch.setenv(run_attacker.COST_CALLS_NAME, str(ledger))
+    monkeypatch.setenv("PYTHONPATH", str(hook))
+    monkeypatch.setattr(run_attacker, "run_program", FakeWriter())
+
+    def failing_append(source, target):
+        raise run_attacker.AuditCopyError("fixture ledger failure")
+
+    monkeypatch.setattr(run_attacker, "append_cost_calls", failing_append)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="audit_copy"):
+        attacker.advance([])
+    record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
+    assert record["status"] == "infrastructure_error" and record["error"]["code"] == "audit_copy"
+    assert record["program"]["exit_code"] == 0 and record["seconds"] >= 0
+    assert record["usage"] == {"tokens": 10, "cost_usd": 0.001, "unreported_completions": 0}
+
+
+def test_a_capture_start_failure_is_classified_as_writer_failed(tmp_path, fixture_world, monkeypatch):
+    """A capture that cannot start comes back from `run_program` as an `error` outcome; the call classifies it as a
+    `writer_failed` infrastructure error and keeps the launched call in its record, never as an attack outcome."""
+    outcome = {"exit_code": None, "timed_out": False, "error": "cannot capture the program's output: fixture"}
+    monkeypatch.setattr(run_attacker, "run_program", lambda *args, **kwargs: outcome | {"seconds": 0.01})
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="writer_failed"):
+        attacker.advance([])
+    record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
+    assert record["status"] == "infrastructure_error" and record["error"]["code"] == "writer_failed"
+    assert record["program"]["error"] == "cannot capture the program's output: fixture"
+
+
 def test_a_harness_controlled_variable_cannot_be_listed_in_env():
     """`run_attacker.env` names variables the campaign may add; a variable the harness sets itself is refused at config
     validation, since a campaign value would replace the harness's own or leak its state to the program."""
@@ -660,12 +700,13 @@ def test_a_program_path_inside_the_run_tree_is_refused(tmp_path, fixture_world, 
     assert writer.requests == []
 
 
-@pytest.mark.parametrize("value", ["{inside}", "{outside}" + os.pathsep + "{inside}"])
+@pytest.mark.parametrize("value", ["{inside}", "{outside}" + os.pathsep + "{inside}", "lib" + os.pathsep + "{inside}"])
 def test_a_forwarded_environment_value_inside_the_run_tree_is_refused(
     tmp_path, tmp_path_factory, fixture_world, monkeypatch, value
 ):
     """An environment value the program would receive that names the campaign fails the call closed as `run_tree`; a
-    PATH-like value is checked entry by entry, so one inside the run tree is enough."""
+    PATH-like value is checked entry by entry, and any value that splits into more than one entry is read as a list, so
+    one absolute entry inside the run tree is enough even beside a relative one."""
     outside = tmp_path_factory.mktemp("env-outside")
     monkeypatch.setenv("FIXTURE_DATA_DIR", value.format(inside=tmp_path / "data", outside=outside))
     writer = FakeWriter()
@@ -679,6 +720,23 @@ def test_a_forwarded_environment_value_inside_the_run_tree_is_refused(
     record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
     assert record["error"]["code"] == "run_tree"
     assert writer.requests == []
+
+
+def test_an_argv_value_mixing_a_relative_and_an_absolute_entry_is_refused(tmp_path, fixture_world, monkeypatch):
+    """A `key=value` argv word that holds a path list is checked entry by entry too: a relative first entry must not
+    hide the absolute one inside the run tree."""
+    writer = FakeWriter()
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    inside = tmp_path / "data"
+    command = [sys.executable, f"--path=lib{os.pathsep}{inside}"]
+    attacker = run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings(command=command)), runtime, "fixture task", "first"
+    )
+    with pytest.raises(run_attacker.AttackerInfrastructureError, match="run_tree"):
+        attacker.advance([])
+    record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
+    assert record["error"]["code"] == "run_tree" and writer.requests == []
 
 
 def test_a_credential_configuration_the_harness_sets_is_refused_at_config_validation(tmp_path, fixture_world):
@@ -898,11 +956,22 @@ def test_a_fifo_swapped_in_after_the_check_is_refused_without_hanging(tmp_path, 
     assert not (target / "response.json").exists()
 
 
-def test_a_plain_fifo_is_refused_by_the_lstat(tmp_path):
+def test_a_plain_fifo_is_refused_by_the_lstat_before_the_open(tmp_path, monkeypatch):
+    """The pre-open type check is what refuses a FIFO that is already there: the open is never reached, so removing the
+    lstat check fails this test even though the post-open descriptor check would refuse the same FIFO."""
     source = tmp_path / "response.json"
     os.mkfifo(source)
+    opened = []
+    real_open = os.open
+
+    def recording_open(path, flags, *args, **kwargs):
+        opened.append(Path(path))
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(run_attacker.os, "open", recording_open)
     with pytest.raises(run_attacker.AuditCopyError, match="not a regular file"):
         run_attacker.copy_staged(source, tmp_path / "response.json", 10)
+    assert opened == []
 
 
 def test_the_credential_variables_come_from_the_commands_configuration(tmp_path):
@@ -917,16 +986,32 @@ def test_the_credential_variables_come_from_the_commands_configuration(tmp_path)
     assert run_attacker.credential_variables([sys.executable]) == []
 
 
+def test_a_credential_name_the_harness_sets_is_dropped_at_call_time(tmp_path, monkeypatch):
+    """The configuration is re-read before every call, so a program that rewrites its `--config` after validation
+    could name a harness-controlled variable; the call-time name passes the same check and is dropped."""
+    monkeypatch.setenv("PYTHONPATH", "/fixture/harness-entry")
+    config_path = tmp_path / "attacker.yaml"
+    config_path.write_text(yaml.safe_dump({"provider": {"credential_env": "PYTHONPATH"}}))
+    # Validation reads the same name and refuses it before a session starts; the call-time path drops it instead.
+    assert run_attacker.credential_variables([sys.executable, "--config", str(config_path)]) == ["PYTHONPATH"]
+    config = RunAttacker(**attacker_settings(command=[sys.executable, "--config", str(config_path)]))
+    environment = run_attacker.child_environment(config, tmp_path / "scratch", None)
+    assert "PYTHONPATH" not in environment
+
+
 def test_a_credential_configuration_that_cannot_be_read_in_bounded_form_adds_no_name(tmp_path):
-    """An undecodable, oversized or non-regular configuration is treated like a missing one: no name, no error, and no
-    block on a FIFO the command happens to name."""
+    """An undecodable, oversized, non-regular or symlinked configuration is treated like a missing one: no name, no
+    error, and no block on a FIFO the command happens to name. The read is the staged-file reader, so it neither
+    follows a symlink nor waits for a FIFO writer."""
     undecodable = tmp_path / "undecodable.yaml"
     undecodable.write_bytes(b"\xff\xfe\x00provider")
     oversized = tmp_path / "oversized.yaml"
     oversized.write_text("x" * (run_attacker.CONFIG_BYTES + 1))
     fifo = tmp_path / "fifo.yaml"
     os.mkfifo(fifo)
-    for path in (undecodable, oversized, fifo):
+    linked = tmp_path / "linked.yaml"
+    linked.symlink_to(undecodable)
+    for path in (undecodable, oversized, fifo, linked):
         assert run_attacker.credential_variables([sys.executable, "--config", str(path)]) == []
 
 
@@ -1744,22 +1829,43 @@ def test_summary_refuses_a_pairing_that_did_not_pair(tmp_path):
 
 
 def test_a_skeleton_is_counted_beside_the_calls_not_as_one(tmp_path):
-    """A record without a `program` entry is an `incomplete` skeleton, not a call: per-session calls and results count
-    launched calls only, and the skeletons are reported in their own field."""
+    """`incomplete_calls` counts only a record still at `status: incomplete`, not every record without a `program`
+    entry: a pre-launch refusal carries its own infrastructure code and is reported through the session's
+    `infrastructure_error`. A launched call that later failed keeps its `program` entry and its usage, so it counts."""
     session = tmp_path / "attack_carry" / "sessions" / "001-exposure"
     skeleton = session / "run_attacker" / "0001"
     launched = session / "run_attacker" / "0002"
-    skeleton.mkdir(parents=True)
-    launched.mkdir(parents=True)
+    refused = session / "run_attacker" / "0003"
+    failed_after_launch = session / "run_attacker" / "0004"
+    for folder in (skeleton, launched, refused, failed_after_launch):
+        folder.mkdir(parents=True)
     (session / "result.json").write_text(json.dumps({"status": "invalid", "exposure_phase": True}))
     (skeleton / "record.json").write_text(json.dumps({"call": 1, "kind": "in_task", "status": "incomplete"}))
     (launched / "record.json").write_text(
         json.dumps({"call": 2, "kind": "in_task", "status": "applied", "program": {"exit_code": 0}})
     )
+    (refused / "record.json").write_text(
+        json.dumps({"call": 3, "kind": "in_task", "status": "infrastructure_error", "error": {"code": "run_tree"}})
+    )
+    (failed_after_launch / "record.json").write_text(
+        json.dumps(
+            {
+                "call": 4,
+                "kind": "session_end",
+                "status": "infrastructure_error",
+                "error": {"code": "audit_copy"},
+                "seconds": 0.5,
+                "program": {"exit_code": 0},
+                "usage": {"tokens": 7, "cost_usd": 0.002},
+            }
+        )
+    )
     summary = chain_summary(tmp_path / "attack_carry", {}, 20)
     [row] = summary["sessions"]
-    assert row["calls"] == {"in_task": 1} and row["results"] == {"applied": 1}
+    assert row["calls"] == {"in_task": 1, "session_end": 1}
+    assert row["results"] == {"applied": 1, "infrastructure_error": 1}
     assert row["incomplete_calls"] == 1
+    assert summary["realized_usage"]["calls"] == 2 and summary["realized_usage"]["tokens"] == 7
 
 
 def test_a_campaign_from_before_the_env_field_still_resumes_and_pairs(tmp_path, fixture_world, monkeypatch):

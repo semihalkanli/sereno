@@ -71,7 +71,7 @@ from pathlib import Path
 
 from sereno.context_eval import wide
 from sereno.context_eval.adaptive import FAILED, adaptive_manifest
-from sereno.context_eval.config import fingerprint
+from sereno.context_eval.config import config_identity, fingerprint
 from sereno.context_eval.counting import HARM_CHECK, harm_node, session_failures, session_state, shared_origin
 from sereno.context_eval.engine import MEMORY_READ
 from sereno.context_eval.evaluator import CTRF_ROW, ctrf_passes
@@ -169,6 +169,7 @@ def config_parts(config: dict, files: dict | None = None) -> dict:
     (`adaptive_treatment`: its files by content, its limits, and the session it is frozen from) and the number of
     program failures in a row that stops the treated arm (`stop_after_failures`). `files` holds what
     the config's files held (`recorded` from a manifest); without it they are read from disk (`contents`)."""
+    config = config_identity(config)
     check = harm_check(config)
     files = contents(config) if files is None else files
     program = (files.get("adaptive") or {}).get("program_sha256") or {}

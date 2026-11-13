@@ -784,6 +784,33 @@ def test_an_interrupt_while_the_captures_start_kills_the_program_group(tmp_path,
         os.kill(int(pid_file.read_text()), 0)
 
 
+def test_a_capture_that_cannot_start_is_an_error_outcome_and_kills_the_program_group(tmp_path, monkeypatch):
+    """A host-level failure while the captures start (a thread that cannot be created) is not an interrupt: it is
+    classified like a spawn failure, as an `error` outcome, and the child group is killed as on any other failure."""
+    pid_file = tmp_path / "pid"
+    script = tmp_path / "sleep.py"
+    script.write_text(
+        "import os, pathlib, sys, time\npathlib.Path(sys.argv[1]).write_text(str(os.getpid()))\ntime.sleep(60)\n"
+    )
+
+    class FailingCapture(adaptive.Capture):
+        def start(self):
+            deadline = time.monotonic() + 30
+            while not pid_file.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(adaptive, "Capture", FailingCapture)
+    (tmp_path / "out").mkdir()
+    outcome = run_program([sys.executable, "-I", str(script), str(pid_file)], tmp_path, 30, tmp_path / "out")
+    assert outcome["error"] == "cannot capture the program's output: can't start new thread"
+    assert outcome["timed_out"] is False and outcome["exit_code"] is None
+    monkeypatch.undo()
+    assert pid_file.exists()
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)
+
+
 def test_a_grade_cut_off_before_its_second_pass_is_completed_without_a_second_official_run(tmp_path, monkeypatch):
     calls = []
 

@@ -60,7 +60,7 @@ from sereno.context_eval.adaptive import (
     printable,
     run_program,
 )
-from sereno.context_eval.config import fingerprint
+from sereno.context_eval.config import config_identity, fingerprint, without_empty_env
 from sereno.context_eval.engine import reasoning_text, write_atomic
 from sereno.context_eval.memory import USER, is_index, loaded_by, memory_dir
 from sereno.context_eval.schema import ENV_NAME, harness_controlled, validate_path
@@ -230,8 +230,9 @@ def did_not_finish(result: dict) -> bool:
 # inherited, PWD and OLDPWD included, and the temporary-directory variables point at the call's scratch.
 CHILD_ENV_NAMES = ("PATH", "HOME", "LANG", "TZ")
 CHILD_ENV_PREFIXES = ("LC_",)
-# A live program reaches its provider through `httpx`, which reads a proxy or a private CA from these; neither case
-# needs a campaign entry, and all of them cross the same containment check as every other forwarded value.
+# A live program reaches its provider through `httpx`, which reads the proxy variables and OpenSSL's
+# `SSL_CERT_FILE`/`SSL_CERT_DIR`; `REQUESTS_CA_BUNDLE` is forwarded for programs on `requests`. Neither case needs a
+# campaign entry, and all of them cross the same containment check as every other forwarded value.
 LIVE_ENV_NAMES = (
     "HTTP_PROXY",
     "HTTPS_PROXY",
@@ -247,7 +248,8 @@ LIVE_ENV_NAMES = (
 )
 CHILD_TEMP_NAMES = ("TMPDIR", "TEMP", "TMP")
 # Variables whose value is a list of paths rather than one; each entry is checked against the run tree on its own.
-PATH_VALUE_NAMES = frozenset({"PATH", "PYTHONPATH", "LD_LIBRARY_PATH", "MANPATH", "CDPATH", "PKG_CONFIG_PATH"})
+# `LD_*` names are harness-controlled, so `LD_LIBRARY_PATH` cannot reach the program and is not listed here.
+PATH_VALUE_NAMES = frozenset({"PATH", "PYTHONPATH", "MANPATH", "CDPATH", "PKG_CONFIG_PATH"})
 # The cost wrapper's meter: the ledger it appends each paid call to and the hook directory that records it. A harness
 # running under `scripts/cost.py run` has both in its own environment. The program is given neither path: it writes a
 # private file in its scratch, and the harness appends that file's rows to the ledger after the call.
@@ -263,11 +265,11 @@ COPY_CHUNK = 65536
 
 
 def forwarded_paths(name: str, value: str) -> list[str]:
-    """The paths a forwarded value names: a PATH-like variable is a `os.pathsep` list, and any other value holding a
-    list of absolute paths is read as one too, so a campaign cannot pass a path list under another name. Anything else
-    is one value."""
+    """The paths a forwarded value names: a PATH-like variable is a `os.pathsep` list, and any other value that splits
+    into more than one non-empty entry is read as one too, so a list mixing a relative and an absolute entry cannot
+    carry a path the check would skip. A single entry is one value, checked whole when it is absolute."""
     entries = [entry for entry in value.split(os.pathsep) if entry]
-    if name in PATH_VALUE_NAMES or (len(entries) > 1 and all(os.path.isabs(entry) for entry in entries)):
+    if name in PATH_VALUE_NAMES or len(entries) > 1:
         return entries
     return [value]
 
@@ -364,18 +366,22 @@ def config_argument(command: list[str]) -> str | None:
 def credential_variables(command: list[str]) -> list[str]:
     """The credential environment variables the configuration named by the command's `--config` sets, so the program
     still authenticates: `provider.credential_env` in the attacker runtime's configuration, `credential_env_name` in
-    the writer design's. A command without a configuration, and a file that cannot be read in bounded form, adds no
-    name: the read is refused for anything but a regular file of at most `CONFIG_BYTES`, and an unreadable, undecodable
-    or too deeply nested file is the same as a missing one."""
+    the writer design's. The file is read under the same bounded, non-following rules as a staged file, so a FIFO or a
+    file swapped in after the check cannot block or overrun the call. A command without a configuration, and a file
+    that cannot be read in that form, adds no name. The name is checked against the harness's own variables where it is
+    used, not here, so validation can still refuse a configuration that names one."""
     path = config_argument(command)
     if path is None:
         return []
     try:
-        info = os.stat(path)
-        if not stat.S_ISREG(info.st_mode) or info.st_size > CONFIG_BYTES:
-            return []
-        raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError, yaml.YAMLError):
+        data = read_staged(Path(path), CONFIG_BYTES)
+    except OSError:
+        return []
+    if data is None:
+        return []
+    try:
+        raw = yaml.safe_load(data.decode("utf-8"))
+    except (ValueError, RecursionError, yaml.YAMLError):
         return []
     if not isinstance(raw, dict):
         return []
@@ -405,7 +411,10 @@ def child_environment(config, scratch: Path, meter: CostMeter | None) -> dict[st
     running under the cost wrapper forwards its meter without a campaign entry: the hook directory as the only
     `PYTHONPATH` entry, and a private calls file in the scratch as the ledger the program writes, never the wrapper's
     own. PWD, OLDPWD and every other inherited variable are left out."""
-    names = [*CHILD_ENV_NAMES, *LIVE_ENV_NAMES, *credential_variables(config.command), *config.env]
+    # The credential name is read from the configuration on every call, so it is filtered here as well: a program that
+    # rewrites its `--config` after validation cannot make the harness forward a variable it sets for itself.
+    credentials = [name for name in credential_variables(config.command) if not harness_controlled(name)]
+    names = [*CHILD_ENV_NAMES, *LIVE_ENV_NAMES, *credentials, *config.env]
     environment = {name: os.environ[name] for name in names if name in os.environ}
     environment |= {name: value for name, value in os.environ.items() if name.startswith(CHILD_ENV_PREFIXES)}
     environment |= {name: str(scratch) for name in CHILD_TEMP_NAMES}
@@ -509,6 +518,35 @@ def copy_staged(source: Path, target: Path, limit: int) -> None:
         if isinstance(error, AuditCopyError):
             raise
         raise AuditCopyError(f"{source.name}: {type(error).__name__}: {error}") from error
+
+
+def program_usage(staged: Path) -> dict | None:
+    """What the program reported it spent, read from its own scratch under the copy rules before a later step can fail
+    the call: its failure sidecar, or the `writer_usage` of a response it wrote. Best effort, never raising: a call
+    that ran keeps its usage in the record whatever ends it, so `realized_usage` charges it."""
+    for name in ("failure_usage.json", "response.json"):
+        try:
+            data = read_staged(staged / name, file_limit(name))
+        except OSError:
+            continue
+        if not data:
+            continue
+        try:
+            record = json.loads(data)
+        except (ValueError, RecursionError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        usage = record.get("writer_usage") if name == "response.json" else record
+        if not isinstance(usage, dict):
+            continue
+        return {
+            "tokens": reported_tokens(usage),
+            "cost_usd": reported_cost(usage),
+            "unreported_completions": reported_count(usage, "unreported_completions"),
+            "declined_attempts": reported_count(usage, "declined_attempts"),
+        }
+    return None
 
 
 def append_cost_calls(source: Path, ledger: Path) -> None:
@@ -841,39 +879,26 @@ class RunLocalAttacker:
                     with contextlib.suppress(Exception):
                         append_cost_calls(staged / COST_CALLS_FILE, meter.ledger)
                 raise
-            if meter is not None:
-                try:
-                    append_cost_calls(staged / COST_CALLS_FILE, meter.ledger)
-                except OSError as error:
-                    self.fail(audit, base, "audit_copy", str(error))
+            # The program ran: from here on its record says so, and carries what it spent even when a later step of
+            # the call fails. `incomplete` is reserved for a call interrupted between launch and outcome.
             seconds = round(time.monotonic() - clock, 3)
             self.state["usage"]["seconds"] = round(self.state["usage"]["seconds"] + seconds, 3)
             base["seconds"] = seconds
             base["program"] = {
                 key: outcome.get(key) for key in ("exit_code", "timed_out", "error", "stdout_bytes", "stderr_bytes")
             }
+            if usage := program_usage(staged):
+                base["usage"] = {key: usage[key] for key in ("tokens", "cost_usd", "unreported_completions")}
+                base["declined_attempts"] = usage["declined_attempts"]
+            if meter is not None:
+                try:
+                    append_cost_calls(staged / COST_CALLS_FILE, meter.ledger)
+                except OSError as error:
+                    self.fail(audit, base, "audit_copy", str(error))
             try:
                 collect_call(staged, audit)
             except OSError as error:
                 self.fail(audit, base, "audit_copy", str(error))
-        if outcome["timed_out"] or outcome["error"] or outcome["exit_code"] != 0:
-            failure = audit / "failure_usage.json"
-            try:
-                readable = failure.is_file() and failure.stat().st_size <= RESPONSE_BYTES
-            except OSError as error:
-                self.fail(audit, base, "response_read", f"{type(error).__name__}: {error}")
-            if readable:
-                try:
-                    usage = json.loads(failure.read_bytes())
-                except (OSError, ValueError, UnicodeDecodeError, RecursionError):
-                    usage = None
-                if isinstance(usage, dict):
-                    base["usage"] = {
-                        "tokens": reported_tokens(usage),
-                        "cost_usd": reported_cost(usage),
-                        "unreported_completions": reported_count(usage, "unreported_completions"),
-                    }
-                    base["declined_attempts"] = reported_count(usage, "declined_attempts")
         if outcome["timed_out"]:
             self.fail(audit, base, "timeout", f"the program ran past {config.timeout_seconds} seconds")
         if outcome["error"] or outcome["exit_code"] != 0:
@@ -1092,21 +1117,10 @@ class RunLocalAttacker:
         raise AttackerInfrastructureError(code, message)
 
 
-def without_empty_env(dumped: dict) -> dict:
-    """A dumped attacker configuration with `env` left out while it is empty, so a campaign written before the field
-    existed keeps its identity: its manifest entry and both config hashes."""
-    if not dumped.get("env"):
-        dumped.pop("env", None)
-    return dumped
-
-
 def campaign_identity(config) -> dict:
-    """An experiment config's dump for its manifest and hashes, with the attacker's empty `env` left out for the same
-    reason `writer_manifest` leaves it out."""
-    dumped = config.model_dump(mode="json")
-    if isinstance(dumped.get("run_attacker"), dict):
-        without_empty_env(dumped["run_attacker"])
-    return dumped
+    """An experiment config's dump for its manifest, resume, pairing and hashes, in the one form `config_identity`
+    defines: the attacker's empty `env` left out, as `writer_manifest` leaves it out."""
+    return config_identity(config.model_dump(mode="json"))
 
 
 def writer_manifest(config) -> dict:

@@ -279,8 +279,9 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
         result = read_json(folder / "result.json") or {}
         records = [read_json(path) for path in sorted(folder.glob("run_attacker/*/record.json"))]
         records = [record for record in records if record]
-        # Only a launched call, a record carrying its `program` entry, counts as a call; an `incomplete` skeleton (an
-        # interrupted call, or an application failure after a valid response) is reported beside them.
+        # Only a launched call, a record carrying its `program` entry, counts as a call. `incomplete_calls` holds the
+        # skeletons a call left between launch and outcome; a refusal before the launch carries its own
+        # `infrastructure_error` code and is reported through the session's `infrastructure_error`, not here.
         calls = [record for record in records if "program" in record]
         state = read_state(folder / STATE_FILE)
         last_state = state or last_state
@@ -305,7 +306,7 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
                 "checkpoint": state is not None,
                 "calls": dict(Counter(record["kind"] for record in calls)),
                 "results": dict(Counter(record["status"] for record in calls)),
-                "incomplete_calls": len(records) - len(calls),
+                "incomplete_calls": sum(record.get("status") == "incomplete" for record in records),
                 "applied_attack_actions": result.get("applied_attack_actions"),
                 "strategy_version_end": state["strategy"]["version"] if state else None,
             }

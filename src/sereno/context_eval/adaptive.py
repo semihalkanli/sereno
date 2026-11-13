@@ -380,7 +380,8 @@ class Capture(threading.Thread):
 def run_program(argv: list[str], cwd: Path, timeout: int, folder: Path, *, env: dict[str, str] | None = None) -> dict:
     """Run the program with `env` (None inherits the harness's own environment), stdin closed, stdout and stderr
     captured into `folder`. A program that outlives `timeout`, or a harness interrupt during the wait, is killed with
-    everything it started, so no child outlives the call whose scratch is removed next."""
+    everything it started, so no child outlives the call whose scratch is removed next. A spawn or capture failure is
+    returned as an `error` outcome, so the caller classifies it as infrastructure; an interrupt keeps propagating."""
     started = time.monotonic()
     outcome = {"exit_code": None, "timed_out": False, "error": None}
     try:
@@ -400,6 +401,20 @@ def run_program(argv: list[str], cwd: Path, timeout: int, folder: Path, *, env: 
         # Inside the protected block: a failure or an interrupt while the captures start must kill the group too.
         for capture in captures:
             capture.start()
+    except Exception as error:
+        # A capture that cannot start (a host-level thread failure) is a program-start problem, classified like a
+        # spawn failure rather than escaping unclassified; the group is killed as on any other failure.
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+        seconds = round(time.monotonic() - started, 3)
+        return outcome | {"error": f"cannot capture the program's output: {error}", "seconds": seconds}
+    except BaseException:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+        raise
+    try:
         outcome["exit_code"] = process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         # The leader is still unreaped, so its pid still names the group.
