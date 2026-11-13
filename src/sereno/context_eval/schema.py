@@ -317,7 +317,8 @@ class RunAttacker(Contract):
     strategy: str = ""
     strategy_max_bytes: int = Field(20_000, ge=1, le=1_000_000)
     notebook_max_bytes: int = Field(20_000, ge=1, le=1_000_000)
-    # Read-only code access: the files of code_paths on every call, other files below code_root on request.
+    # Read-only code access: the files of code_paths on every call, and files of the task-start index below
+    # code_root on request; a file created later is not in that index.
     code_root: str = "/app"
     code_paths: list[str] = Field([], max_length=100)
     max_reads_per_call: int = Field(10, ge=0, le=100)

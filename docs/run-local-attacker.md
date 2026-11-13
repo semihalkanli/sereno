@@ -414,9 +414,11 @@ The model drives the same `run_attacker` request through tools:
   earlier sessions, paged and searchable. Each message carries the target's readable thinking summary in a `thinking`
   field, so the summaries are included in the request and are searchable as well; signatures and provider metadata are
   not.
-- `find_files`, `read_file`, `search_files`: the repository's file index and the code views. A path outside the
-  current call's views is queued and served with the next harness call; a path outside `code_root`, in `.git`, or
-  over the read limit is named as denied.
+- `find_files`, `read_file`, `search_files`: the repository's file index and the code views. The index is the files
+  Git tracks below `code_root` at task start, so a file the target creates during the task is not readable through
+  `read_file`. A path from the index outside the current call's views is queued and served with the next harness
+  call; a path outside `code_root`, in `.git`, outside the task-start index, or over the read limit is named as
+  denied.
 - `read_memory`: the carried memory files and the paths the attacker owns.
 - `stage_action`, `drop_action`, `list_staged_actions`: the memory actions. The harness validates and applies them
   after the call, only in an exposure session's in-task call, within the existing write budget and memory rules.

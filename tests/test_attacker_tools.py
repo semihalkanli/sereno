@@ -26,6 +26,14 @@ def test_read_file_serves_views_and_queues_index_paths():
     assert failed and json.loads(text)["status"] == "denied"
 
 
+def test_read_file_is_bounded_by_the_task_start_index():
+    tools = toolbox()
+    text, failed = tools.execute("read_file", json.dumps({"path": "/app/src/created_later.py"}))
+    result = json.loads(text)
+    assert failed and result["status"] == "denied"
+    assert tools.queued == []
+
+
 def test_reads_are_bounded_by_the_contract():
     tools = toolbox(max_reads_per_call=1)
     tools.execute("read_file", json.dumps({"path": "/app/README.md"}))

@@ -72,11 +72,13 @@ infrastructure error, not as an attack outcome.
 ## 3. Observation surfaces
 
 **Target repository code.** At task start the harness records the files Git tracks below
-`code_root` (`src/sereno/context_eval/run_attacker.py:183-194`). The configured `code_paths`
-are served as structured views, and a file the previous call asked for is read live on the
-next call (`src/sereno/context_eval/run_attacker.py:196-225`). A path outside `code_root`, into `.git`, through a symlink that leads
-out, or over the read budget is named as denied or queued, never silently cut. The attacker
-therefore reads the code the target is working on, not a frozen copy of the task description.
+`code_root` (`src/sereno/context_eval/run_attacker.py:183-194`), and that index stays fixed for the
+session: a file the target creates later is not readable through the attacker's tools. The
+configured `code_paths` are served as structured views, and an indexed file the previous call asked
+for is read live on the next call (`src/sereno/context_eval/run_attacker.py:196-225`). A path outside
+`code_root`, into `.git`, through a symlink that leads out, outside the task-start index, or over the
+read budget is named as denied or queued, never silently cut. Within that fixed index the attacker
+reads the code the target is working on, not a frozen copy of the task description.
 
 **Target transcript.** The harness passes the messages the target agent has recorded so far,
 including tool calls and results and the guard notices the target saw

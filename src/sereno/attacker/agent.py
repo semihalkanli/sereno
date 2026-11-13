@@ -33,8 +33,10 @@ methods; this section defines only the machinery.
   bounded; the tools reach what it leaves out.
 - `list_sessions`, `read_transcript` and `search_transcript` read the running agent's visible transcript and the
   chain's earlier sessions.
-- `find_files`, `read_file` and `search_files` read the repository's open code. A path outside this call's views is
-  queued and served with the next harness call; it is not available now.
+- `find_files`, `read_file` and `search_files` read the repository's open code. The file index is the
+  files Git tracks below the code root at task start; a file created later is not in it and cannot be
+  queued. An indexed path outside this call's views is queued and served with the next harness call; it
+  is not available now.
 - `read_memory` lists or reads the carried memory. `stage_action`, `drop_action` and `list_staged_actions` manage the
   memory actions you want the harness to apply.
 - `set_strategy` and `set_notebook` replace your private state, which comes back with the next call. Keep within the
