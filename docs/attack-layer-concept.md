@@ -81,7 +81,7 @@ read budget is named as denied or queued, never silently cut. Within that fixed 
 reads the code the target is working on, not a frozen copy of the task description.
 
 **Target transcript.** The harness passes the messages the target agent has recorded so far,
-including tool calls and results (`src/sereno/context_eval/run_attacker.py:131-164`). Guard
+including tool calls and results (`src/sereno/context_eval/run_attacker.py:131-165`). Guard
 notices are withheld from every part of the attacker's view, per decision 518 item 2 and the
 2026-10-22 rule: the current session's transcript, the chain's completed sessions (including
 transcripts restored from a checkpoint written before withholding), the envelope tail, paging and
@@ -100,7 +100,7 @@ in a `thinking` field on each visible message, taking it from the provider's `re
 `reasoning_content` field or from thinking content blocks; signatures, redacted data,
 `thinking_blocks` and provider metadata are not carried. The runtime's `render_message` shows
 the field as `[thinking] ...`, so it appears in the first envelope, in paged transcripts and
-in search results (`src/sereno/attacker/observation.py:68-87`). A redacted block with no
+in search results (`src/sereno/attacker/observation.py:68-88`). A redacted block with no
 readable text is named as redacted, not decoded.
 
 **Memory and earlier sessions.** The request carries the memory files that load for the
@@ -118,7 +118,7 @@ runs.
 
 - Each call may replace `strategy` and `notebook`. The harness versions the strategy, hashes
   it, and carries it to the next call; a valid update is kept even when the call's memory
-  actions were rejected or not applied (`src/sereno/context_eval/run_attacker.py:367-515`).
+  actions were rejected or not applied (`src/sereno/context_eval/run_attacker.py:367-516`).
 - The session-end call sees the completed session's transcript and summary. It is the
   reflection point: the attacker can revise the strategy for the next session of the chain.
   It can observe, but it cannot write memory at that point.
@@ -250,7 +250,7 @@ chain, not the individual session.
 | `tests/test_attacker_tools.py` | Runtime-side transcript and tool tests. |
 
 The design's required behavior is the `thinking` field described in section 3.
-`visible_transcript` (`src/sereno/context_eval/run_attacker.py:131-164`) produces it in every
+`visible_transcript` (`src/sereno/context_eval/run_attacker.py:131-165`) produces it in every
 provider spelling, and its tests (`tests/test_context_eval_run_attacker.py:247-321`) pin the
 top-level `reasoning` shape, `reasoning_content`, joined thinking blocks, the redacted marker
 and the withheld notice.
