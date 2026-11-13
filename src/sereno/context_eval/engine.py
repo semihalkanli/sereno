@@ -7,12 +7,15 @@ from collections import Counter
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sereno.context_eval.config import fingerprint
 from sereno.context_eval.environment import commit_planted
 from sereno.context_eval.live_guard import LiveGuard
 from sereno.context_eval.memory import MemoryViolation, owner, resolve, resolve_files
+
+if TYPE_CHECKING:
+    from sereno.context_eval.run_attacker import RunLocalAttacker
 
 # A command that names the memory root reads memory. The text test misses a read through `cd ~` and a relative
 # path, or a variable.
@@ -190,6 +193,8 @@ class BoundedStrategy:
 
 
 class InterventionEngine:
+    run_attacker_state: dict | None
+
     def __init__(self, events, registry, *, enabled=True, seed=0, notices=()):
         self.events, self.registry = events, registry
         self.enabled = enabled
@@ -389,7 +394,7 @@ class Runtime:
         self.pending_commands: list[str] = []
         self.sent: list[str] = []
         # The run-local attacker of an attack chain, set by the runner; None everywhere else.
-        self.run_attacker = None
+        self.run_attacker: RunLocalAttacker | None = None
         # The live memory guard, when the campaign configures one; it keeps the carried memory as its copy.
         self.guard = LiveGuard(guard, self, initial_memory) if guard else None
         self.notices = [n for n in engine.notices if session.id in n.sessions] if engine.enabled else []

@@ -88,7 +88,7 @@ class Completion:
 
     content: str
     reasoning: dict
-    finish_reason: str
+    finish_reason: str | None
     native_finish_reason: str | None
     model: str | None
     provider: str

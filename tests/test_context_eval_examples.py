@@ -49,6 +49,7 @@ def test_scripted_end_to_end_campaign(tmp_path):
 
 def load_check(name: str):
     spec = importlib.util.spec_from_file_location(name, EXAMPLES / f"{name}.py")
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

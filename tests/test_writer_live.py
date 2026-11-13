@@ -1,6 +1,7 @@
 """The live writer adapter with a scripted provider: no network, no state of its own."""
 
 import json
+from pathlib import Path
 
 import pytest
 from writer_world import KEY_ENV, LIMITS, Transport, World, reply
@@ -9,7 +10,7 @@ from sereno.writer import live
 from sereno.writer.errors import OutputError
 
 
-def request(tmp_path, **contract) -> object:
+def request(tmp_path: Path, **contract) -> Path:
     path = tmp_path / "live-request.json"
     path.write_text(
         json.dumps(

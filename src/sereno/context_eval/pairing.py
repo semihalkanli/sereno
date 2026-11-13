@@ -248,7 +248,10 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
 
 
 def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = None) -> dict:
-    manifest = manifest if manifest is not None else read_json(campaign / "manifest.json") or {}
+    if manifest is None:
+        manifest = read_json(campaign / "manifest.json")
+        if not manifest:
+            manifest = {}
     budget = (manifest.get("run_attacker") or {}).get("budget") or {}
     chains = {}
     clean_errors = 0

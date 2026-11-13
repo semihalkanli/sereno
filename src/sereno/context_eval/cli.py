@@ -252,6 +252,7 @@ def execute(args) -> int:
     from sereno.context_eval.config import default_registry, load_config, validate
     from sereno.context_eval.schema import ExperimentConfig
 
+    pair_result: dict = {}
     try:
         command = args.context_command
         if command in ("harm-plan", "harm-count"):
@@ -271,7 +272,8 @@ def execute(args) -> int:
         elif command == "pair":
             from sereno.context_eval.pairing import pair
 
-            result = pair(args.defended, args.undefended, default_registry(args.plugin))
+            pair_result = pair(args.defended, args.undefended, default_registry(args.plugin))
+            result = pair_result
             args.out.parent.mkdir(parents=True, exist_ok=True)
             try:
                 stream = args.out.open("x")
@@ -407,7 +409,7 @@ def execute(args) -> int:
         if command == "dry-check":
             return int(not result["ok"])
         if command == "pair":
-            return int(not result["paired"])
+            return int(not pair_result["paired"])
         return 0
     except ValidationError as error:
         # Validation inputs can include inline credentials or confidential task content.

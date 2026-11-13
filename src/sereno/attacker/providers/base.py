@@ -37,7 +37,7 @@ class Completion:
     text: str
     tool_calls: tuple[ToolCall, ...]
     reasoning: dict
-    finish_reason: str
+    finish_reason: str | None
     usage: dict
     model: str | None = None
     provider: str | None = None

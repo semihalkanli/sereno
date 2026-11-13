@@ -61,7 +61,7 @@ def load_config(path: Path) -> ExperimentConfig:
     if config.run_attacker and config.run_attacker.strategy_file:
         # The frozen config holds the starting strategy it ran with, as it holds payloads and notices.
         attacker = config.run_attacker
-        attacker.strategy = resolve(root, attacker.strategy_file).read_text()
+        attacker.strategy = resolve(root, config.run_attacker.strategy_file).read_text()
         attacker.strategy_file = None
         if len(attacker.strategy.encode()) > attacker.strategy_max_bytes:
             raise ValueError("run_attacker: the starting strategy is over strategy_max_bytes")
