@@ -15,6 +15,7 @@ from sereno.attacker.errors import ProviderFailure
 from sereno.attacker.providers.anthropic import parse_completion as parse_anthropic
 from sereno.attacker.providers.openai import parse_completion as parse_openai
 from sereno.writer import live
+from sereno.writer.errors import OutputError
 from sereno.writer.errors import ProviderFailure as WriterProviderFailure
 
 
@@ -137,14 +138,12 @@ def test_live_writer_declines_resample_identical_requests_and_account_for_all_at
         assert usage["usage"]["total_tokens"] == (30 if recover else 45)
 
 
-@pytest.mark.parametrize("bound", ["tokens", "deadline", "retries", "calls"])
+@pytest.mark.parametrize("bound", ["tokens", "deadline", "retries"])
 def test_live_writer_decline_resampling_respects_remaining_bounds(tmp_path, monkeypatch, bound):
     monkeypatch.setenv(KEY_ENV, "fixture-key")
     config = World(tmp_path).config()
     if bound == "retries":
         config = replace(config, settings=config.settings.model_copy(update={"decline_retries": 0}))
-    if bound == "calls":
-        config = replace(config, control=replace(config.control, repairs=0))
     remaining = iter([1.0, 0.0])
     if bound == "deadline":
 
@@ -163,6 +162,38 @@ def test_live_writer_decline_resampling_respects_remaining_bounds(tmp_path, monk
     result = json.loads(response.read_bytes())
     assert result["status"] == "declined" and len(transport.requests) == 1
     assert result["writer_usage"]["usage"]["total_tokens"] == 15
+
+
+def test_live_writer_decline_resamples_are_not_capped_by_the_repair_budget(tmp_path, monkeypatch):
+    """`decline_retries` and `structural_repair_calls` are separate budgets, each exactly as configured: with no
+    structural repair available, a declining provider is still resampled `decline_retries` times."""
+    monkeypatch.setenv(KEY_ENV, "fixture-key")
+    config = World(tmp_path).config()
+    config = replace(config, control=replace(config.control, repairs=0))
+    transport = Transport(
+        reply(answer(status="unable")), reply(answer(status="unable")), reply(answer(status="unable"))
+    )
+    response = tmp_path / "response.json"
+    live.run_live(config, request(tmp_path), response, transport=transport.transport)
+    result = json.loads(response.read_bytes())
+    assert len(transport.requests) == 3
+    assert result["status"] == "declined" and result["writer_usage"]["declined_attempts"] == 3
+    assert result["writer_usage"]["usage"]["total_tokens"] == 45
+
+
+def test_live_writer_repairs_are_not_capped_by_the_decline_budget(tmp_path, monkeypatch):
+    """The other direction holds too: one declined answer followed by structurally invalid ones gets exactly the
+    configured repairs, so the decline never buys extra repair calls."""
+    monkeypatch.setenv(KEY_ENV, "fixture-key")
+    config = World(tmp_path).config()
+    config = replace(config, control=replace(config.control, repairs=1))
+    transport = Transport(reply(answer(status="unable")), reply(answer(strategy=7)), reply(answer(strategy=7)))
+    response = tmp_path / "response.json"
+    with pytest.raises(OutputError) as caught:
+        live.run_live(config, request(tmp_path), response, transport=transport.transport)
+    assert caught.value.code == "bad_answer" and len(transport.requests) == 3
+    usage = json.loads((tmp_path / "failure_usage.json").read_bytes())
+    assert usage["declined_attempts"] == 1
 
 
 def test_live_writer_decline_then_http_failure_preserves_usage_sidecar(tmp_path, monkeypatch):

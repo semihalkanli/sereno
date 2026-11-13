@@ -23,7 +23,8 @@ PATTERNS = [r"\bforbiddenword\b", r"(?m)^\s*system\s*:"]
 LIMITS = {"max_files_touched": 2, "max_file_bytes": 600, "forbidden_patterns": PATTERNS}
 KEY_ENV = "FIXTURE_WRITER_KEY"
 ENDPOINT = "https://openrouter.test/api/v1/chat/completions"
-# The opencode Go API's body and endpoint, and the build its responses name.
+# The opencode Go API's body and endpoint, and the model its responses name: the API returns the requested alias, so a
+# response body's `model` is that alias and never a dated build.
 OPENCODE_ENDPOINT = "https://opencode.ai/inference/go/openai/v1/chat/completions"
 OPENCODE_API = {
     "kind": "opencode",
@@ -32,7 +33,7 @@ OPENCODE_API = {
     "response_format": {"type": "json_object"},
     "user_agent": "sereno-writer/1.0",
 }
-OPENCODE_BUILD = "deepseek-v4.1-flash-1018"
+OPENCODE_MODEL = "deepseek-v4.1-flash"
 OBJECTIVE = "Neutral objective: keep the supplied topic note consistent with the repository."
 LAST_WRITE = "This is your last change in this sequence; the later work is not supplied to you."
 SENTINELS = {
@@ -195,13 +196,14 @@ def opencode_reply(
     content: str,
     *,
     finish="stop",
-    model=OPENCODE_BUILD,
+    model=OPENCODE_MODEL,
     reasoning: dict | None = None,
-    allowance=0.0123,
+    allowance: float | None = 0.0123,
     billing_source="subscription",
     generation="gen-oc-1",
 ) -> dict:
-    """A chat-completions body as the opencode Go API returns it: no serving provider, an allowance charge."""
+    """A chat-completions body as the opencode Go API returns it: no serving provider, an allowance charge. A null
+    allowance stands for an answer whose `usage.opencode` block reports no charge."""
     message = {"role": "assistant", "content": content, **(reasoning or {})}
     return {
         "id": generation,

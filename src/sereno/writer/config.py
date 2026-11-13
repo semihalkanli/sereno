@@ -31,6 +31,8 @@ OPENCODE_API_KEYS = frozenset({"kind", "model", "max_tokens", "response_format",
 OPENCODE_MODELS = ("deepseek-v4.1-flash", "qwen3.8-max")
 OPENCODE_HOST = "opencode.ai"
 OPENCODE_PATH = "/inference/go/"
+# The route this writer speaks: the chat-completions body it builds has no other route on the Go API.
+OPENCODE_ROUTE = "/chat/completions"
 # One stable id per conversation, sent on every request so the API can route and cache the conversation.
 OPENCODE_SESSION_HEADER = "x-opencode-session"
 # A product token such as `sereno-writer/1.0`, never a generic SDK or HTTP-library name.
@@ -272,13 +274,22 @@ def check_endpoint(endpoint: str) -> None:
 
 
 def check_opencode_endpoint(endpoint: str) -> None:
-    """The opencode kind talks to the Go inference API only: https on opencode.ai under /inference/go/. A plain-http
-    loopback endpoint stays open, as for every kind, so a model-free check can serve the package from a local fake."""
+    """The opencode kind talks to the Go inference API's chat-completions route only: https on opencode.ai under
+    /inference/go/, ending with `/chat/completions`. Another route under the same prefix, such as the Messages path,
+    would take the chat-completions body this writer sends and is refused. A plain-http loopback endpoint stays open,
+    as for every kind, so a model-free check can serve the package from a local fake."""
     parts = urlsplit(endpoint)
     if parts.scheme == "http" and parts.hostname in LOOPBACK:
         return
-    if parts.scheme != "https" or parts.hostname != OPENCODE_HOST or not parts.path.startswith(OPENCODE_PATH):
-        raise ConfigError(f"endpoint {endpoint!r} must be https on {OPENCODE_HOST} under {OPENCODE_PATH}")
+    if (
+        parts.scheme != "https"
+        or parts.hostname != OPENCODE_HOST
+        or not parts.path.startswith(OPENCODE_PATH)
+        or not parts.path.endswith(OPENCODE_ROUTE)
+    ):
+        raise ConfigError(
+            f"endpoint {endpoint!r} must be https on {OPENCODE_HOST} under {OPENCODE_PATH} ending with {OPENCODE_ROUTE}"
+        )
 
 
 def check_credential_name(name: object) -> str:

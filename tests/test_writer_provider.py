@@ -8,8 +8,8 @@ import pytest
 from writer_world import (
     KEY_ENV,
     OPENCODE_API,
-    OPENCODE_BUILD,
     OPENCODE_ENDPOINT,
+    OPENCODE_MODEL,
     Transport,
     World,
     opencode_reply,
@@ -293,10 +293,10 @@ def test_the_opencode_request_carries_the_session_user_agent_and_no_routing_bloc
     }
     for barred in ("provider", "kind", "user_agent", "temperature", "top_p", "reasoning", "reasoning_effort", "seed"):
         assert barred not in body
-    assert first.provider == "opencode" and first.model == OPENCODE_BUILD
+    assert first.provider == "opencode" and first.model == OPENCODE_MODEL
     record = first.record()
     assert record["provider_kind"] == "opencode" and record["requested_model"] == "deepseek-v4.1-flash"
-    assert record["returned_model"] == OPENCODE_BUILD
+    assert record["returned_model"] == OPENCODE_MODEL
     assert record["billing_source"] == "subscription"
     assert record["allowance"] == pytest.approx(0.0123) and record["cost"] == pytest.approx(0.0123)
 

@@ -25,8 +25,10 @@ paths stay configured and tested, so a campaign switches back by configuration a
   and `billing: allowance`: a subscription allowance, never a cash cost. The DeepSeek allowance is
   USD 100 a month, at most 20 % of it in a five-hour window and 50 % in a week; the ledger keeps every charge.
 
-The opencode model id is an undated alias whose build can change, so every call records the build the API says it
-served. Jev, the guard's judge, stays on OpenRouter's decisions endpoint pinned to TypeSafe (`guard_judge.py`); nothing
+The opencode model id is an undated alias. Every call records the `model` string the API returns, as returned: on
+2026-11-14 the live API answered with the alias itself, so a later build swap behind the alias is not visible in the
+records and would need a dated field of its own. Jev, the guard's judge, stays on OpenRouter's decisions endpoint
+pinned to TypeSafe (`guard_judge.py`); nothing
 of this provider move touches it. Example API settings are `examples/context-eval/writer-api-opencode.json` (the
 default) and `examples/context-eval/writer-api-openrouter.json`; the design's `endpoint` and `credential_env_name` must
 match the kind (`https://opencode.ai/inference/go/openai/v1/chat/completions` with `OPENCODE_API_KEY`, or

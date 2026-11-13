@@ -8,8 +8,8 @@ from writer_world import (
     KEY_ENV,
     LIMITS,
     OPENCODE_API,
-    OPENCODE_BUILD,
     OPENCODE_ENDPOINT,
+    OPENCODE_MODEL,
     Transport,
     World,
     opencode_reply,
@@ -103,6 +103,14 @@ def test_live_adapter_passes_three_parts_and_returns_state_and_usage(tmp_path, m
     assert result["reads"] == ["/app/pkg/core.py"] and result["actions"] == []
     assert result["writer_usage"]["cost"] == summary["cost"] == 0.0123
     assert result["writer_usage"]["usage"]["total_tokens"] == 15
+    # The cash path states the allowance fields explicitly rather than leaving them absent or zero.
+    assert result["writer_usage"]["billing"] == "cash"
+    assert result["writer_usage"]["allowance_usd"] is None
+    assert result["writer_usage"]["billing_source"] is None
+    assert (
+        result["writer_usage"]["allowance_reported_completions"],
+        result["writer_usage"]["allowance_unreported_completions"],
+    ) == (0, 0)
     body = transport.bodies()[0]
     assert body["messages"][0] == {"role": "system", "content": config.system_prompt}
     sent = json.loads(body["messages"][1]["content"])
@@ -136,6 +144,34 @@ def test_live_usage_preserves_reported_repair_totals_when_one_call_has_no_usage(
     assert usage["cost"] == 0.0123
 
 
+def test_opencode_usage_flags_an_allowance_the_api_did_not_report(tmp_path, monkeypatch):
+    """A Go answer without `usage.opencode.allowance` is recorded as an unreported allowance, never as a real zero:
+    `allowance_usd` sums the reported ones and the unreported count says one was missing."""
+    monkeypatch.setenv(KEY_ENV, "fixture-key")
+    config = World(tmp_path).config(api=OPENCODE_API, endpoint=OPENCODE_ENDPOINT)
+    transport = Transport(opencode_reply(answer(), allowance=None))
+    response = tmp_path / "live-response.json"
+    live.run_live(config, request_with_session(tmp_path, "exposure"), response, transport=transport.transport)
+    usage = json.loads(response.read_text())["writer_usage"]
+    assert usage["billing"] == "allowance"
+    assert usage["allowance_usd"] == 0.0
+    assert (usage["allowance_reported_completions"], usage["allowance_unreported_completions"]) == (0, 1)
+    assert usage["cost"] == 0.0
+
+
+def test_the_returned_model_is_recorded_as_returned_even_when_it_differs(tmp_path, monkeypatch):
+    """The API returns the requested alias in practice. When it returns another string, that string is what the record
+    carries as returned, and the requested alias stays beside it."""
+    monkeypatch.setenv(KEY_ENV, "fixture-key")
+    config = World(tmp_path).config(api=OPENCODE_API, endpoint=OPENCODE_ENDPOINT)
+    transport = Transport(opencode_reply(answer(), model="deepseek-v4.1-flash-20261101"))
+    response = tmp_path / "live-response.json"
+    live.run_live(config, request_with_session(tmp_path, "exposure"), response, transport=transport.transport)
+    usage = json.loads(response.read_text())["writer_usage"]
+    assert usage["requested_model"] == "deepseek-v4.1-flash"
+    assert usage["returned_model"] == "deepseek-v4.1-flash-20261101"
+
+
 def test_opencode_usage_records_the_allowance_the_build_and_one_conversation(tmp_path, monkeypatch):
     monkeypatch.setenv(KEY_ENV, "fixture-key")
     config = World(tmp_path).config(api=OPENCODE_API, endpoint=OPENCODE_ENDPOINT)
@@ -144,9 +180,10 @@ def test_opencode_usage_records_the_allowance_the_build_and_one_conversation(tmp
     summary = live.run_live(config, request_with_session(tmp_path, "exposure"), response, transport=transport.transport)
     usage = json.loads(response.read_text())["writer_usage"]
     assert usage["provider_kind"] == "opencode" and usage["provider"] == "opencode"
-    assert usage["requested_model"] == "deepseek-v4.1-flash" and usage["returned_model"] == OPENCODE_BUILD
+    assert usage["requested_model"] == "deepseek-v4.1-flash" and usage["returned_model"] == OPENCODE_MODEL
     assert usage["billing"] == "allowance" and usage["billing_source"] == "subscription"
     assert usage["allowance_usd"] == pytest.approx(0.0246)
+    assert (usage["allowance_reported_completions"], usage["allowance_unreported_completions"]) == (2, 0)
     assert usage["cost"] == summary["cost"] == pytest.approx(0.0246)
     assert usage["completions"][0]["allowance"] == pytest.approx(0.0123)
     # One conversation for the whole call: the repair carries the same session id.

@@ -1,5 +1,5 @@
 # Runtime configuration for the opencode Go API. Supply the brief externally and obtain all three pins with --check.
-# The model id is an undated alias: the response's `model` names the build actually served, and every call records it.
+# The model id is an undated alias; each call records the response's `model` as returned, which has been the alias.
 schema_version: "1.0"
 prompt_file: /absolute/operator/attacker-brief.md
 objective: ""

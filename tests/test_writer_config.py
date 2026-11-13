@@ -132,6 +132,11 @@ def test_the_opencode_kind_talks_to_the_go_api_only(world):
     for endpoint in (
         "https://openrouter.ai/api/v1/chat/completions",
         "https://opencode.ai/api/v1/chat/completions",
+        # The same prefix but not the route the chat-completions body fits: the Messages API would take it and answer
+        # nothing this writer can read.
+        "https://opencode.ai/inference/go/anthropic/v1/messages",
+        "https://opencode.ai/inference/go/openai/v1/chat/completions/extra",
+        "https://opencode.ai/inference/go/openai/v1",
     ):
         with pytest.raises(ConfigError, match="opencode"):
             world.config(api=OPENCODE_API, endpoint=endpoint)

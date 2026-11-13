@@ -128,10 +128,18 @@ def run_live(config, request_path: Path, response_path: Path, *, transport=None)
         {"role": "system", "content": config.system_prompt},
         {"role": "user", "content": json.dumps(envelope, ensure_ascii=False)},
     ]
-    # One conversation per call of the harness: a resume rebuilds the same id, and no path enters it.
+    # One conversation per call of the harness: a resume rebuilds the same id, two campaigns, cases, arms or repeats
+    # never share one, and no path enters it.
     session = (request["observation"].get("session") or {}) if isinstance(request["observation"], dict) else {}
+    chain = (contract.get("chain") or {}) if isinstance(contract.get("chain"), dict) else {}
     session_id = conversation_id(
         {
+            "campaign": chain.get("campaign"),
+            "case": chain.get("case"),
+            "arm": chain.get("arm"),
+            "repeat": chain.get("repeat"),
+            "target": chain.get("target"),
+            "agent_id": chain.get("agent_id"),
             "session": session.get("id"),
             "task": session.get("task_id"),
             "kind": contract.get("kind"),
@@ -142,9 +150,12 @@ def run_live(config, request_path: Path, response_path: Path, *, transport=None)
     deadline = Deadline(config.deadline_seconds)
     provider = Provider(config, deadline, transport=transport, allow_declines=True, session_id=session_id)
     completions, answer, codes = [], None, []
-    declines, declined_attempts, declined = 0, 0, False
+    declined_attempts, declined = 0, False
+    # Two budgets, each exactly as configured: the design's structural repairs and the decline resamples. They are
+    # spent by different answers, so a decline is never capped by the repair count, and a repair never by the resamples.
+    repairs, resamples = config.control.repairs, config.settings.decline_retries
     try:
-        for call in range(1, config.control.repairs + 2):
+        while True:
             token_limit = contract.get("budget", {}).get("max_tokens")
             tokens = sum_usage(completion.usage for completion in completions)[0].get("total_tokens", 0)
             used_tokens = contract.get("used", {}).get("tokens", 0)
@@ -153,7 +164,7 @@ def run_live(config, request_path: Path, response_path: Path, *, transport=None)
             ):
                 break
             check_size(config, messages)
-            completion = provider.complete(messages, call)
+            completion = provider.complete(messages, len(completions) + 1)
             completions.append(completion)
             if completion.declined:
                 answer, codes = None, []
@@ -161,14 +172,16 @@ def run_live(config, request_path: Path, response_path: Path, *, transport=None)
                 answer, codes = parse_live_answer(completion.content, notebook_max, strategy_max)
             declined = completion.declined or (answer is not None and answer["status"] == "unable")
             if declined:
-                declines += 1
                 declined_attempts += 1
-                if declines > config.settings.decline_retries:
+                if resamples <= 0:
                     break
+                resamples -= 1
                 continue
-            declines = 0
             if not codes:
                 break
+            if repairs <= 0:
+                break
+            repairs -= 1
             messages = [
                 *messages,
                 completion.assistant_message(),
@@ -220,6 +233,9 @@ def run_live(config, request_path: Path, response_path: Path, *, transport=None)
     if answer is None:
         raise OutputError("the writer produced no live answer", "bad_answer")
     totals, missing, cost = sum_usage(completion.usage for completion in completions)
+    allowance = (
+        [allowance_of(completion.usage) for completion in completions] if config.provider_kind == OPENCODE_KIND else []
+    )
     response = {
         "schema_version": SCHEMA_VERSION,
         **({"status": "declined"} if declined else {}),
@@ -240,11 +256,15 @@ def run_live(config, request_path: Path, response_path: Path, *, transport=None)
             "returned_model": next((c.model for c in reversed(completions) if c.model), None),
             "billing": "allowance" if config.provider_kind == OPENCODE_KIND else "cash",
             "billing_source": next((c.billing_source for c in reversed(completions) if c.billing_source), None),
+            # An allowance call whose answer carries no `usage.opencode.allowance` is flagged, never recorded as a
+            # real zero: `allowance_usd` sums the reported ones and the two counts say how many there were.
             "allowance_usd": (
-                round(sum(allowance_of(c.usage) or 0.0 for c in completions), 8)
+                round(sum(value for value in allowance if value is not None), 8)
                 if config.provider_kind == OPENCODE_KIND
                 else None
             ),
+            "allowance_reported_completions": sum(value is not None for value in allowance),
+            "allowance_unreported_completions": sum(value is None for value in allowance),
             "completions": [completion.record() for completion in completions],
         },
     }
