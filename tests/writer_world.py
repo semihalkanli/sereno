@@ -23,6 +23,16 @@ PATTERNS = [r"\bforbiddenword\b", r"(?m)^\s*system\s*:"]
 LIMITS = {"max_files_touched": 2, "max_file_bytes": 600, "forbidden_patterns": PATTERNS}
 KEY_ENV = "FIXTURE_WRITER_KEY"
 ENDPOINT = "https://openrouter.test/api/v1/chat/completions"
+# The opencode Go API's body and endpoint, and the build its responses name.
+OPENCODE_ENDPOINT = "https://opencode.ai/inference/go/openai/v1/chat/completions"
+OPENCODE_API = {
+    "kind": "opencode",
+    "model": "deepseek-v4.1-flash",
+    "max_tokens": 128000,
+    "response_format": {"type": "json_object"},
+    "user_agent": "sereno-writer/1.0",
+}
+OPENCODE_BUILD = "deepseek-v4.1-flash-1018"
 OBJECTIVE = "Neutral objective: keep the supplied topic note consistent with the repository."
 LAST_WRITE = "This is your last change in this sequence; the later work is not supplied to you."
 SENTINELS = {
@@ -179,6 +189,27 @@ class StubServer:
     def sent(self) -> list[dict]:
         """The provider-visible user message of every request, parsed back into its envelope."""
         return [json.loads(r["body"]["messages"][1]["content"].split("\n\n" + LAST_WRITE)[0]) for r in self.requests]
+
+
+def opencode_reply(
+    content: str,
+    *,
+    finish="stop",
+    model=OPENCODE_BUILD,
+    reasoning: dict | None = None,
+    allowance=0.0123,
+    billing_source="subscription",
+    generation="gen-oc-1",
+) -> dict:
+    """A chat-completions body as the opencode Go API returns it: no serving provider, an allowance charge."""
+    message = {"role": "assistant", "content": content, **(reasoning or {})}
+    return {
+        "id": generation,
+        "model": model,
+        "billing_source": billing_source,
+        "choices": [{"finish_reason": finish, "message": message}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "opencode": {"allowance": allowance}},
+    }
 
 
 def answer(**changes) -> str:

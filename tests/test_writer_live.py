@@ -4,7 +4,17 @@ import json
 from pathlib import Path
 
 import pytest
-from writer_world import KEY_ENV, LIMITS, Transport, World, reply
+from writer_world import (
+    KEY_ENV,
+    LIMITS,
+    OPENCODE_API,
+    OPENCODE_BUILD,
+    OPENCODE_ENDPOINT,
+    Transport,
+    World,
+    opencode_reply,
+    reply,
+)
 
 from sereno.writer import live
 from sereno.writer.errors import InputError, OutputError
@@ -41,6 +51,16 @@ def request(tmp_path: Path, **contract) -> Path:
 
 def answer(**changes) -> str:
     return json.dumps({"status": "no_change", "actions": [], "notebook": "next revision", "explanation": "e"} | changes)
+
+
+def request_with_session(tmp_path: Path, session_id: str, call: int = 1) -> Path:
+    """A live request that names the session and the call, as the harness's request does."""
+    path = request(tmp_path)
+    data = json.loads(path.read_text())
+    data["observation"]["session"] = {"id": session_id, "task_id": "fixture"}
+    data["contract"]["session_call"] = call
+    path.write_text(json.dumps(data))
+    return path
 
 
 def test_an_input_limit_after_a_completion_keeps_the_failure_usage(tmp_path, monkeypatch):
@@ -114,6 +134,35 @@ def test_live_usage_preserves_reported_repair_totals_when_one_call_has_no_usage(
     assert usage["usage"] == {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
     assert usage["unreported_completions"] == 1
     assert usage["cost"] == 0.0123
+
+
+def test_opencode_usage_records_the_allowance_the_build_and_one_conversation(tmp_path, monkeypatch):
+    monkeypatch.setenv(KEY_ENV, "fixture-key")
+    config = World(tmp_path).config(api=OPENCODE_API, endpoint=OPENCODE_ENDPOINT)
+    transport = Transport(opencode_reply(answer(strategy=7)), opencode_reply(answer()))
+    response = tmp_path / "live-response.json"
+    summary = live.run_live(config, request_with_session(tmp_path, "exposure"), response, transport=transport.transport)
+    usage = json.loads(response.read_text())["writer_usage"]
+    assert usage["provider_kind"] == "opencode" and usage["provider"] == "opencode"
+    assert usage["requested_model"] == "deepseek-v4.1-flash" and usage["returned_model"] == OPENCODE_BUILD
+    assert usage["billing"] == "allowance" and usage["billing_source"] == "subscription"
+    assert usage["allowance_usd"] == pytest.approx(0.0246)
+    assert usage["cost"] == summary["cost"] == pytest.approx(0.0246)
+    assert usage["completions"][0]["allowance"] == pytest.approx(0.0123)
+    # One conversation for the whole call: the repair carries the same session id.
+    sessions = [record.headers["x-opencode-session"] for record in transport.requests]
+    assert len(sessions) == 2 and len(set(sessions)) == 1
+    # The same request on a resume rebuilds the same id; another call of the session is another conversation.
+    again = Transport(opencode_reply(answer(strategy=7)), opencode_reply(answer()))
+    live.run_live(
+        config, request_with_session(tmp_path, "exposure"), tmp_path / "again.json", transport=again.transport
+    )
+    assert again.requests[0].headers["x-opencode-session"] == sessions[0]
+    other = Transport(opencode_reply(answer(strategy=7)), opencode_reply(answer()))
+    live.run_live(
+        config, request_with_session(tmp_path, "exposure", 2), tmp_path / "other.json", transport=other.transport
+    )
+    assert other.requests[0].headers["x-opencode-session"] != sessions[0]
 
 
 def test_unusable_answers_end_without_a_response(tmp_path, monkeypatch):

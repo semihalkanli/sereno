@@ -13,11 +13,11 @@ import json
 from pathlib import Path
 
 from sereno.context_eval.engine import write_atomic
-from sereno.usage import sum_usage
-from sereno.writer.config import check_deadline, check_limits
+from sereno.usage import allowance_of, sum_usage
+from sereno.writer.config import OPENCODE_KIND, check_deadline, check_limits
 from sereno.writer.errors import InputError, OutputError, ProviderFailure
 from sereno.writer.parsers import CODE_TEXT, STATUSES, action_shape_ok, no_duplicate_keys
-from sereno.writer.provider import Deadline, Provider
+from sereno.writer.provider import Deadline, Provider, conversation_id
 from sereno.writer.view import check_size
 
 SCHEMA_VERSION = "1.0"
@@ -128,8 +128,19 @@ def run_live(config, request_path: Path, response_path: Path, *, transport=None)
         {"role": "system", "content": config.system_prompt},
         {"role": "user", "content": json.dumps(envelope, ensure_ascii=False)},
     ]
+    # One conversation per call of the harness: a resume rebuilds the same id, and no path enters it.
+    session = (request["observation"].get("session") or {}) if isinstance(request["observation"], dict) else {}
+    session_id = conversation_id(
+        {
+            "session": session.get("id"),
+            "task": session.get("task_id"),
+            "kind": contract.get("kind"),
+            "stage": contract.get("stage"),
+            "call": contract.get("session_call"),
+        }
+    )
     deadline = Deadline(config.deadline_seconds)
-    provider = Provider(config, deadline, transport=transport, allow_declines=True)
+    provider = Provider(config, deadline, transport=transport, allow_declines=True, session_id=session_id)
     completions, answer, codes = [], None, []
     declines, declined_attempts, declined = 0, 0, False
     try:
@@ -223,6 +234,17 @@ def run_live(config, request_path: Path, response_path: Path, *, transport=None)
             "finish": "declined" if declined else "finished",
             "declined_attempts": declined_attempts,
             "cost": cost,
+            "provider_kind": config.provider_kind,
+            "provider": config.provider_name,
+            "requested_model": config.api["model"],
+            "returned_model": next((c.model for c in reversed(completions) if c.model), None),
+            "billing": "allowance" if config.provider_kind == OPENCODE_KIND else "cash",
+            "billing_source": next((c.billing_source for c in reversed(completions) if c.billing_source), None),
+            "allowance_usd": (
+                round(sum(allowance_of(c.usage) or 0.0 for c in completions), 8)
+                if config.provider_kind == OPENCODE_KIND
+                else None
+            ),
             "completions": [completion.record() for completion in completions],
         },
     }

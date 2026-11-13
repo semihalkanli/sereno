@@ -1,4 +1,4 @@
-"""The OpenRouter chat-completions client of the writer.
+"""The chat-completions client of the writer, on OpenRouter or the opencode Go API.
 
 One logical call is at most `attempts` transport attempts, all inside the program's shared deadline. A transient HTTP
 status or a connection failure is retried within that budget; every other trouble (missing credential, authentication,
@@ -6,6 +6,10 @@ balance, a body-level error under HTTP 200, an unexpected provider, a cut-off, a
 Live mode may expose declines for bounded plain resampling; other writer modes still treat refusals as failures.
 An ambiguous transport failure can be billed twice, so every attempt is recorded and a request is never described as
 exactly-once.
+
+The provider kind is the design's API settings: OpenRouter checks the serving provider and bills `usage.cost`; opencode
+sends no routing block, identifies itself with its own user agent, carries one `x-opencode-session` per conversation and
+reports its charge as `usage.opencode.allowance` against the subscription.
 """
 
 import contextlib
@@ -23,8 +27,9 @@ from datetime import UTC, datetime
 
 import httpx
 
+from sereno.usage import allowance_of, usage_charge
 from sereno.writer.config import WriterConfig
-from sereno.writer.errors import ProviderFailure
+from sereno.writer.errors import ConfigError, ProviderFailure
 
 REASONING_FIELDS = ("reasoning_details", "reasoning", "reasoning_content")
 
@@ -84,7 +89,8 @@ class Attempt:
 
 @dataclass
 class Completion:
-    """What a usable answer holds. `reasoning` keeps the provider's reasoning fields exactly as returned."""
+    """What a usable answer holds. `reasoning` keeps the provider's reasoning fields exactly as returned; `cost` is the
+    charge the usage block reports, the opencode allowance included, and `allowance` says whether it was one."""
 
     content: str
     reasoning: dict
@@ -96,17 +102,24 @@ class Completion:
     usage: dict
     body: dict = field(repr=False)
     declined: bool = False
+    provider_kind: str = "openrouter"
+    requested_model: str | None = None
+    billing_source: str | None = None
 
     def record(self) -> dict:
         return {
             "declined": self.declined,
             "finish_reason": self.finish_reason,
             "native_finish_reason": self.native_finish_reason,
+            "provider_kind": self.provider_kind,
+            "requested_model": self.requested_model,
             "returned_model": self.model,
             "provider": self.provider,
             "generation_id": self.generation_id,
+            "billing_source": self.billing_source,
             "usage": self.usage,
-            "cost": self.usage.get("cost"),
+            "cost": usage_charge(self.usage),
+            "allowance": allowance_of(self.usage),
             "reasoning_fields": sorted(self.reasoning),
         }
 
@@ -128,8 +141,24 @@ def sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def parse_completion(body: object, expected_provider: str, *, allow_declines: bool = False) -> Completion:
-    """A usable answer, or the explicit failure its body amounts to."""
+def conversation_id(payload: dict) -> str:
+    """One stable id per writer conversation, for APIs that route and cache by session: the payload's identity, hashed.
+    A resumed step rebuilds the same payload, so it reuses the id; no path enters it."""
+    text = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:32]
+
+
+def parse_completion(
+    body: object,
+    expected_provider: str | None,
+    *,
+    allow_declines: bool = False,
+    provider_kind: str = "openrouter",
+    provider_name: str | None = None,
+    requested_model: str | None = None,
+) -> Completion:
+    """A usable answer, or the explicit failure its body amounts to. A serving provider is checked only where the API
+    names one (OpenRouter); opencode's label comes from the configuration."""
     if not isinstance(body, dict):
         raise ProviderFailure("the response body is not a JSON object", "malformed_body")
     if body.get("error"):
@@ -141,7 +170,7 @@ def parse_completion(body: object, expected_provider: str, *, allow_declines: bo
     if choice.get("error"):
         raise ProviderFailure(f"error in the choice: {describe(choice['error'])}", "body_error")
     provider = body.get("provider")
-    if provider != expected_provider:
+    if expected_provider is not None and provider != expected_provider:
         raise ProviderFailure(f"answered by {provider!r}, not {expected_provider!r}", "unexpected_provider")
     message, finish = choice["message"], choice.get("finish_reason")
     declined = bool(message.get("refusal")) or finish == "content_filter"
@@ -157,17 +186,21 @@ def parse_completion(body: object, expected_provider: str, *, allow_declines: bo
     if not isinstance(content, str) or (not content.strip() and not declined):
         raise ProviderFailure("the completion is empty", "empty_completion")
     usage = body.get("usage")
+    usage = usage if isinstance(usage, dict) else {}
     return Completion(
         content=content,
         reasoning={key: copy.deepcopy(message[key]) for key in REASONING_FIELDS if key in message},
         finish_reason=finish,
         native_finish_reason=choice.get("native_finish_reason"),
         model=body.get("model"),
-        provider=expected_provider,
+        provider=provider_name or expected_provider or provider_kind,
         generation_id=body.get("id"),
-        usage=usage if isinstance(usage, dict) else {},
+        usage=usage,
         body=body,
         declined=declined,
+        provider_kind=provider_kind,
+        requested_model=requested_model,
+        billing_source=body.get("billing_source") or usage.get("billing_source"),
     )
 
 
@@ -212,15 +245,29 @@ class Provider:
         sleep: Callable[[float], None] = time.sleep,
         sink: Sink | None = None,
         allow_declines: bool = False,
+        session_id: str | None = None,
     ):
         self.config, self.deadline, self.sleep, self.sink = config, deadline, sleep, sink
         self.allow_declines = allow_declines
+        self.session_id = session_id
+        if config.session_header and not session_id:
+            raise ConfigError(f"the {config.provider_kind} provider needs a conversation id", "session")
         self.key = config.credential()
         self.client = httpx.Client(transport=transport, follow_redirects=False)
         self.attempts: list[Attempt] = []
 
     def close(self) -> None:
         self.client.close()
+
+    def headers(self) -> dict[str, str]:
+        """What every request of the conversation carries: the key, the content type, the client's own user agent and,
+        on a session-routed API, the one conversation id."""
+        headers = {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
+        if self.config.user_agent:
+            headers["User-Agent"] = self.config.user_agent
+        if self.config.session_header and self.session_id:
+            headers[self.config.session_header] = self.session_id
+        return headers
 
     def complete(self, messages: list[dict], call: int) -> Completion:
         """One logical call: at most `attempts` transport attempts within the deadline."""
@@ -242,10 +289,7 @@ class Provider:
             try:
                 with alarm(remaining):
                     response = self.client.post(
-                        self.config.endpoint,
-                        content=raw,
-                        headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"},
-                        timeout=timeout,
+                        self.config.endpoint, content=raw, headers=self.headers(), timeout=timeout
                     )
             except DeadlineHit:
                 attempt.error = "the shared deadline ended during the call"
@@ -269,7 +313,12 @@ class Provider:
                 except (ValueError, UnicodeDecodeError):
                     raise ProviderFailure("the response body is not valid JSON", "malformed_body") from None
                 return parse_completion(
-                    body, self.config.api["provider"]["order"][0], allow_declines=self.allow_declines
+                    body,
+                    self.config.expected_provider,
+                    allow_declines=self.allow_declines,
+                    provider_kind=self.config.provider_kind,
+                    provider_name=self.config.provider_name,
+                    requested_model=self.config.api["model"],
                 )
             if status in control.retry_statuses:
                 if number == control.attempts:

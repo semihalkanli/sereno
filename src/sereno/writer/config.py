@@ -9,6 +9,7 @@ hook's timeout.
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -17,12 +18,24 @@ from urllib.parse import urlsplit
 from pydantic import Field, ValidationError
 
 from sereno.context_eval.config import fingerprint
-from sereno.context_eval.schema import AdaptiveLimits, Contract, harness_controlled
+from sereno.context_eval.schema import ENV_NAME, AdaptiveLimits, Contract, harness_controlled
 from sereno.writer.errors import ConfigError
 
 SCHEMA_VERSION = "1.0"
 DESIGN_SCHEMA = "design-1"
+# OpenRouter's body: the routing block is part of it. An api.json without `kind` is an OpenRouter body.
 API_KEYS = frozenset({"model", "provider", "max_tokens", "response_format"})
+# The opencode Go API's body: no routing block, and the client identifies itself with its own user agent.
+OPENCODE_KIND = "opencode"
+OPENCODE_API_KEYS = frozenset({"kind", "model", "max_tokens", "response_format", "user_agent"})
+OPENCODE_MODELS = ("deepseek-v4.1-flash", "qwen3.8-max")
+OPENCODE_HOST = "opencode.ai"
+OPENCODE_PATH = "/inference/go/"
+# One stable id per conversation, sent on every request so the API can route and cache the conversation.
+OPENCODE_SESSION_HEADER = "x-opencode-session"
+# A product token such as `sereno-writer/1.0`, never a generic SDK or HTTP-library name.
+PRODUCT_AGENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
+GENERIC_AGENTS = ("python-httpx", "httpx", "openai", "litellm", "requests", "aiohttp", "urllib", "curl")
 # Fields the generation body never carries: sampling, effort and anything that changes how many answers come back.
 BARRED_API_KEYS = frozenset(
     {
@@ -93,7 +106,13 @@ class WriterConfig:
     settings: Settings
     endpoint: str
     credential_env: str
+    # The request body only: the opencode kind's `kind` and `user_agent` never travel in it.
     api: dict
+    provider_kind: str
+    provider_name: str
+    expected_provider: str | None
+    user_agent: str | None
+    session_header: str | None
     system_prompt: str
     last_write: str | None
     objective: str
@@ -123,6 +142,10 @@ class WriterConfig:
                 "package": dict(sorted(self.package.items())),
                 "endpoint": self.endpoint,
                 "api": self.api,
+                "provider_kind": self.provider_kind,
+                "provider_name": self.provider_name,
+                "user_agent": self.user_agent,
+                "session_header": self.session_header,
                 "system_prompt": self.system_prompt,
                 "last_write": self.last_write,
                 "objective": self.objective,
@@ -194,27 +217,49 @@ def read_json(path: Path, files: dict[str, str]) -> dict:
     return data
 
 
-def check_api(api: dict) -> None:
-    """The generation body of README "Provider request": exactly these four fields, no sampling or effort, no
-    fallback, every parameter required, the 128K length limit, a json object answer."""
+def check_user_agent(value: object) -> str:
+    """A product token such as `sereno-writer/1.0`: a name and a version, never a generic SDK or HTTP-library name."""
+    if not isinstance(value, str) or not PRODUCT_AGENT.fullmatch(value):
+        raise ConfigError("api.json user_agent must be a product token such as sereno-writer/1.0")
+    if value.lower().startswith(GENERIC_AGENTS):
+        raise ConfigError(f"api.json user_agent {value!r} is a generic SDK or HTTP-library name")
+    return value
+
+
+def check_api(api: dict) -> str:
+    """The generation body, kind by kind, and the kind it selects. OpenRouter (`kind` absent or "openrouter") keeps
+    README "Provider request": exactly the four fields, no sampling or effort, no fallback, every parameter required.
+    opencode (`kind: opencode`) holds its own five fields and no routing block. Both keep the 128K length limit and a
+    json object answer."""
     if set(api) & BARRED_API_KEYS:
         raise ConfigError(f"api.json carries barred fields {sorted(set(api) & BARRED_API_KEYS)}")
-    if set(api) != API_KEYS:
-        raise ConfigError(f"api.json must hold exactly {sorted(API_KEYS)}")
-    provider = api["provider"]
-    order = provider.get("order") if isinstance(provider, dict) else None
-    if not (isinstance(order, list) and len(order) == 1 and isinstance(order[0], str)):
-        raise ConfigError("api.json provider.order must name exactly one provider")
-    if provider.get("allow_fallbacks") is not False or provider.get("require_parameters") is not True:
-        raise ConfigError("api.json provider must set allow_fallbacks false and require_parameters true")
-    if set(provider) != {"order", "allow_fallbacks", "require_parameters"}:
-        raise ConfigError("api.json provider holds fields beyond order, allow_fallbacks and require_parameters")
-    if not isinstance(api["model"], str) or not api["model"]:
-        raise ConfigError("api.json model must be a string")
+    kind = api.get("kind", "openrouter")
+    if kind not in ("openrouter", OPENCODE_KIND):
+        raise ConfigError(f"api.json kind must be openrouter or opencode, not {kind!r}")
+    if kind == "openrouter":
+        if set(api) - {"kind"} != API_KEYS:
+            raise ConfigError(f"api.json must hold exactly {sorted(API_KEYS)}")
+        provider = api["provider"]
+        order = provider.get("order") if isinstance(provider, dict) else None
+        if not (isinstance(order, list) and len(order) == 1 and isinstance(order[0], str)):
+            raise ConfigError("api.json provider.order must name exactly one provider")
+        if provider.get("allow_fallbacks") is not False or provider.get("require_parameters") is not True:
+            raise ConfigError("api.json provider must set allow_fallbacks false and require_parameters true")
+        if set(provider) != {"order", "allow_fallbacks", "require_parameters"}:
+            raise ConfigError("api.json provider holds fields beyond order, allow_fallbacks and require_parameters")
+        if not isinstance(api["model"], str) or not api["model"]:
+            raise ConfigError("api.json model must be a string")
+    else:
+        if set(api) != OPENCODE_API_KEYS:
+            raise ConfigError(f"an opencode api.json must hold exactly {sorted(OPENCODE_API_KEYS)}")
+        if api["model"] not in OPENCODE_MODELS:
+            raise ConfigError(f"api.json model must be one of {list(OPENCODE_MODELS)} for the opencode kind")
+        check_user_agent(api["user_agent"])
     if api["max_tokens"] != 128000 or isinstance(api["max_tokens"], bool):
         raise ConfigError("api.json max_tokens must be 128000 (decision 370)")
     if api["response_format"] != {"type": "json_object"}:
         raise ConfigError("api.json response_format must be a json_object")
+    return kind
 
 
 def check_endpoint(endpoint: str) -> None:
@@ -224,6 +269,23 @@ def check_endpoint(endpoint: str) -> None:
     if parts.scheme == "http" and parts.hostname in LOOPBACK:
         return
     raise ConfigError(f"endpoint {endpoint!r} must be https, or http on a loopback host")
+
+
+def check_opencode_endpoint(endpoint: str) -> None:
+    """The opencode kind talks to the Go inference API only: https on opencode.ai under /inference/go/."""
+    parts = urlsplit(endpoint)
+    if parts.scheme != "https" or parts.hostname != OPENCODE_HOST or not parts.path.startswith(OPENCODE_PATH):
+        raise ConfigError(f"endpoint {endpoint!r} must be https on {OPENCODE_HOST} under {OPENCODE_PATH}")
+
+
+def check_credential_name(name: object) -> str:
+    """The credential variable is a name the harness reads at execution time, never a harness-controlled one."""
+    if not isinstance(name, str) or not ENV_NAME.fullmatch(name):
+        raise ConfigError(f"credential_env_name {name!r} is not an environment variable name")
+    if harness_controlled(name):
+        # Such a name would hand the program a variable the harness sets for itself, not a credential.
+        raise ConfigError(f"credential_env_name {name!r} is a harness-controlled variable")
+    return name
 
 
 def control_of(design: dict) -> Control:
@@ -268,7 +330,7 @@ def load_config(path: Path) -> WriterConfig:
         raise ConfigError(f"the design's schema_version must be {DESIGN_SCHEMA!r}")
     folder = design_path.parent
     api = read_json(folder / str(design.get("api_settings_file")), files)
-    check_api(api)
+    kind = check_api(api)
     job = (design.get("jobs") or {}).get(settings.route)
     if not isinstance(job, dict):
         raise ConfigError(f"the design has no job for the {settings.route} route")
@@ -300,22 +362,31 @@ def load_config(path: Path) -> WriterConfig:
     if not isinstance(endpoint, str):
         raise ConfigError("the design names no endpoint")
     check_endpoint(endpoint)
+    if kind == OPENCODE_KIND:
+        check_opencode_endpoint(endpoint)
     credential_env = design.get("credential_env_name")
     if not isinstance(credential_env, str) or not credential_env:
         raise ConfigError("the design names no credential variable")
-    if harness_controlled(credential_env):
-        # Such a name would hand the program a variable the harness sets for itself, not a credential.
-        raise ConfigError(f"credential_env_name {credential_env!r} is a harness-controlled variable")
+    check_credential_name(credential_env)
     notebook_max = settings.notebook_max_utf8_bytes or (design.get("state") or {}).get(
         "proposed_notebook_max_utf8_bytes"
     )
     if not isinstance(notebook_max, int) or isinstance(notebook_max, bool) or notebook_max < 1:
         raise ConfigError("no usable notebook size limit")
+    # The request body: the routing block belongs to OpenRouter's, and neither `kind` nor `user_agent` travels in one.
+    body = {key: api[key] for key in ("model", "max_tokens", "response_format")}
+    if kind == "openrouter":
+        body["provider"] = api["provider"]
     return WriterConfig(
         settings=settings,
         endpoint=endpoint,
         credential_env=credential_env,
-        api=api,
+        api=body,
+        provider_kind=kind,
+        provider_name=OPENCODE_KIND if kind == OPENCODE_KIND else api["provider"]["order"][0],
+        expected_provider=None if kind == OPENCODE_KIND else api["provider"]["order"][0],
+        user_agent=None if kind == "openrouter" else api["user_agent"],
+        session_header=OPENCODE_SESSION_HEADER if kind == OPENCODE_KIND else None,
         system_prompt=system_prompt,
         last_write=last_write,
         objective=fragment["objective"],

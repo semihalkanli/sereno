@@ -15,10 +15,11 @@ from pathlib import Path
 import httpx
 
 from sereno.context_eval.config import fingerprint
+from sereno.usage import usage_charge
 from sereno.writer.config import WriterConfig, campaign_timeout, check_deadline, check_limits, code_sha256
 from sereno.writer.errors import OutputError, WriterError
 from sereno.writer.parsers import Answer, Checked, check_answer, hook_response, parse_answer, repair_message
-from sereno.writer.provider import Attempt, Completion, Deadline, Provider
+from sereno.writer.provider import Attempt, Completion, Deadline, Provider, conversation_id
 from sereno.writer.request import Request, parse_request, read_request
 from sereno.writer.transaction import AttemptDir, Chain, dump, now, write_bytes_atomic
 from sereno.writer.view import View, build_view, check_size, sha256_bytes
@@ -85,7 +86,7 @@ def generate(
         check_size(config, messages)
         completion = provider.complete(messages, call)
         result.calls = call
-        result.cost += float(completion.usage.get("cost") or 0.0)
+        result.cost += usage_charge(completion.usage) or 0.0
         answer, codes = parse_answer(completion.content, config.notebook_max_bytes)
         checked = Checked()
         if answer is not None:
@@ -191,7 +192,9 @@ def run_step(
                 write_bytes_atomic(attempt.path / f"{stem}.response.json", response)
             attempt.append("transport.jsonl", record.record())
 
-        provider = Provider(config, deadline, transport=transport, sleep=sleep, sink=sink)
+        # One conversation per transition: its chain, the next session and the configuration; a resume rebuilds it.
+        session_id = conversation_id(req.chain | {"session": req.session_id, "index": req.number})
+        provider = Provider(config, deadline, transport=transport, sleep=sleep, sink=sink, session_id=session_id)
         generated = generate(req, config, limits, view, provider, attempt)
         answer, checked = generated.answer, generated.checked
         if answer is None or not checked.deliverable:

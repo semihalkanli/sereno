@@ -1,0 +1,6 @@
+{
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": {"order": ["DeepSeek"], "allow_fallbacks": false, "require_parameters": true},
+  "max_tokens": 128000,
+  "response_format": {"type": "json_object"}
+}

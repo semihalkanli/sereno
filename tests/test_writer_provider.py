@@ -5,10 +5,26 @@ import json
 
 import httpx
 import pytest
-from writer_world import KEY_ENV, Transport, World, reply
+from writer_world import (
+    KEY_ENV,
+    OPENCODE_API,
+    OPENCODE_BUILD,
+    OPENCODE_ENDPOINT,
+    Transport,
+    World,
+    opencode_reply,
+    reply,
+)
 
-from sereno.writer.errors import ProviderFailure
-from sereno.writer.provider import Deadline, Provider, parse_completion, request_body, retry_wait
+from sereno.writer.errors import ConfigError, ProviderFailure
+from sereno.writer.provider import (
+    Deadline,
+    Provider,
+    conversation_id,
+    parse_completion,
+    request_body,
+    retry_wait,
+)
 
 MESSAGES = [{"role": "system", "content": "system text"}, {"role": "user", "content": "user text"}]
 
@@ -27,14 +43,18 @@ def config(tmp_path, monkeypatch):
     return World(tmp_path).config()
 
 
-def provider(config, script, *, seconds=1740, sleeps=None, sink=None, clock=None):
+def provider(config, script, *, seconds=1740, sleeps=None, sink=None, clock=None, session_id=None):
     deadline = Deadline(seconds, clock or Clock())
 
     def wait(seconds):
         if sleeps is not None:
             sleeps.append(seconds)
 
-    return Provider(config, deadline, transport=script.transport, sleep=wait, sink=sink)
+    return Provider(config, deadline, transport=script.transport, sleep=wait, sink=sink, session_id=session_id)
+
+
+def opencode_config(tmp_path):
+    return World(tmp_path).config(api=OPENCODE_API, endpoint=OPENCODE_ENDPOINT)
 
 
 def test_the_body_is_the_api_settings_plus_messages_and_nothing_else(config):
@@ -250,6 +270,75 @@ def test_parse_completion_keeps_usage_and_native_finish_reason():
     body["choices"][0]["native_finish_reason"] = "stop_sequence"
     completion = parse_completion(body, "DeepSeek")
     assert completion.native_finish_reason == "stop_sequence" and completion.usage["prompt_tokens"] == 10
+
+
+def test_the_opencode_request_carries_the_session_user_agent_and_no_routing_block(tmp_path, monkeypatch):
+    monkeypatch.setenv(KEY_ENV, "secret-key-value")
+    config = opencode_config(tmp_path)
+    script = Transport(opencode_reply("ok"), opencode_reply("{}"))
+    client = provider(config, script, session_id="conversation-1")
+    first = client.complete(MESSAGES, 1)
+    client.complete([*MESSAGES, first.assistant_message()], 2)
+    for request in script.requests:
+        assert str(request.url) == OPENCODE_ENDPOINT
+        assert request.headers["authorization"] == "Bearer secret-key-value"
+        assert request.headers["user-agent"] == "sereno-writer/1.0"
+        assert request.headers["x-opencode-session"] == "conversation-1"
+    body = script.bodies()[0]
+    assert body == {
+        "model": "deepseek-v4.1-flash",
+        "max_tokens": 128000,
+        "response_format": {"type": "json_object"},
+        "messages": MESSAGES,
+    }
+    for barred in ("provider", "kind", "user_agent", "temperature", "top_p", "reasoning", "reasoning_effort", "seed"):
+        assert barred not in body
+    assert first.provider == "opencode" and first.model == OPENCODE_BUILD
+    record = first.record()
+    assert record["provider_kind"] == "opencode" and record["requested_model"] == "deepseek-v4.1-flash"
+    assert record["returned_model"] == OPENCODE_BUILD
+    assert record["billing_source"] == "subscription"
+    assert record["allowance"] == pytest.approx(0.0123) and record["cost"] == pytest.approx(0.0123)
+
+
+def test_a_conversation_id_is_stable_for_the_same_identity_and_holds_no_path():
+    identity = {
+        "campaign": "campaign",
+        "case": "t1--adaptive--r001",
+        "arm": "attack_adaptive",
+        "repeat": 0,
+        "agent_id": "main",
+        "session": "s2",
+        "index": 1,
+    }
+    first = conversation_id(identity)
+    assert first == conversation_id(dict(identity)) and len(first) == 32 and "/" not in first
+    assert first != conversation_id(identity | {"index": 2})
+
+
+def test_a_session_routed_api_needs_its_conversation_id(tmp_path, monkeypatch):
+    monkeypatch.setenv(KEY_ENV, "fixture-key")
+    with pytest.raises(ConfigError, match="conversation"):
+        Provider(opencode_config(tmp_path), Deadline(10), session_id=None)
+
+
+def test_a_400_missing_session_id_is_a_provider_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv(KEY_ENV, "fixture-key")
+    script = Transport((400, {"error": {"message": "MissingSessionID"}}, {}))
+    with pytest.raises(ProviderFailure) as caught:
+        provider(opencode_config(tmp_path), script, session_id="conversation-1").complete(MESSAGES, 1)
+    assert caught.value.code == "http_400"
+
+
+def test_opencode_reasoning_content_is_kept_and_replayed_verbatim(tmp_path, monkeypatch):
+    monkeypatch.setenv(KEY_ENV, "fixture-key")
+    reasoning = {"reasoning_content": "kept çğ text"}
+    script = Transport(opencode_reply("{}", reasoning=reasoning), opencode_reply("{}"))
+    client = provider(opencode_config(tmp_path), script, session_id="conversation-1")
+    completion = client.complete(MESSAGES, 1)
+    assert completion.assistant_message() == {"role": "assistant", "content": "{}", **reasoning}
+    client.complete([*MESSAGES, completion.assistant_message()], 2)
+    assert script.bodies()[1]["messages"][2]["reasoning_content"] == "kept çğ text"
 
 
 def test_the_missing_credential_fails_before_any_call(tmp_path, monkeypatch):

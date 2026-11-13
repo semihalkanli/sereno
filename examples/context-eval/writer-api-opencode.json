@@ -1,0 +1,7 @@
+{
+  "kind": "opencode",
+  "model": "deepseek-v4.1-flash",
+  "max_tokens": 128000,
+  "response_format": {"type": "json_object"},
+  "user_agent": "sereno-writer/1.0"
+}

@@ -4,10 +4,21 @@ import json
 from pathlib import Path
 
 import pytest
-from writer_world import ENDPOINT, KEY_ENV, LIMITS, OBJECTIVE, PATTERNS, ROOT, World
+from writer_world import (
+    ENDPOINT,
+    KEY_ENV,
+    LIMITS,
+    OBJECTIVE,
+    OPENCODE_API,
+    OPENCODE_ENDPOINT,
+    PATTERNS,
+    ROOT,
+    World,
+)
 
 from sereno.writer.config import (
     campaign_timeout,
+    check_api,
     check_deadline,
     check_limits,
     code_sha256,
@@ -74,6 +85,58 @@ def test_the_api_body_must_keep_the_frozen_invariants(world, change):
     } | change
     with pytest.raises(ConfigError):
         world.config(api=api)
+
+
+@pytest.mark.parametrize(
+    ("name", "kind"),
+    [("writer-api-opencode.json", "opencode"), ("writer-api-openrouter.json", "openrouter")],
+)
+def test_the_example_api_bodies_load(name, kind):
+    path = Path(__file__).parents[1] / "examples/context-eval" / name
+    assert check_api(json.loads(path.read_text())) == kind
+
+
+def test_an_opencode_api_selects_its_kind_and_keeps_its_fields_out_of_the_body(world):
+    config = world.config(api=OPENCODE_API, endpoint=OPENCODE_ENDPOINT)
+    assert config.provider_kind == "opencode" and config.provider_name == "opencode"
+    assert config.expected_provider is None and config.user_agent == "sereno-writer/1.0"
+    assert config.session_header == "x-opencode-session"
+    assert config.api == {
+        "model": "deepseek-v4.1-flash",
+        "max_tokens": 128000,
+        "response_format": {"type": "json_object"},
+    }
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"model": "deepseek-chat"},
+        {"model": ""},
+        {"user_agent": "python-httpx/0.28"},
+        {"user_agent": "httpx"},
+        {"user_agent": "OpenAI/Python 3.12"},
+        {"user_agent": 5},
+        {"kind": "something-else"},
+        {"provider": {"order": ["DeepSeek"], "allow_fallbacks": False, "require_parameters": True}},
+        {"temperature": 0.7},
+        {"max_tokens": 4000},
+    ],
+)
+def test_the_opencode_api_refuses_its_own_invalid_fields(world, change):
+    with pytest.raises(ConfigError):
+        world.config(api=OPENCODE_API | change, endpoint=OPENCODE_ENDPOINT)
+
+
+def test_the_opencode_kind_talks_to_the_go_api_only(world):
+    for endpoint in (
+        "https://openrouter.ai/api/v1/chat/completions",
+        "https://opencode.ai/api/v1/chat/completions",
+        "http://127.0.0.1:8080/inference/go/openai/v1/chat/completions",
+    ):
+        with pytest.raises(ConfigError, match="opencode"):
+            world.config(api=OPENCODE_API, endpoint=endpoint)
+    assert world.config(api=OPENCODE_API, endpoint=OPENCODE_ENDPOINT).endpoint == OPENCODE_ENDPOINT
 
 
 def test_a_missing_api_field_is_refused(world):
@@ -188,6 +251,16 @@ def test_a_harness_controlled_credential_name_is_refused(world):
         with pytest.raises(ConfigError, match="harness-controlled"):
             load_config(path)
     (package / "writer-design.json").write_text(json.dumps(design))
+
+
+def test_the_opencode_credential_variable_is_accepted(world, monkeypatch):
+    """`OPENCODE_API_KEY` is not a harness-controlled name, so the design may name it and the program receives it."""
+    path = world.write_config(api=OPENCODE_API, endpoint=OPENCODE_ENDPOINT)
+    design = json.loads((world.package / "writer-design.json").read_text())
+    (world.package / "writer-design.json").write_text(json.dumps(design | {"credential_env_name": "OPENCODE_API_KEY"}))
+    monkeypatch.setenv("OPENCODE_API_KEY", "fixture-go-key")
+    config = load_config(path)
+    assert config.credential_env == "OPENCODE_API_KEY" and config.credential() == "fixture-go-key"
 
 
 def test_broken_design_packages_fail_the_load(world, tmp_path):
