@@ -10,6 +10,16 @@ from pathlib import Path
 import pytest
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+# The provider endpoints the hook tests must not inherit: a session that points the SDKs elsewhere would send the
+# child's request to another host, and the test would measure that host's accounting instead of the hook's.
+SCRUBBED = ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_BASE_URL")
+
+
+def child_env(calls: Path) -> dict[str, str]:
+    """The child's environment: this process's without the provider endpoint overrides, with the hook's own entries."""
+    env = {name: value for name, value in os.environ.items() if name not in SCRUBBED}
+    return env | {"PYTHONPATH": str(SCRIPTS / "cost_hook"), "SERENO_COST_CALLS": str(calls)}
+
 
 CHILD = """
 import importlib, json, sys
@@ -44,7 +54,7 @@ client.post("https://example.com/api/alpha/decisions", json={})
 
 def test_hook_records_openrouter_decisions_calls(tmp_path: Path) -> None:
     calls = tmp_path / "calls.jsonl"
-    env = {**os.environ, "PYTHONPATH": str(SCRIPTS / "cost_hook"), "SERENO_COST_CALLS": str(calls)}
+    env = child_env(calls)
     subprocess.run([sys.executable, "-c", DECISIONS_CHILD], env=env, check=True)
 
     rows = [json.loads(line) for line in calls.read_text().splitlines()]
@@ -56,7 +66,7 @@ def test_hook_records_openrouter_calls_only(tmp_path: Path, module: str) -> None
     if importlib.util.find_spec(module) is None:
         pytest.skip(f"{module} is not installed")
     calls = tmp_path / "calls.jsonl"
-    env = {**os.environ, "PYTHONPATH": str(SCRIPTS / "cost_hook"), "SERENO_COST_CALLS": str(calls)}
+    env = child_env(calls)
     subprocess.run([sys.executable, "-c", CHILD, module], env=env, check=True)
 
     rows = [json.loads(line) for line in calls.read_text().splitlines()]
@@ -88,7 +98,7 @@ def test_hook_records_requests_calls_and_the_responses_api(tmp_path: Path) -> No
     if importlib.util.find_spec("requests") is None:
         pytest.skip("requests is not installed")
     calls = tmp_path / "calls.jsonl"
-    env = {**os.environ, "PYTHONPATH": str(SCRIPTS / "cost_hook"), "SERENO_COST_CALLS": str(calls)}
+    env = child_env(calls)
     subprocess.run([sys.executable, "-c", REQUESTS_CHILD], env=env, check=True)
 
     rows = [json.loads(line) for line in calls.read_text().splitlines()]
@@ -124,7 +134,7 @@ client.post("https://api.anthropic.com/v1/models", json={"case": "short"})
 
 def test_hook_prices_anthropic_calls_from_their_usage(tmp_path: Path) -> None:
     calls = tmp_path / "calls.jsonl"
-    env = {**os.environ, "PYTHONPATH": str(SCRIPTS / "cost_hook"), "SERENO_COST_CALLS": str(calls)}
+    env = child_env(calls)
     subprocess.run([sys.executable, "-c", ANTHROPIC_CHILD], env=env, check=True)
 
     rows = {row["id"] or "error": row for row in map(json.loads, calls.read_text().splitlines())}
@@ -156,7 +166,7 @@ client.messages.create(model="claude-haiku-5-5", max_tokens=128000, timeout=6000
 
 def test_hook_records_the_anthropic_sdk_without_streaming(tmp_path: Path) -> None:
     calls = tmp_path / "calls.jsonl"
-    env = {**os.environ, "PYTHONPATH": str(SCRIPTS / "cost_hook"), "SERENO_COST_CALLS": str(calls)}
+    env = child_env(calls)
     subprocess.run([sys.executable, "-c", SDK_CHILD], env=env, check=True)
 
     [row] = [json.loads(line) for line in calls.read_text().splitlines()]
@@ -170,7 +180,7 @@ import httpx
 def handler(request):
     body = {
         "id": "gen-oc-1",
-        "model": "deepseek-v4.1-flash-1018",
+        "model": "deepseek-v4.1-flash",
         "usage": {
             "prompt_tokens": 4,
             "completion_tokens": 2,
@@ -187,13 +197,82 @@ client.post("https://example.com/inference/go/openai/v1/chat/completions", json=
 
 def test_hook_records_opencode_calls_as_a_subscription_allowance(tmp_path: Path) -> None:
     calls = tmp_path / "calls.jsonl"
-    env = {**os.environ, "PYTHONPATH": str(SCRIPTS / "cost_hook"), "SERENO_COST_CALLS": str(calls)}
+    env = child_env(calls)
     subprocess.run([sys.executable, "-c", OPENCODE_CHILD], env=env, check=True)
 
     [row] = [json.loads(line) for line in calls.read_text().splitlines()]
-    assert row["provider"] == "opencode" and row["model"] == "deepseek-v4.1-flash-1018"
+    assert row["provider"] == "opencode" and row["model"] == "deepseek-v4.1-flash"
     assert row["billing"] == "allowance" and row["billing_source"] == "subscription"
     assert (row["allowance"], row["cost"], row["unpriced"]) == (0.03, 0.03, False)
+
+
+LIVE_OPENCODE_CHILD = """
+import httpx
+
+def handler(request):
+    # The shape the Go API returned live on 2026-11-14: top-level OpenAI-style counts beside the allowance block.
+    body = {
+        "id": "gen-oc-live",
+        "model": "deepseek-v4.1-flash",
+        "usage": {
+            "prompt_tokens": 45,
+            "completion_tokens": 19,
+            "opencode": {
+                "allowance": 0.02,
+                "billing_source": "go",
+                "tokens": {"input": 45, "output": 19, "reasoning": 0, "cache_read": 0},
+            },
+        },
+    }
+    return httpx.Response(200, json=body)
+
+client = httpx.Client(transport=httpx.MockTransport(handler))
+client.post("https://opencode.ai/inference/go/openai/v1/chat/completions", json={})
+"""
+
+
+def test_hook_reads_the_live_opencode_usage_shape(tmp_path: Path) -> None:
+    """The live answer carries top-level prompt and completion counts beside `usage.opencode.tokens`; the row takes the
+    top-level counts, so the token path is pinned to the shape the API actually returned."""
+    calls = tmp_path / "calls.jsonl"
+    env = child_env(calls)
+    subprocess.run([sys.executable, "-c", LIVE_OPENCODE_CHILD], env=env, check=True)
+
+    [row] = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert (row["prompt_tokens"], row["completion_tokens"]) == (45, 19)
+    assert (row["allowance"], row["cost"], row["billing_source"]) == (0.02, 0.02, "go")
+
+
+OPENCODE_GATE_CHILD = """
+import httpx
+
+def handler(request):
+    # A Go chat-completions answer without the allowance block, and a Messages answer on the Go host.
+    if request.url.path.endswith("/messages"):
+        usage = {"input_tokens": 1000, "output_tokens": 200, "cache_read_input_tokens": 4000}
+        return httpx.Response(200, json={"id": "msg-go", "model": "claude-haiku-5-5", "usage": usage})
+    return httpx.Response(200, json={"id": "gen-go", "model": "deepseek-v4.1-flash",
+                                     "usage": {"prompt_tokens": 4, "completion_tokens": 2}})
+
+client = httpx.Client(transport=httpx.MockTransport(handler))
+client.post("https://opencode.ai/inference/go/anthropic/v1/messages", json={})
+client.post("https://opencode.ai/inference/go/openai/v1/chat/completions", json={})
+"""
+
+
+def test_hook_books_a_messages_answer_on_the_go_host_as_an_anthropic_call(tmp_path: Path) -> None:
+    """An Anthropic-Messages-shaped answer on the Go host is an Anthropic usage record, not an allowance call: its
+    tokens are the Messages counts with cached tokens included, and it is priced from the Anthropic table. A Go
+    chat-completions answer without a `usage.opencode` block is not booked as an allowance call either."""
+    calls = tmp_path / "calls.jsonl"
+    env = child_env(calls)
+    subprocess.run([sys.executable, "-c", OPENCODE_GATE_CHILD], env=env, check=True)
+
+    [row] = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert row["id"] == "msg-go" and row["provider"] == "anthropic"
+    assert (row["prompt_tokens"], row["completion_tokens"]) == (5000, 200)
+    assert "billing" not in row and row["unpriced"] is False
+    assert row["cost"] == pytest.approx((1000 + 400) * 0.10e-6 + 200 * 0.50e-6)
 
 
 def test_summarize_calls_keeps_the_opencode_allowance_apart_from_cash(tmp_path: Path) -> None:
@@ -202,7 +281,7 @@ def test_summarize_calls_keeps_the_opencode_allowance_apart_from_cash(tmp_path: 
     rows = [
         {"model": "m", "provider": "P", "prompt_tokens": 10, "completion_tokens": 2, "cost": 0.5},
         {
-            "model": "deepseek-v4.1-flash-1018",
+            "model": "deepseek-v4.1-flash",
             "provider": "opencode",
             "prompt_tokens": 4,
             "completion_tokens": 2,
@@ -218,7 +297,7 @@ def test_summarize_calls_keeps_the_opencode_allowance_apart_from_cash(tmp_path: 
     summary = cost.summarize_calls(calls)
     assert (summary["calls"], summary["cost_usd"], summary["failed_calls"]) == (1, 0.5, 0)
     assert (summary["allowance_calls"], summary["allowance_usd"]) == (1, 0.03)
-    assert summary["allowance_by_model"]["deepseek-v4.1-flash-1018"]["sources"] == ["subscription"]
+    assert summary["allowance_by_model"]["deepseek-v4.1-flash"]["sources"] == ["subscription"]
     assert summary["allowance_prompt_tokens"] == 4 and summary["allowance_unreported_calls"] == 0
 
 

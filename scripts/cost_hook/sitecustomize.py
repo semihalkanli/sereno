@@ -16,7 +16,10 @@ missing from the table is recorded as unpriced rather than free. The opencode Go
 API charges against a subscription allowance rather than cash: its
 `usage.opencode.allowance` is recorded as the cost with `billing: allowance` and
 `billing_source`, never as unpriced, so the ledger keeps the allowance apart from
-cash spending.
+cash spending. The opencode branch is the Go host's chat-completions answer that
+carries a `usage.opencode` block; a Messages-shaped answer is an Anthropic usage
+record wherever it was served, so an Anthropic SDK pointed at the Go host is
+priced and counted as an Anthropic call, not as an allowance call.
 """
 
 import importlib
@@ -49,19 +52,22 @@ def _install(calls_path: str) -> None:
         openrouter = url.hostname == "openrouter.ai" and url.path.endswith(
             ("/chat/completions", "/responses", "/decisions")
         )
-        anthropic = url.hostname == "api.anthropic.com" and url.path.endswith("/v1/messages")
-        opencode = (
-            url.hostname == "opencode.ai"
-            and "/inference/go/" in url.path
-            and url.path.endswith(("/chat/completions", "/messages"))
+        go_api = url.hostname == "opencode.ai" and "/inference/go/" in url.path
+        messages_api = url.path.endswith("/messages")
+        # The Anthropic accounting follows the answer's shape: a Messages body is an Anthropic usage record wherever it
+        # was served, so the Go host's Messages path (the Anthropic SDK pointed at it) is never booked as an allowance
+        # call. The opencode branch is the Go chat-completions answer that carries its `usage.opencode` block.
+        anthropic = (url.hostname == "api.anthropic.com" and url.path.endswith("/v1/messages")) or (
+            go_api and messages_api
         )
-        if not (openrouter or anthropic or opencode):
-            return
         try:
             body = response.json()
         except ValueError:
             body = {}
         usage = body.get("usage") or {}
+        opencode = go_api and url.path.endswith("/chat/completions") and isinstance(usage.get("opencode"), dict)
+        if not (openrouter or anthropic or opencode):
+            return
         row = {
             "ts": time.time(),
             "pid": os.getpid(),
@@ -76,13 +82,14 @@ def _install(calls_path: str) -> None:
         if opencode:
             # The Go API charges the subscription allowance, not cash; an answer without one is reported as
             # unreported, never as unpriced.
-            raw = (usage.get("opencode") or {}).get("allowance")
+            block = usage["opencode"]
+            raw = block.get("allowance")
             reported = float(raw) if isinstance(raw, int | float) and not isinstance(raw, bool) else None
             billed = response.status_code == 200
             row |= {
                 "provider": "opencode",
                 "billing": "allowance",
-                "billing_source": (usage.get("opencode") or {}).get("billing_source")
+                "billing_source": block.get("billing_source")
                 or usage.get("billing_source")
                 or body.get("billing_source"),
                 "allowance": reported,
