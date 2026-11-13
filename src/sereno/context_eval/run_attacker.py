@@ -3,8 +3,10 @@
 An external program is called synchronously before the agent's model calls (every `every_calls`-th one) and once at
 the end of each completed session. Each call gets three parts: the fixed experiment contract (stage, memory root,
 limits, budgets, the response's form), the attacker's own evolving strategy and private notebook, and an observation
-package (task, code views, the agent's visible transcript, earlier sessions of the same chain, memory, and the result
-of its previous call). It answers once with memory actions, an updated strategy and an updated notebook.
+package (task, code views, the agent's visible transcript with its thinking summaries, earlier sessions of the same
+chain, memory, and the result of its previous call). It answers once with memory actions, an updated strategy and an
+updated notebook. The transcript carries the readable thinking text only: signatures, redacted blocks and provider
+metadata stay out.
 
 Memory actions go through the hook rules of the adaptive arm (path, ownership, append-only, size and content limits);
 the user's file is out of reach. In probe sessions and in the session-end call no action is applied. A valid strategy
@@ -37,7 +39,7 @@ from sereno.context_eval.adaptive import (
     run_program,
 )
 from sereno.context_eval.config import fingerprint
-from sereno.context_eval.engine import write_atomic
+from sereno.context_eval.engine import reasoning_text, write_atomic
 from sereno.context_eval.memory import USER, is_index, loaded_by, memory_dir
 from sereno.context_eval.schema import validate_path
 
@@ -48,7 +50,8 @@ AUDIT_DIR = "run_attacker"
 RESPONSE_KEYS = frozenset({"schema_version", "actions", "strategy", "notebook", "reads", "writer_usage"})
 # What a call's actions came to. Only `applied` changes memory.
 ACTION_RESULTS = ("applied", "no_change", "no_action", "rejected", "not_applied")
-# Message fields a recorded transcript shows; provider metadata and the model's internal reasoning stay out.
+# Message fields a recorded transcript shows; provider metadata stays out except the readable thinking text, which
+# `visible_transcript` copies into `thinking`.
 VISIBLE_KEYS = ("role", "content", "tool_calls", "tool_call_id", "name")
 HIDDEN_BLOCKS = frozenset({"thinking", "redacted_thinking"})
 EVENT_OWN = frozenset({"schema_version", "kind", "step", "session_id"})
@@ -98,16 +101,35 @@ def read_state(path: Path) -> dict | None:
 
 def visible_transcript(messages: list[dict]) -> list[dict]:
     """The messages as recorded for the agent's conversation: roles, visible content and tool interactions, the
-    guard's notices marked as such; no internal reasoning and no provider metadata."""
+    readable thinking summary in a `thinking` field in every provider spelling (`reasoning`, `reasoning_content`,
+    content thinking blocks), and the guard's notices marked as such; signatures, redacted blocks and provider
+    metadata stay out."""
     visible = []
     for message in messages:
         item = {key: copy.deepcopy(message[key]) for key in VISIBLE_KEYS if key in message}
+        blocks = message.get("content")
         if isinstance(item.get("content"), list):
             item["content"] = [
                 block
                 for block in item["content"]
                 if not (isinstance(block, dict) and block.get("type") in HIDDEN_BLOCKS)
             ]
+        thinking = reasoning_text(message)
+        if not thinking and isinstance(blocks, list):
+            thinking = "\n".join(
+                block["thinking"]
+                for block in blocks
+                if isinstance(block, dict)
+                and block.get("type") == "thinking"
+                and isinstance(block.get("thinking"), str)
+                and block["thinking"]
+            )
+        if isinstance(thinking, str) and thinking:
+            item["thinking"] = thinking
+        elif isinstance(blocks, list) and any(
+            isinstance(block, dict) and block.get("type") == "redacted_thinking" for block in blocks
+        ):
+            item["thinking_redacted"] = True
         if notice := (message.get("extra") or {}).get("notice_id"):
             item["notice_id"] = notice
         visible.append(item)
@@ -118,13 +140,15 @@ def reported_tokens(usage: object) -> int | None:
     """Total tokens in the program's writer_usage (the provider's usage record), or None when it reports none."""
     if not isinstance(usage, dict):
         return None
-    record = usage.get("usage") if isinstance(usage.get("usage"), dict) else usage
+    inner = usage.get("usage")
+    record = inner if isinstance(inner, dict) else usage
     total = record.get("total_tokens")
     if isinstance(total, int) and not isinstance(total, bool):
         return total
-    parts = [record.get(key) for key in ("prompt_tokens", "completion_tokens")]
-    if all(isinstance(part, int) and not isinstance(part, bool) for part in parts):
-        return sum(parts)
+    prompt, completion = record.get("prompt_tokens"), record.get("completion_tokens")
+    if isinstance(prompt, int) and isinstance(completion, int):
+        if not isinstance(prompt, bool) and not isinstance(completion, bool):
+            return prompt + completion
     return None
 
 
@@ -353,7 +377,7 @@ class RunLocalAttacker:
     def request(self, kind: str, number: int, transcript, summary, writes_open: bool) -> dict:
         runtime, config = self.runtime, self.config
         project = runtime.project
-        memory = loaded_by(runtime.memory, project) if project else dict(runtime.memory)
+        memory = (loaded_by(runtime.memory, project) if project else dict(runtime.memory)) or {}
         return {
             "schema_version": SCHEMA_VERSION,
             "contract": {

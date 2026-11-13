@@ -88,7 +88,7 @@ class FakeWriter:
 
 def counting(request) -> dict:
     """Bumps the notebook on every call and the strategy on every session-end call; writes once in exposure."""
-    answer = {"notebook": str(int(request["notebook"] or "0") + 1)}
+    answer: dict[str, object] = {"notebook": str(int(request["notebook"] or "0") + 1)}
     if request["contract"]["kind"] == "session_end":
         answer["strategy"] = f"strategy after {request['observation']['session']['id']}"
     if request["contract"]["writes_open"] and not request["observation"]["memory"]["owned"]:
@@ -117,8 +117,8 @@ def runtime_for(tmp_path, world, exposure=True):
         env,
         InterventionEngine([], default_registry()),
         EventLog(tmp_path / "events.jsonl", "run"),
-        Session(id="test", exposure=exposure),
-        MemoryConfig(),
+        Session(id="test", task_id=None, exposure=exposure, max_steps=0),
+        MemoryConfig(max_files=100, max_bytes=1_000_000),
         {},
         [],
         project="fixture",
@@ -207,19 +207,83 @@ def test_transcript_is_visible_only_and_writes_do_not_rewrite_prepared_messages(
     assert any(LINE in json.dumps(c["messages"]) for c in contexts[2:])
 
 
-def test_visible_transcript_drops_reasoning_and_keeps_notices():
+def test_visible_transcript_carries_thinking_and_keeps_notices():
     messages = [
         {"role": "system", "content": "notice text", "extra": {"notice_id": "guard-x"}},
         {
             "role": "assistant",
             "content": [{"type": "thinking", "thinking": "private"}, {"type": "text", "text": "visible"}],
             "reasoning_content": "private",
+            "thinking_blocks": [{"type": "thinking", "thinking": "private", "signature": "sig"}],
             "extra": {"response": {"usage": 1}},
         },
     ]
     visible = run_attacker.visible_transcript(messages)
     assert visible[0] == {"role": "system", "content": "notice text", "notice_id": "guard-x"}
-    assert visible[1] == {"role": "assistant", "content": [{"type": "text", "text": "visible"}]}
+    assert visible[1] == {"role": "assistant", "content": [{"type": "text", "text": "visible"}], "thinking": "private"}
+    assert set(visible[1]) == {"role", "content", "thinking"}
+
+
+def test_visible_transcript_joins_thinking_blocks_when_reasoning_is_absent():
+    messages = [
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "first", "signature": "sig"},
+                {"type": "thinking", "thinking": "second"},
+                {"type": "text", "text": "visible"},
+            ],
+        }
+    ]
+    visible = run_attacker.visible_transcript(messages)
+    assert visible == [
+        {"role": "assistant", "content": [{"type": "text", "text": "visible"}], "thinking": "first\nsecond"}
+    ]
+
+
+def test_visible_transcript_reads_the_openrouter_reasoning_field():
+    messages = [
+        {
+            "role": "assistant",
+            "content": "visible",
+            "reasoning": "openrouter summary",
+            "extra": {"response": {"choices": [{"message": {"reasoning": "openrouter summary"}}]}},
+        }
+    ]
+    assert run_attacker.visible_transcript(messages) == [
+        {"role": "assistant", "content": "visible", "thinking": "openrouter summary"}
+    ]
+    nested = [
+        {
+            "role": "assistant",
+            "content": "visible",
+            "extra": {"response": {"choices": [{"message": {"reasoning": "nested summary"}}]}},
+        }
+    ]
+    assert run_attacker.visible_transcript(nested) == [
+        {"role": "assistant", "content": "visible", "thinking": "nested summary"}
+    ]
+
+
+def test_visible_transcript_names_a_redacted_thinking_block():
+    messages = [
+        {
+            "role": "assistant",
+            "content": [{"type": "redacted_thinking", "data": "opaque"}, {"type": "text", "text": "visible"}],
+        }
+    ]
+    visible = run_attacker.visible_transcript(messages)
+    assert visible == [
+        {"role": "assistant", "content": [{"type": "text", "text": "visible"}], "thinking_redacted": True}
+    ]
+
+
+def test_request_carries_a_transcript_thinking_summary(tmp_path, fixture_world):
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    transcript = [{"role": "assistant", "content": "visible", "thinking": "summary"}]
+    request = attacker.request("in_task", 1, transcript, None, True)
+    assert request["observation"]["transcript"] == [{"role": "assistant", "content": "visible", "thinking": "summary"}]
 
 
 def test_rejected_write_keeps_memory_but_the_private_state_learns(tmp_path, fixture_world, monkeypatch):

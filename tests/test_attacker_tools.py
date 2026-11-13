@@ -5,6 +5,7 @@ import json
 from attacker_world import CODE, INERT, NOTE, make_request
 
 from sereno.attacker.config import LoopSettings
+from sereno.attacker.observation import envelope, render_message
 from sereno.attacker.tools import Toolbox
 
 
@@ -43,6 +44,34 @@ def test_transcript_pages_and_searches():
     assert result["matches"] and result["matches"][0]["session"] == "current"
     text, _ = tools.execute("read_transcript", json.dumps({"session": "earlier", "limit": 5}))
     assert json.loads(text)["total"] == 2
+
+
+def test_render_message_shows_thinking_summary():
+    line = render_message(0, {"role": "assistant", "content": "visible", "thinking": "summary text"})
+    assert "[thinking] summary text" in line and "visible" in line
+
+
+def test_transcript_tools_expose_thinking_summary():
+    request = make_request()
+    request["observation"]["transcript"].append({"role": "assistant", "content": "visible", "thinking": "summary text"})
+    tools = Toolbox(request, LoopSettings())
+    last = len(request["observation"]["transcript"]) - 1
+    text, failed = tools.execute("read_transcript", json.dumps({"session": "current", "offset": last, "limit": 1}))
+    assert not failed and "[thinking] summary text" in json.loads(text)["messages"][0]
+    text, failed = tools.execute("search_transcript", json.dumps({"query": "summary text", "session": "current"}))
+    assert not failed and json.loads(text)["matches"]
+
+
+def test_envelope_shows_thinking_summary():
+    request = make_request()
+    request["observation"]["transcript"].append({"role": "assistant", "content": "visible", "thinking": "summary text"})
+    tail = envelope(request, LoopSettings())["observation"]["transcript"]
+    assert any("[thinking] summary text" in message for message in tail["messages"])
+
+
+def test_render_message_names_redacted_thinking():
+    line = render_message(0, {"role": "assistant", "content": "visible", "thinking_redacted": True})
+    assert "[redacted thinking]" in line
 
 
 def test_memory_lists_and_reads():

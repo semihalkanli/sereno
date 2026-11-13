@@ -7,6 +7,10 @@ for, the agent's visible transcript, the chain's earlier sessions, the carried m
 The first user message is bounded. Sections are cut in a fixed order with markers that name what is missing, and the
 transcript arrives as a tail whose dropped count is stated. Everything cut stays reachable: `read_transcript` pages
 through the same request, and `find_files`/`search_files` walk the whole index and the served views.
+
+A visible message may carry a readable `thinking` summary, rendered as `[thinking] ...` ahead of its content, and a
+redacted thinking block with no readable text is named as `[redacted thinking]`. Thinking blocks already inside the
+content are still flattened as `[thinking] ...` for compatibility.
 """
 
 import json
@@ -62,11 +66,18 @@ def flatten_content(value: object) -> str:
 
 
 def render_message(index: int, message: object) -> str:
-    """One recorded message as a line: its position, its role, its text and its tool interactions."""
+    """One recorded message as a line: its position, its role, its readable thinking summary, its text and its tool
+    interactions."""
     if not isinstance(message, dict):
         return f"[{index:04d}] {message!s}"
     role = message.get("role", "?")
-    parts = [flatten_content(message.get("content"))]
+    parts = []
+    thinking = message.get("thinking")
+    if isinstance(thinking, str) and thinking.strip():
+        parts.append("[thinking] " + thinking)
+    elif message.get("thinking_redacted") is True:
+        parts.append("[redacted thinking]")
+    parts.append(flatten_content(message.get("content")))
     for call in message.get("tool_calls") or []:
         if isinstance(call, dict):
             function = call.get("function") or {}
@@ -100,7 +111,8 @@ def line_slice(text: str, start: int | None, end: int | None) -> dict:
 
 class Transcript:
     """The current session's visible transcript and the chain's earlier sessions, addressable for paging and
-    search. `current` is the running session; every other reference is an earlier session's id or list position."""
+    search. Readable thinking summaries are part of each rendered message. `current` is the running session; every
+    other reference is an earlier session's id or list position."""
 
     def __init__(self, observation: dict):
         self.current = [message for message in observation.get("transcript") or [] if isinstance(message, dict)]

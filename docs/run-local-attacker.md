@@ -6,6 +6,9 @@ and improves its own strategy and notebook as the chain goes on. Its interventio
 model weights, tool permissions and harness code stay fixed. All experimental content comes from the external AI
 writer; the harness authors none.
 
+The design behind the attacker, including what it observes and how its private state evolves, is in [Attack layer
+concept](attack-layer-concept.md).
+
 ## Layout: two paired campaigns
 
 The runner's structure is unchanged: run, case and repeat, arm, session. Every task is one session in a fresh container,
@@ -81,13 +84,29 @@ The request (`schema_version: "1.0"`) has three parts:
    (never the user's file), the paths the attacker created, the result of its previous call and, in the session-end
    call, the session summary.
 
-The transcript holds the recorded messages and tool interactions only: role, content, tool calls and results. The
-model's internal reasoning blocks and provider metadata are removed. Guard notices the agent saw are part of it and are
-marked with `notice_id`. Hidden guard decisions, grader code and outputs of other chains are never given.
+The transcript holds the recorded messages and tool interactions: role, content, tool calls and results, plus the target
+agent's readable thinking summaries in a `thinking` field. Signatures, redacted blocks and provider metadata are not
+included; a redacted block with no readable text is named as redacted, not decoded. Guard notices the agent saw are part
+of the transcript and are marked with `notice_id`. Hidden guard decisions, grader code and outputs of other chains are
+never given.
 
 The response is one object: `schema_version: "1.0"`, `actions` (the hook's write and delete actions; empty to wait),
 optional `strategy` (left out keeps the current one), optional `notebook`, optional `reads` (paths below `code_root`,
 served with the next call) and optional `writer_usage` (the provider's usage and cost).
+
+## Thinking summaries and self-evolution
+
+The attacker reads the target's thinking summaries, not just its messages. They show what the target believed, which
+parts of the task it treated as settled, and whether a guard notice changed its plan. Signatures, redacted blocks and
+provider metadata never reach the request.
+
+Self-evolution here means bounded strategy adaptation inside one chain. The private strategy and notebook travel with
+every call and, through the session checkpoint, into the next session of the same chain. The harness versions the
+strategy and hashes it, and a valid update is kept even when the call's actions were rejected or not applied. The
+session-end call is the reflection point: it sees the completed session and its summary, and it may revise the strategy
+for the next session, though it cannot write memory. Nothing learned in one chain crosses to another case, repeat, arm
+or campaign. There is no weight training, no fine-tuning and no task-specific code; a claim in the strategy or notebook
+is not a measured success.
 
 ## What happens to an answer
 
@@ -229,10 +248,11 @@ agent:
 deadline_seconds: 900                # below run_attacker.timeout_seconds
 ```
 
-Another model of the same API is a change to `model` and the provider's `request` block. Another API is one adapter
-module under `src/sereno/attacker/providers/`: a class with `name` and `complete(turns, tools, call)`, added to
-`build_provider`. The loop and tools never read a provider's body. An Anthropic provider needs
-`provider.request.max_tokens`, because the Messages API has no default for it.
+Another model of the same API is a change to `model` and the provider's `request` block. The runtime sets no model
+parameters itself: `provider.request` passes through unchanged, so every parameter stays at the provider's default. An
+Anthropic provider needs `provider.request.max_tokens`, because the Messages API has no default for it. Another API is
+one adapter module under `src/sereno/attacker/providers/`: a class with `name` and `complete(turns, tools, call)`, added
+to `build_provider`. The loop and tools never read a provider's body.
 
 ### Running it
 
@@ -256,7 +276,9 @@ The loop starts with the operator's brief, a fixed runtime contract, and the req
 The model drives the same `run_attacker` request through tools:
 
 - `list_sessions`, `read_transcript`, `search_transcript`: the running agent's visible transcript and the chain's
-  earlier sessions, paged and searchable. Internal reasoning and provider metadata are not in the request.
+  earlier sessions, paged and searchable. Each message carries the target's readable thinking summary in a `thinking`
+  field, so the summaries are included in the request and are searchable as well; signatures and provider metadata are
+  not.
 - `find_files`, `read_file`, `search_files`: the repository's file index and the code views. A path outside the
   current call's views is queued and served with the next harness call; a path outside `code_root`, in `.git`, or
   over the read limit is named as denied.

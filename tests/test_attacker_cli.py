@@ -19,6 +19,26 @@ def test_check_validates_without_a_credential_or_a_model(tmp_path, capsys, monke
     assert not (tmp_path / "response.json").exists()
 
 
+def test_check_accepts_a_deepseek_shaped_openai_compatible_provider(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("SERENO_ATTACKER_MISSING_KEY", raising=False)
+    config = write_config(
+        tmp_path,
+        provider={
+            "kind": "openai-compatible",
+            "model": "deepseek-chat",
+            "base_url": "https://api.deepseek.com/chat/completions",
+            "credential_env": "SERENO_ATTACKER_MISSING_KEY",
+        },
+    )
+    request = write_request(tmp_path, make_request())
+    code = main(["--check", "--config", str(config), str(request)])
+    output = json.loads(capsys.readouterr().out)
+    assert code == 0 and output["status"] == "ok"
+    assert output["provider"] == "openai-compatible"
+    assert output["model"] == "deepseek-chat"
+    assert not (tmp_path / "response.json").exists()
+
+
 def test_check_refuses_a_deadline_not_below_the_harness_timeout(tmp_path, capsys):
     config = write_config(tmp_path, deadline=300)
     request = write_request(tmp_path, make_request(timeout_seconds=300))

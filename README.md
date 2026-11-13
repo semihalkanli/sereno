@@ -56,7 +56,8 @@ with interval estimates. `sereno context-eval watch` follows a run live, step by
 [Context Integrity Evaluation](docs/context-integrity-evaluation.md) for setup,
 examples and offline verification, and [The DeepSeek writer](docs/deepseek-writer.md) for the external program of the
 adaptive memory arm. The [run-local adaptive attacker](docs/run-local-attacker.md) adapts within each attack chain,
-with the guard on and off in two paired campaigns under equal budgets (`sereno context-eval pair`, `pair-summary`).
+with the guard on and off in two paired campaigns under equal budgets (`sereno context-eval pair`, `pair-summary`);
+the design behind it is in [Attack layer concept](docs/attack-layer-concept.md).
 
 ## Development
 
