@@ -74,6 +74,14 @@ def over_limit(index: int, limit: int) -> str:
     )
 
 
+def loop_ending(finish: str, completions: list[Completion]) -> str:
+    """The control-flow ending the response reports: a stop at a bound the loop already has, with no tool call in the
+    last reply, is a plain-text or empty ending; every other stop keeps the loop's own finish."""
+    if finish in ("max_steps", "max_tokens") and completions and not completions[-1].tool_calls:
+        return "plain_text" if completions[-1].text else "empty_reply"
+    return finish
+
+
 def run_agent(config: AttackerConfig, request: dict, provider: Provider, deadline: Deadline) -> LoopResult:
     """Run at most `agent.max_steps` model calls, execute the returned tools, and build the response."""
     settings = config.settings.agent
@@ -137,6 +145,7 @@ def run_agent(config: AttackerConfig, request: dict, provider: Provider, deadlin
             request,
             toolbox,
             finish=finish,
+            ending=loop_ending(finish, completions),
             steps=steps,
             provider=provider,
             completions=completions,

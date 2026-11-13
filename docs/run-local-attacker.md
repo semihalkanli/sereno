@@ -156,6 +156,24 @@ cost, seconds) and the program's stdout and stderr, plus a `run_attacker` event.
 only with it. A resume starts each chain from its last completed session's checkpoint, so nothing a half-finished
 session learned carries into the new attempt.
 
+Existing accepted-call audits also record `loop_ending` and `applied_attack_actions` beside the `actions` count.
+The optional protocol 1.0 response field `loop_ending` reports control flow: `plain_text`, `empty_reply`, `finish`,
+`max_steps`, `max_tokens` or `declined`. The loop's own control flow is unchanged: a reply with no tool call gets the
+runtime contract's nudge and the call continues while steps remain. `plain_text` reports a stop at a bound the loop
+already has (the step or the token limit) whose last reply carried text and no tool call; `empty_reply` is the same
+stop with no text. A call that ends through the `finish` tool reports `finish`. No text is classified as a decline.
+The existing explicit-decline resampling policy is unchanged. This follows the existing optional-field extension
+pattern rather than bumping the protocol version: older programs may omit the field, and the runtime omits it when an
+older request does not advertise it. A missing ending is recorded as unknown, without inference from reply text or
+older usage fields.
+
+The call's `applied_attack_actions` counts actions that actually changed memory, excluding rejected, closed-write
+and no-change actions. Each run-local attack session records the accumulated count in `result.json` and its
+checkpoint metadata. A successful write remains counted in the session total if subsequent memory capture fails.
+If rollback fails and the resulting application count cannot be established, the session records `null`, rather
+than zero. Application failures retain the prior audit behavior: they may have `response.json` but no `record.json`;
+existing call and usage aggregation is unchanged.
+
 A program, configuration or provider problem (exit status, timeout, an answer not in the protocol's form, an input
 over the limit) is not an attack failure: the session ends invalid with `result.json`'s `infrastructure_error`, the
 call's record holds `status: infrastructure_error`, and a resume runs the session again from the last checkpoint.
@@ -372,6 +390,23 @@ ones). Chain summaries expose scalar `declined_calls` and `declined_attempts`; c
 `declines_by_arm`, separately for each actual arm. Each defended and undefended campaign in `pair-summary` carries
 these fields. Counts include active and superseded launched calls and exclude copied sessions marked by
 `branch.json`; clean-arm counts are zero. A call that recovers contributes declined attempts and no declined call.
+
+Inactivity is reported separately from declines. Each chain exposes the following scalars, and each campaign
+exposes them per arm in `inactivity_by_arm`, alongside `declines_by_arm`:
+
+- `no_action_calls`: accepted program responses with `actions: []`, including both in-task and session-end calls,
+  regardless of their ending. Proposed actions that are rejected or make no change are not empty responses.
+- `plain_text_calls`: calls explicitly reporting `loop_ending: plain_text`, excluding declined calls. This is a
+  structural observation about the last reply, not a classification of what it says.
+- `unknown_ending_calls`: accepted responses without a recognized `loop_ending`, including legacy responses.
+- `sessions_without_applied_actions`: run-local attack session attempts whose recorded `applied_attack_actions`
+  is exactly zero. Missing legacy counts and unknown counts are not assumed to be zero.
+
+Call counts require a launched program and an accepted response; skipped calls and errors without an accepted
+response do not become empty responses or unknown endings. Like decline totals, these counts include invalid and
+superseded attempts and exclude copied sessions marked by `branch.json`. Session counts cover the whole session,
+including its session-end call; per-session pairing rows also expose `applied_attack_actions`. These additions do
+not change existing counts, costs, budgets, denominators or outcome measurements.
 
 The model drives the same `run_attacker` request through tools:
 

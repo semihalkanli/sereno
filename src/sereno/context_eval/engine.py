@@ -398,6 +398,7 @@ class Runtime:
         # The run-local attacker of an attack chain, set by the runner; None everywhere else.
         self.run_attacker: RunLocalAttacker | None = None
         self.attacker_duration_seconds = 0.0
+        self.applied_attack_actions: int | None = 0
         # The live memory guard, when the campaign configures one; it keeps the carried memory as its copy.
         self.guard = LiveGuard(guard, self, initial_memory) if guard else None
         self.notices = [n for n in engine.notices if session.id in n.sessions] if engine.enabled else []

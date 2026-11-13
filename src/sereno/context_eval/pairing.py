@@ -17,6 +17,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from sereno.attacker.protocol import LOOP_ENDINGS
 from sereno.context_eval.config import fingerprint, load_config, validate
 from sereno.context_eval.engine import message_text, sent_contexts
 from sereno.context_eval.memory import instructions
@@ -161,6 +162,33 @@ def realized_usage(arm_dirs: list[Path]) -> dict:
     return totals
 
 
+def inactivity_counts(arm_dirs: list[Path]) -> dict[str, int]:
+    """Observed inactivity across active and superseded attempts, excluding copied sessions."""
+    counts = {
+        "no_action_calls": 0,
+        "plain_text_calls": 0,
+        "unknown_ending_calls": 0,
+        "sessions_without_applied_actions": 0,
+    }
+    sessions = {path.resolve() for arm in arm_dirs for path in arm.glob("sessions/*") if path.is_dir()}
+    for session in sorted(sessions):
+        if (session / "branch.json").is_file():
+            continue
+        result = read_json(session / "result.json") or {}
+        applied = result.get("applied_attack_actions")
+        counts["sessions_without_applied_actions"] += type(applied) is int and applied == 0
+        for path in sorted(session.glob("run_attacker/*/record.json")):
+            record = read_json(path) or {}
+            actions = record.get("actions")
+            if "program" not in record or type(actions) is not int or actions < 0:
+                continue
+            counts["no_action_calls"] += actions == 0
+            ending = record.get("loop_ending")
+            counts["plain_text_calls"] += ending == "plain_text" and not record.get("declined")
+            counts["unknown_ending_calls"] += not (isinstance(ending, str) and ending in LOOP_ENDINGS)
+    return counts
+
+
 def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tuple[Path, ...] = ()) -> dict:
     """One attack_carry chain: per session the calls and what their actions came to, the realized use beside the
     budget, and for each applied write whether its added lines later reached the agent or the next sessions."""
@@ -194,6 +222,7 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
                 "checkpoint": state is not None,
                 "calls": dict(Counter(record["kind"] for record in records)),
                 "results": dict(Counter(record["status"] for record in records)),
+                "applied_attack_actions": result.get("applied_attack_actions"),
                 "strategy_version_end": state["strategy"]["version"] if state else None,
             }
         )
@@ -239,6 +268,7 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
         "realized_cost_usd": realized["cost_usd"],
         "declined_calls": realized["declined_calls"],
         "declined_attempts": realized["declined_attempts"],
+        **inactivity_counts([arm_dir, *attempts]),
         "budget": budget,
         "writes": writes,
         "probe_writes_applied": sum(
@@ -274,6 +304,7 @@ def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = Non
     arm_names |= {arm.name for arm in (campaign / "cases").glob("*/arms/*")}
     arm_names |= {arm.name for arm in (campaign / "superseded").glob("*/cases/*/arms/*")}
     declines_by_arm = {}
+    inactivity_by_arm = {}
     for name in sorted(arm_names):
         arms = [
             *(campaign / "cases").glob(f"*/arms/{name}"),
@@ -281,6 +312,7 @@ def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = Non
         ]
         usage = realized_usage(arms)
         declines_by_arm[name] = {key: usage[key] for key in ("declined_calls", "declined_attempts")}
+        inactivity_by_arm[name] = inactivity_counts(arms)
     return {
         "campaign": str(campaign.resolve()),
         "config_sha256": manifest.get("config_sha256"),
@@ -291,6 +323,7 @@ def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = Non
         "realized_usage": realized,
         "realized_cost_usd": round(realized.get("cost_usd", 0.0), 6),
         "declines_by_arm": declines_by_arm,
+        "inactivity_by_arm": inactivity_by_arm,
     }
 
 

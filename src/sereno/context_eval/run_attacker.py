@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from sereno.attacker.protocol import LOOP_ENDINGS
 from sereno.context_eval.adaptive import (
     RESPONSE_BYTES,
     ResponseError,
@@ -48,7 +49,9 @@ SCHEMA_VERSION = "1.0"
 STATE_SCHEMA = "1.0"
 STATE_FILE = "run_attacker_state.json"
 AUDIT_DIR = "run_attacker"
-RESPONSE_KEYS = frozenset({"schema_version", "actions", "strategy", "notebook", "reads", "writer_usage", "status"})
+RESPONSE_KEYS = frozenset(
+    {"schema_version", "actions", "strategy", "notebook", "reads", "writer_usage", "status", "loop_ending"}
+)
 # What a call's actions came to. Only `applied` changes memory.
 ACTION_RESULTS = ("applied", "no_change", "no_action", "rejected", "not_applied")
 # Message fields a recorded transcript shows; provider metadata stays out except the readable thinking text, which
@@ -269,6 +272,7 @@ class RunLocalAttacker:
                 "transcript": transcript,
                 "summary": summary,
                 "calls": len(self.calls),
+                "applied_attack_actions": self.runtime.applied_attack_actions,
             }
         )
         return copy.deepcopy(self.state)
@@ -353,6 +357,8 @@ class RunLocalAttacker:
         except ResponseError as error:
             self.fail(audit, base, "invalid_response", str(error))
         base["response_sha256"] = file_sha256(audit / "response.json")
+        base["loop_ending"] = response.get("loop_ending")
+        base["actions"] = len(actions)
         usage = response.get("writer_usage")
         tokens = reported_tokens(usage)
         missing = reported_count(usage, "unreported_completions")
@@ -365,6 +371,7 @@ class RunLocalAttacker:
         )
         base["declined_attempts"] = reported_count(usage, "declined_attempts")
         status, reason, violations, changes = self.apply(actions, kind, writes_open)
+        applied_attack_actions = sum(change.real for change in changes) if status == "applied" else 0
         # The private state follows every valid answer, the rejected or unapplied actions included. A lone surrogate
         # in the program's JSON becomes an escape, so the checkpoint stays writable UTF-8.
         strategy = None if response.get("strategy") is None else printable(response["strategy"])
@@ -393,7 +400,7 @@ class RunLocalAttacker:
             "status": status,
             "reason": reason,
             "violations": violations,
-            "actions": len(actions),
+            "applied_attack_actions": applied_attack_actions,
             "changes": result["changes"],
             "applied": status == "applied",
             "strategy_version_after": self.state["strategy"]["version"],
@@ -473,6 +480,10 @@ class RunLocalAttacker:
             raise ResponseError(f"unexpected fields {sorted(extra)}")
         if "status" in data and data["status"] != "declined":
             raise ResponseError("status, when present, must be declined")
+        if "loop_ending" in data and (
+            not isinstance(data["loop_ending"], str) or data["loop_ending"] not in LOOP_ENDINGS
+        ):
+            raise ResponseError(f"loop_ending must be one of {sorted(LOOP_ENDINGS)}")
         if "actions" not in data:
             raise ResponseError("actions is missing")
         for key, limit in (("strategy", config.strategy_max_bytes), ("notebook", config.notebook_max_bytes)):
@@ -514,9 +525,15 @@ class RunLocalAttacker:
             for path in touched:
                 runtime.env.write(path, after.get(path))
         except Exception as error:
-            for path in touched:
-                runtime.env.write(path, before.get(path))
+            try:
+                for path in touched:
+                    runtime.env.write(path, before.get(path))
+            except Exception:
+                runtime.applied_attack_actions = None
+                raise
             raise AttackerInfrastructureError("write_failed", f"{type(error).__name__}: {error}") from error
+        if runtime.applied_attack_actions is not None:
+            runtime.applied_attack_actions += len(touched)
         runtime.capture_memory("attacker")
         self.state["usage"]["writes"] += 1
         created = {change.path for change in changes if change.result == "created" and not is_index(change.path)}

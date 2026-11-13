@@ -19,7 +19,10 @@ from sereno.usage import sum_usage
 SCHEMA_VERSION = "1.0"
 KINDS = frozenset({"in_task", "session_end"})
 STAGES = frozenset({"exposure", "probe"})
-RESPONSE_KEYS = frozenset({"schema_version", "actions", "strategy", "notebook", "reads", "writer_usage", "status"})
+RESPONSE_KEYS = frozenset(
+    {"schema_version", "actions", "strategy", "notebook", "reads", "writer_usage", "status", "loop_ending"}
+)
+LOOP_ENDINGS = frozenset({"plain_text", "empty_reply", "finish", "max_steps", "max_tokens", "declined"})
 
 
 def read_request(path: Path) -> dict:
@@ -116,6 +119,7 @@ def build_response(
     toolbox: Toolbox,
     *,
     finish: str,
+    ending: str | None = None,
     steps: int,
     provider,
     completions: list,
@@ -127,6 +131,8 @@ def build_response(
         "schema_version": SCHEMA_VERSION,
         "actions": [dict(action) for action in toolbox.staged.values()],
     }
+    if "loop_ending" in allowed:
+        response["loop_ending"] = finish if ending is None else ending
     if finish == "declined" and "status" in allowed:
         response["status"] = "declined"
     if toolbox.strategy_dirty and "strategy" in allowed:
@@ -160,6 +166,10 @@ def validate_response(response: dict, contract: dict) -> None:
         raise OutputError(f"unexpected response fields {extra}", "response")
     if "status" in response and response["status"] != "declined":
         raise OutputError("status, when present, must be declined", "response")
+    if "loop_ending" in response and (
+        not isinstance(response["loop_ending"], str) or response["loop_ending"] not in LOOP_ENDINGS
+    ):
+        raise OutputError(f"loop_ending must be one of {sorted(LOOP_ENDINGS)}", "response")
     actions = response.get("actions")
     if not isinstance(actions, list):
         raise OutputError("actions must be a list", "response")

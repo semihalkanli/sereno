@@ -363,6 +363,8 @@ def run_session(
             result["cost_status"] = "unknown" if unknown else "reported"
         result["duration_seconds"] = time.monotonic() - started
         result["attacker_duration_seconds"] = runtime.attacker_duration_seconds if runtime else 0.0
+        if config.run_attacker and engine.enabled:
+            result["applied_attack_actions"] = runtime.applied_attack_actions if runtime else 0
         write_json(directory / "memory_end.json", memory)
         write_json(directory / "interventions.json", runtime.journal if runtime else [])
         if runtime and runtime.guard:
