@@ -820,6 +820,103 @@ def test_a_superseded_clean_attempt_is_counted(tmp_path):
     assert campaign_summary(tmp_path, 20)["clean_infrastructure_errors"] == 1
 
 
+def test_lines_in_requires_a_whole_line():
+    from sereno.context_eval.pairing import lines_in
+
+    line = "fixture copied sentence"
+    assert lines_in(f"prefix {line}", [line]) is False
+    assert lines_in(f"{line} suffix", [line]) is False
+    assert lines_in(f"before\n{line}\nafter", [line]) is True
+
+
+def test_lines_in_accepts_an_escaped_form():
+    from sereno.context_eval.pairing import lines_in
+
+    line = 'print("fixture")'
+    assert lines_in(json.dumps(line)[1:-1], [line]) is True
+
+
+def test_copied_requires_an_agent_line_after_the_write():
+    from sereno.context_eval.pairing import copied
+
+    line = "fixture copied sentence"
+    assert copied([line], [(0, [line])], after_step=0) is False
+    assert copied([line], [(1, [line])], after_step=0) is True
+    assert copied([line], [(2, [line])]) is True
+    assert copied([line], [(1, ["another fixture line"])], after_step=0) is False
+
+
+def write_events(folder, events) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "events.jsonl").write_text("".join(json.dumps(event) + "\n" for event in events))
+
+
+def test_pairing_reads_seen_carried_and_copied_on_whole_lines(tmp_path):
+    arm = tmp_path / "cases/first/arms/attack_carry"
+    write_events(
+        arm / "sessions/001-exposure",
+        [
+            {
+                "kind": "memory_change",
+                "step": 0,
+                "origin": "agent",
+                "path": f"{ROOT}/agent.md",
+                "before": None,
+                "after": LINE + "\n",
+            },
+            {
+                "kind": "memory_change",
+                "step": 0,
+                "origin": "attacker",
+                "path": NOTE,
+                "before": None,
+                "after": LINE + "\n",
+            },
+            {
+                "kind": "memory_change",
+                "step": 1,
+                "origin": "agent",
+                "path": f"{ROOT}/agent.md",
+                "before": LINE + "\n",
+                "after": LINE + "\nanother fixture line\n",
+            },
+        ],
+    )
+    probe = arm / "sessions/002-probe"
+    escaped = json.dumps({"memory": f"memory file\n{LINE}\nend"})
+    write_events(
+        probe,
+        [
+            {"kind": "context_sent", "step": 1, "messages": [{"role": "user", "content": escaped}]},
+            {
+                "kind": "memory_change",
+                "step": 2,
+                "origin": "agent",
+                "path": f"{ROOT}/agent.md",
+                "before": None,
+                "after": LINE + "\n",
+            },
+        ],
+    )
+    (probe / "memory_start.json").write_text(json.dumps({NOTE: LINE + "\n"}))
+    prefixed = arm / "sessions/003-probe"
+    write_events(
+        prefixed,
+        [
+            {
+                "kind": "context_sent",
+                "step": 1,
+                "messages": [{"role": "user", "content": f"prefix {LINE}\n{LINE} suffix"}],
+            }
+        ],
+    )
+    [write] = campaign_summary(tmp_path, 5)["chains"]["first"]["writes"]
+    assert write["added_lines"] == 1
+    assert write["seen_in_later_sessions"] == ["002-probe"]
+    assert write["carried_to"] == ["002-probe"]
+    assert write["agent_copied_in"] == ["002-probe"]
+
+
 STUB = Path(__file__).parent / "run_attacker_stub.py"
 
 
