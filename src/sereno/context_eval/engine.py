@@ -3,7 +3,9 @@
 import json
 import random
 import re
+import time
 from collections import Counter
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -395,6 +397,7 @@ class Runtime:
         self.sent: list[str] = []
         # The run-local attacker of an attack chain, set by the runner; None everywhere else.
         self.run_attacker: RunLocalAttacker | None = None
+        self.attacker_duration_seconds = 0.0
         # The live memory guard, when the campaign configures one; it keeps the carried memory as its copy.
         self.guard = LiveGuard(guard, self, initial_memory) if guard else None
         self.notices = [n for n in engine.notices if session.id in n.sessions] if engine.enabled else []
@@ -482,10 +485,20 @@ class Runtime:
         self.pending_commands = []
         self.emit("observation", messages=messages)
 
+    @contextmanager
+    def attacker_call(self):
+        """Exclude the whole synchronous call, including failed calls, from target working time."""
+        started = time.monotonic()
+        try:
+            yield
+        finally:
+            self.attacker_duration_seconds += time.monotonic() - started
+
     def context_sent(self, messages: list[dict]) -> None:
         if self.run_attacker:
             # Before the guard takes its answers: an attacker write is checked like any write the guard sees.
-            self.run_attacker.advance(messages)
+            with self.attacker_call():
+                self.run_attacker.advance(messages)
         if self.guard:
             # The judge's answers that came in while the agent worked are taken here, before the model call.
             self.guard.collect()

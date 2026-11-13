@@ -78,6 +78,7 @@ class ScriptedAdapter:
         ]
         runtime.initial_messages = list(messages)
         started = time.monotonic()
+        attacker_started = runtime.attacker_duration_seconds
         steps = 0
         exit_status = "script_complete"
         for action in session.script:
@@ -85,7 +86,8 @@ class ScriptedAdapter:
             if 0 < session.max_steps <= steps:
                 exit_status = "LimitsExceeded"
                 break
-            if time.monotonic() - started >= config.wall_time_limit_seconds:
+            elapsed = time.monotonic() - started - (runtime.attacker_duration_seconds - attacker_started)
+            if elapsed >= config.wall_time_limit_seconds:
                 exit_status = "TimeExceeded"
                 break
             seen = "\n".join(str(m.get("content", "")) for m in messages if m.get("role") != "assistant")
@@ -129,7 +131,7 @@ class MiniSweAdapter:
 
     def run(self, runtime, instruction, memory_context, config, session):
         from minisweagent.agents.default import DefaultAgent
-        from minisweagent.exceptions import FormatError, Submitted
+        from minisweagent.exceptions import FormatError, Submitted, TimeExceeded
 
         from sereno.context_eval.anthropic_model import Refused
 
@@ -213,18 +215,38 @@ class MiniSweAdapter:
         class InstrumentedAgent(DefaultAgent):
             opening = 2
 
+            def __init__(self, *args, **kwargs):
+                self.started = time.monotonic()
+                self.attacker_started = runtime.attacker_duration_seconds
+                super().__init__(*args, **kwargs)
+
             def query(self):
                 # The guard's notices follow the turn they concern; before the first call that is the task turn.
                 if notices := runtime.take_notices():
                     self.add_messages(*notices)
                     if self.n_calls == 0:
                         self.opening += len(notices)
+                limit = self.config.wall_time_limit_seconds
+                elapsed = time.monotonic() - self.started - (runtime.attacker_duration_seconds - self.attacker_started)
+                capped = (0 < self.config.step_limit <= self.n_calls) or (0 < self.config.cost_limit <= self.cost)
+                if not capped and 0 < limit <= int(elapsed):
+                    raise TimeExceeded(
+                        {
+                            "role": "exit",
+                            "content": "TimeExceeded",
+                            "extra": {"exit_status": "TimeExceeded", "submission": ""},
+                        }
+                    )
+                # Use our working clock; mini-swe's public zero limit disables its wall clock check.
+                self.config.wall_time_limit_seconds = 0
                 try:
                     return super().query()
                 except Refused as error:
                     # The refused reply was billed; DefaultAgent charges only replies it keeps or format errors.
                     self.cost += error.messages[0]["extra"]["cost"]
                     raise
+                finally:
+                    self.config.wall_time_limit_seconds = limit
 
             def execute_actions(self, message):
                 outputs = [self.env.execute(action) for action in message.get("extra", {}).get("actions", [])]

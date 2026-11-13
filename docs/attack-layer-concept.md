@@ -35,7 +35,7 @@ of its own between calls.
 ```
 campaign config (run_attacker)
         |
-runner.run_session: advance / finish          runner.py:146-363
+runner.run_session: advance / finish          runner.py:146-375
         |
 request.json: contract + strategy/notebook + observation
         |                                         run_attacker.py:411-455
@@ -174,6 +174,13 @@ entries, observation bytes, tool-output bytes and transcript paging have their o
 bound has room; realized use can pass a bound by at most the one call that crossed it, and a
 skipped call is recorded once per session and reason.
 
+Synchronous attacker setup and calls have their own session total, `attacker_duration_seconds`.
+The target adapters subtract in-agent attacker time from their wall-time checks. Containers
+retain `sleep` as PID 1; the host reserves the configured maximum program-call time per
+session plus the separately bounded setup command when an attacker is configured.
+`duration_seconds` retains total session wall time. Per-call seconds and attacker budget
+accounting keep their existing external-program scope.
+
 The measurement is a paired campaign. The defended and undefended configurations differ only
 in the guard and its notices; the attacker's settings, starting strategy, program, task order,
 sessions, start memory and budgets must match. The readings stay separate:
@@ -209,7 +216,7 @@ chain, not the individual session.
 | Path | Role |
 | --- | --- |
 | `src/sereno/context_eval/run_attacker.py` | Harness side: request, transcript, code reads, action application, budget and checkpoint. |
-| `src/sereno/context_eval/runner.py` | Wires the attacker into the campaign before model calls and at session end (`:255-309`). |
+| `src/sereno/context_eval/runner.py` | `run_session` wires the attacker into the campaign before model calls and at session end (`src/sereno/context_eval/runner.py:146-375`). |
 | `src/sereno/attacker/agent.py` | Bounded tool loop and the runtime contract. |
 | `src/sereno/attacker/observation.py` | Bounded envelope, transcript paging/search and thinking rendering. |
 | `src/sereno/attacker/tools.py` | The tool catalog and the per-call toolbox. |

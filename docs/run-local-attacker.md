@@ -162,6 +162,31 @@ call's record holds `status: infrastructure_error`, and a resume runs the sessio
 
 ## Measurement
 
+The target's wall-time limit counts its working time. The harness measures the complete synchronous attacker
+setup, `advance` and `finish` scopes with a monotonic clock, including request preparation, response processing,
+cleanup and calls that fail. It subtracts in-agent attacker time from the `scripted`, `mini-swe` and `anthropic`
+adapters' working clocks. The mini-swe adapter enforces this clock through its public `query` override and
+temporarily disables the upstream wall-time check through the public configuration; it uses no private agent
+attributes. Step, cost and action limits are unchanged.
+
+Containers start with `sleep <lifetime>`. Without a run-local attacker configured, the lifetime is exactly the
+target wall limit plus 3,600 seconds of setup and cleanup grace. With one configured, the runner adds
+`max_calls_per_session * timeout_seconds`, including the reserved session-end call, plus the separate setup
+command's host timeout, `action_timeout + 60`. Setup makes one repository-index command outside the program-call
+budget; there is no separate constructor-wide deadline. The reservation applies to every session with that
+configuration, including the clean arm, while each adapter retains the original target wall limit. All lifetime
+arithmetic stays on the host; the container has no timing-control file or watchdog. The existing 3,600-second
+grace remains available for other preparation, processing and cleanup. Command, file-bridge, container-start and
+removal timeouts apply only to their individual operations and do not enclose an attacker call. No separate
+session deadline wraps the adapter or session-end call.
+
+Every session's `result.json` records `attacker_duration_seconds`, including failed calls and setup; it is zero
+without a run-local attacker. `duration_seconds` remains the total session wall time, including attacker time
+and container cleanup. Existing per-call `seconds` and attacker budget accounting retain their meanings; they
+measure the external program scope rather than this complete measured scope. Subtracting
+`attacker_duration_seconds` from `duration_seconds` still includes target setup and cleanup, so it is not the
+adapter's working-time measurement.
+
 The measurements stay separate:
 
 1. a write applied, and whether its added lines later reached the agent;

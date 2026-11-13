@@ -40,7 +40,7 @@ from sereno.context_eval.engine import (
     write_atomic,
     write_json,
 )
-from sereno.context_eval.environment import DockerEnvironment, sweep
+from sereno.context_eval.environment import ACTION_TIMEOUT_GRACE, DockerEnvironment, sweep
 from sereno.context_eval.memory import (
     PROJECT,
     REPO_INSTRUCTIONS,
@@ -206,9 +206,18 @@ def run_session(
         if not config.memory.within_limits(memory):
             # Seeds and carried agent memory always fit, so only a repair can break the limits: not an agent outcome.
             raise RuntimeError("restored memory exceeds the memory limits")
-        env = env_factory(identity["id"], wall)
+        action_limit = action_timeout(config)
+        container_wall = wall
+        if config.run_attacker:
+            # Setup indexes the repository with one command outside the program-call budget.
+            container_wall += (
+                config.run_attacker.budget.max_calls_per_session * config.run_attacker.timeout_seconds
+                + action_limit
+                + ACTION_TIMEOUT_GRACE
+            )
+        env = env_factory(identity["id"], container_wall)
         # The runner's own commands, such as patch collection, run under the agent's action limit too.
-        env.action_timeout = result["action_timeout_seconds"] = action_timeout(config)
+        env.action_timeout = result["action_timeout_seconds"] = action_limit
         result["has_timeout"] = getattr(env, "has_timeout", None)
         head = env.execute("git -c safe.directory=/app rev-parse HEAD")["output"].strip()
         # Task metadata may abbreviate the base commit, as DeepSWE does; Git resolves it or rejects an ambiguous one,
@@ -254,9 +263,10 @@ def run_session(
             runtime.guard.task_start(instruction, task.id, lineage_start=lineage_start)
         if config.run_attacker and engine.enabled:
             # The attack arm's engine holds the chain's checkpoint; the clean arm's engine is disabled.
-            runtime.run_attacker = RunLocalAttacker(
-                config.run_attacker, runtime, instruction, task.id, getattr(engine, "run_attacker_state", None)
-            )
+            with runtime.attacker_call():
+                runtime.run_attacker = RunLocalAttacker(
+                    config.run_attacker, runtime, instruction, task.id, getattr(engine, "run_attacker_state", None)
+                )
         # Read after session_start interventions, so a planted instruction file loads as the repository's own.
         repo = repo_instructions(env.read_instructions(REPO_INSTRUCTIONS))
         context = mem.context(runtime.memory, repo)
@@ -305,7 +315,8 @@ def run_session(
                 "submitted": status == "Submitted",
                 "task_success": "not_evaluated",
             }
-            state = runtime.run_attacker.finish(agent_result["messages"], summary)
+            with runtime.attacker_call():
+                state = runtime.run_attacker.finish(agent_result["messages"], summary)
         for check in config.checks:
             if check.source == "workspace" and (not check.sessions or session.id in check.sessions):
                 result["workspace"][check.path] = env.read(check.path) or ""
@@ -351,6 +362,7 @@ def run_session(
             budget.finish(allowance, result["cost_usd"], unknown=unknown)
             result["cost_status"] = "unknown" if unknown else "reported"
         result["duration_seconds"] = time.monotonic() - started
+        result["attacker_duration_seconds"] = runtime.attacker_duration_seconds if runtime else 0.0
         write_json(directory / "memory_end.json", memory)
         write_json(directory / "interventions.json", runtime.journal if runtime else [])
         if runtime and runtime.guard:

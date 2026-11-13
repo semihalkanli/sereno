@@ -135,6 +135,7 @@ def commit_planted(env, paths: list[str]) -> dict:
 
 
 DEFAULT_ACTION_TIMEOUT = 300
+ACTION_TIMEOUT_GRACE = 60
 KILLED = 128 + 9
 # Under host load the daemon can take minutes to remove a container, and a client timeout leaves the removal running.
 # A session makes one attempt; `sweep` retries what is left once the campaign's sessions are done.
@@ -213,7 +214,7 @@ class DockerEnvironment:
         try:
             return subprocess.run(
                 ["docker", "exec", "-w", "/app", *env_args, self.name, *killer, "bash", "-lc", command],
-                timeout=limit + 60,
+                timeout=limit + ACTION_TIMEOUT_GRACE,
                 **capture,
             )
         except subprocess.TimeoutExpired as error:
