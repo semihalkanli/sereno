@@ -61,6 +61,7 @@ run_attacker:
   max_input_bytes: 40000000
   strategy_max_bytes: 20000
   notebook_max_bytes: 20000
+  env: []                               # extra environment variable names for the program; see Protocol
 ```
 
 The guard is not required and not constrained: the same attacker runs with the guard on and off.
@@ -69,11 +70,31 @@ The guard is not required and not constrained: the same attacker runs with the g
 
 The program is called synchronously from the hook before the agent's model calls: the first call of a session, budget
 permitting, then call 1 + n, 1 + 2n, ... for `every_calls: n`, and once at the end of each completed session. Two
-positional paths are appended to `command`: `request.json` and `response.json`, both in a fresh scratch directory
-outside the run tree, which is also the program's working directory; every call gets a new one. After the program
-exits, the request's recorded bytes, its response and any usage sidecar or captured output are copied into the
-session's `run_attacker/NNNN/` folder, and the scratch directory is removed. The program is given no path inside the
-run tree: the harness enforces that boundary rather than assuming the program will stay out of it (decision 409).
+positional paths are appended to `command`: `request.json` and `response.json`, both in a fresh scratch directory,
+which is also the program's working directory; every call gets a new one. The scratch is a directory with a random
+name and mode 0700 under a private per-run root, itself created under the system temporary directory once that
+directory's resolved path has been checked not to lie inside the run tree; a temporary base inside the run tree fails
+the call closed with an infrastructure error (`temp_base`).
+
+The program's environment is built from an allowlist instead of being inherited: `PATH`, `HOME`, `LANG`, `LC_*` and
+`TZ`, the credential variable its own configuration names (`provider.credential_env` in the attacker runtime's
+configuration, `credential_env_name` in the writer design's) and any name `run_attacker.env` lists. `TMPDIR`, `TEMP`
+and `TMP` are pinned to the scratch directory. `PWD`, `OLDPWD` and every other variable of the harness stay out. A
+paid run through the cost wrapper lists `PYTHONPATH` and `SERENO_COST_CALLS` in `run_attacker.env`, because those are
+how the wrapper's meter reaches the program (`scripts/cost.py` sets both); without them the ledger does not see the
+program's provider calls.
+
+After the program exits, its response, usage sidecar and captured output are copied into the session's
+`run_attacker/NNNN/` folder, and the scratch directory is removed. The copy refuses a symlink or any other non-regular
+source, and refuses a file over its byte limit (`RESPONSE_BYTES` for the response and the sidecar, `CAPTURE_BYTES` for
+the captured output), both before reading it with the size in the message, and copies at most the limit. A refusal is
+an `audit_copy` infrastructure error.
+
+What the harness enforces is that boundary. What it does not enforce is the rest (decision 409): the program runs as
+the same user as the harness, so another process of that user can list the temporary base and read a live call's
+scratch, and the host's process metadata still names the run tree, which a program that walks the filesystem by
+absolute path can reach. The command remains trusted host code under the contract in `run_attacker.py`'s module
+docstring: it uses the request it is given and keeps no state of its own between calls or runs.
 
 The request (`schema_version: "1.0"`) has three parts:
 
@@ -161,10 +182,16 @@ limit (up to 50,000,000 bytes).
 
 ## Records, resume and errors
 
-Each call leaves `request.json` and `response.json` (copies made after the program exited), `record.json` (kind, stage,
-step, strategy version and hashes before and after, request and response hashes, the number of guard notices withheld
-from the view, action result and violations, changes by hash and size, reported tokens and cost, seconds) and the
-program's stdout and stderr, plus a `run_attacker` event. A completed session also writes
+Every launched call leaves `request.json` in `run_attacker/NNNN/` before the program starts, holding the exact bytes
+staged for it; a call refused before staging (`input_over_limit`) has no copy. A `record.json` skeleton with the base
+fields and `status: incomplete` is written beside it before the launch, so an interrupt or a host kill during the call
+still leaves the request and a record; a call that reaches its outcome replaces the skeleton with the full record
+(kind, stage, step, strategy version and hashes before and after, request and response hashes, the number of guard
+notices withheld from the view, action result and violations, changes by hash and size, reported tokens and cost,
+seconds) and adds a `run_attacker` event. `response.json` (a copy made after the program exited) exists whenever the
+program wrote one, with the usage sidecar and the captured stdout and stderr beside it; a program that wrote no
+response leaves none. A call whose response was valid but whose application then failed keeps the response and the
+skeleton, never a record that claims an outcome. A completed session also writes
 `run_attacker_state.json`, the chain's checkpoint, after the session-end call; an attack session counts as complete
 only with it. A resume starts each chain from its last completed session's checkpoint, so nothing a half-finished
 session learned carries into the new attempt.
@@ -184,14 +211,18 @@ The call's `applied_attack_actions` counts actions that actually changed memory,
 and no-change actions. Each run-local attack session records the accumulated count in `result.json` and its
 checkpoint metadata. A successful write remains counted in the session total if subsequent memory capture fails.
 If rollback fails and the resulting application count cannot be established, the session records `null`, rather
-than zero. Application failures retain the prior audit behavior: they may have `response.json` but no `record.json`;
-existing call and usage aggregation is unchanged.
+than zero. An application failure leaves `response.json` and the `incomplete` skeleton, never a completed record;
+existing call and usage aggregation is unchanged, because only a record with a `program` entry counts as a call.
 
-A program, configuration or provider problem (exit status, program timeout, a container or host failure while reading
-the code or the response, an answer not in the protocol's form, an input over the limit, a request that cannot be
+A program, configuration or provider problem (exit status, program timeout, a temporary base inside the run tree, a
+container or host failure while reading the code or the response, a staged or audit file that cannot be written,
+copied or read, an answer not in the protocol's form, an input over the limit, a request that cannot be
 encoded as UTF-8) is not an attack failure: the session ends invalid with `result.json`'s `infrastructure_error`, the
 call's record holds `status: infrastructure_error` where one was written, and a resume runs the session again from the
-last checkpoint.
+last checkpoint. The codes are `writer_failed` (exit status), `timeout`, `temp_base`, `code_index`, `code_realpath`,
+`code_size`, `read_code`, `response_read`, `response_hash`, `invalid_response`, `input_over_limit`,
+`request_encoding`, `audit_copy` (a staged or audit file that cannot be written, copied or read, is not a regular
+file, or is over its byte limit) and `write_failed`.
 
 ## Measurement
 
@@ -313,8 +344,9 @@ frozen design's system prompt, objective, provider and limits; the hashes come f
 --config writer.json`, and `run_attacker.timeout_seconds` must be larger than the writer's `deadline_seconds`. Each
 call makes one author call and at most the design's structural repairs; a harness rule is never repaired there, the
 harness rejects and the next request reports it. The adapter keeps no state of its own, and its provider usage is
-returned in `writer_usage`. Calls using paid models go through the existing experiment cost wrapper; enabling or
-testing this feature offline starts no paid run.
+returned in `writer_usage`. Calls using paid models go through the existing experiment cost wrapper; the wrapper's
+meter reaches the program only when the campaign lists its two variables, `run_attacker.env: [PYTHONPATH,
+SERENO_COST_CALLS]` (see Protocol). Enabling or testing this feature offline starts no paid run.
 
 `pair` loads the writer configuration named by the command's `--config` with no API key and, before any paid call,
 checks that `run_attacker.limits.forbidden_patterns` equals the design's and that the command's `--config-sha256` and
