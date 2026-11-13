@@ -1,6 +1,26 @@
-"""Aggregate reported provider usage without discarding partially reported calls."""
+"""Aggregate reported provider usage without discarding partially reported calls.
+
+A usage block reports its charge as `cost` (OpenRouter's cash cost) or, on the opencode Go API, as
+`usage.opencode.allowance` against the subscription. Both are read here, so a provider that reports the allowance is
+never unpriced; which one a record carries stays visible in the raw usage block and in the record's billing marker.
+"""
 
 from collections.abc import Iterable
+
+
+def allowance_of(usage: object) -> float | None:
+    """The subscription allowance a usage block reports (`usage.opencode.allowance`), or None."""
+    opencode = usage.get("opencode") if isinstance(usage, dict) else None
+    value = opencode.get("allowance") if isinstance(opencode, dict) else None
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def usage_charge(usage: object) -> float | None:
+    """The money-equivalent charge a usage block reports: its `cost`, else the opencode allowance."""
+    amount = usage.get("cost") if isinstance(usage, dict) else None
+    if isinstance(amount, int | float) and not isinstance(amount, bool):
+        return float(amount)
+    return allowance_of(usage)
 
 
 def sum_usage(records: Iterable[dict]) -> tuple[dict, int, float]:
@@ -24,7 +44,7 @@ def sum_usage(records: Iterable[dict]) -> tuple[dict, int, float]:
         for key, value in counts.items():
             if valid[key] and isinstance(value, int):
                 totals[key] += value
-        amount = usage.get("cost")
-        if isinstance(amount, int | float) and not isinstance(amount, bool):
-            cost += float(amount)
+        amount = usage_charge(usage)
+        if amount is not None:
+            cost += amount
     return ({} if count and missing == count else totals), missing, cost
