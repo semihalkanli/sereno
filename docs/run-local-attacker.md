@@ -307,7 +307,10 @@ also records `unreported_completions`. The live writer uses the same aggregation
 `input_tokens`, `cache_creation_input_tokens` and `cache_read_input_tokens`; output tokens are added once, matching
 the OpenAI-compatible total whose prompt count already includes cached tokens. Cost remains the sum of reported
 `usage.cost`, independent of token aggregation. No token-price estimate is made, including for Anthropic responses
-that do not report cost; zero recorded cost in that case does not mean the call was free.
+that do not report cost; zero recorded cost in that case does not mean the call was free. On the opencode Go API the
+charge is the subscription allowance the response reports (`usage.opencode.allowance`), recorded as `cost` with
+`billing: allowance` and its `billing_source`; the harness charges it like any reported cost, and the cost wrapper
+keeps it apart from OpenRouter and Anthropic cash. Jev, the guard's judge, stays on OpenRouter.
 
 Chain and campaign summaries add `realized_usage` and `realized_cost_usd`. They sum each launched call's
 `run_attacker/*/record.json` in active sessions and every matching attempt under
@@ -385,7 +388,11 @@ effect.
 
 `python -m sereno.writer --live --config writer.json --config-sha256 H --code-sha256 H` serves this protocol with the
 frozen design's system prompt, objective, provider and limits; the hashes come from `python -m sereno.writer hashes
---config writer.json`, and `run_attacker.timeout_seconds` must be larger than the writer's `deadline_seconds`. Each
+--config writer.json`, and `run_attacker.timeout_seconds` must be larger than the writer's `deadline_seconds`. The
+design's `api.json` selects the provider: OpenRouter (`kind` absent or `"openrouter"`, routing block, `usage.cost`) or
+the opencode Go API (`kind: opencode`, `deepseek-v4.1-flash` or `qwen3.8-max`, `OPENCODE_API_KEY`, its own user agent,
+one `x-opencode-session` per conversation, `usage.opencode.allowance` as the charge; see
+[The DeepSeek writer](deepseek-writer.md#provider)). Each
 call makes one author call and at most the design's structural repairs; a harness rule is never repaired there, the
 harness rejects and the next request reports it. The adapter keeps no state of its own, and its provider usage is
 returned in `writer_usage`. Calls using paid models go through the existing experiment cost wrapper, which the harness
@@ -418,9 +425,11 @@ prompt_file: attacker-brief.md       # operator-supplied; record its hash with t
 objective: ""                        # optional, appended to the brief
 provider:
   kind: openai-compatible            # or anthropic
-  model: deepseek-chat
-  base_url: https://api.deepseek.com/chat/completions
-  credential_env: DEEPSEEK_API_KEY   # a variable name, never the key itself
+  model: deepseek-v4.1-flash         # the opencode Go API; see the example files for the other providers
+  base_url: https://opencode.ai/inference/go/openai/v1/chat/completions
+  credential_env: OPENCODE_API_KEY   # a variable name, never the key itself
+  user_agent: sereno-attacker/1.0    # the client's own product token, not a generic SDK or HTTP-library name
+  session_header: x-opencode-session # one stable id per invocation, derived from the request, no path in it
   request: {}                        # merged into every request body
 agent:
   max_steps: 24
@@ -436,6 +445,15 @@ agent:
 deadline_seconds: 900                # below run_attacker.timeout_seconds
 decline_retries: 2                    # plain resamples after the initial declined attempt
 ```
+
+`examples/context-eval/attacker-runtime-opencode.yaml` is this configuration, and
+`examples/context-eval/attacker-runtime-openrouter.yaml` is the OpenRouter path kept beside it, so a campaign switches
+back by configuration alone. OpenRouter names `expected_provider` and its routing block and bills `usage.cost`; the
+opencode Go API adds no routing block, takes only the models it serves, and reports its charge as
+`usage.opencode.allowance` with a `billing_source`. The runtime records the returned model and that allowance in
+`writer_usage` (`billing: allowance`, `allowance_usd`, `cost`), so a response never hides which build served it or which
+allowance it spent. The opencode model id is an undated alias, so the returned model of every call is the record of the
+build that ran.
 
 Another model of the same API is a change to `model` and the provider's `request` block. The runtime sets no model
 parameters itself: `provider.request` passes through unchanged, so every parameter stays at the provider's default. An
@@ -470,8 +488,9 @@ with configuration-failure status 2. Regenerate them after an intentional change
 The manifest retains the pins as argv words. For the built-in `python -m sereno.attacker` command, `pair`,
 `pair-summary` and campaign resume also validate pins against the current files without a model call, so a stale
 brief or code pin is rejected even before a live invocation. External commands retain their existing manifest rules.
-`examples/context-eval/attacker-runtime.yaml` is a runtime template using an operator-supplied external brief; the two
-paired campaign examples keep their offline stub commands.
+`examples/context-eval/attacker-runtime-opencode.yaml` is the runtime template for the opencode Go API,
+`attacker-runtime-openrouter.yaml` the OpenRouter one and `attacker-runtime.yaml` a generic template, each using an
+operator-supplied external brief; the two paired campaign examples keep their offline stub commands.
 
 ### The loop and its tools
 

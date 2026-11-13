@@ -157,26 +157,35 @@ that never reaches a later session is not persistence.
 
 DeepSeek is a provider configuration, not a code path. `ProviderSettings` selects
 `openai-compatible` or `anthropic`, the model, the base URL, the credential environment
-variable and provider-specific request fields (`src/sereno/attacker/config.py:48-62`). A
-DeepSeek configuration uses:
+variable, extra headers, a product user agent, a session header and provider-specific request
+fields (`src/sereno/attacker/config.py:54-74`). A DeepSeek configuration on the opencode Go
+API uses:
 
 ```yaml
 provider:
   kind: openai-compatible
-  model: deepseek-chat
-  base_url: https://api.deepseek.com/chat/completions
-  credential_env: DEEPSEEK_API_KEY
+  model: deepseek-v4.1-flash
+  base_url: https://opencode.ai/inference/go/openai/v1/chat/completions
+  credential_env: OPENCODE_API_KEY
+  user_agent: sereno-attacker/1.0
+  session_header: x-opencode-session
 ```
 
-Another model of the same API is a change to `model` and the `request` block. The runtime
-sets no model parameters of its own: the `request` block is passed through unchanged, so every
-parameter stays at the provider's default, except the `max_tokens` an Anthropic provider must
-set (`src/sereno/attacker/config.py:163-180`). Another API is one adapter module under
-`src/sereno/attacker/providers/` implementing `Provider` and added to `build_provider`
-(`src/sereno/attacker/providers/base.py:89-96`,
-`src/sereno/attacker/providers/__init__.py:19-32`). The operator supplies the brief; the
+`session_header` names a header the runtime fills with one id per invocation, derived from the
+request's session, task, call kind, stage and call index: the same request always yields the
+same id and no path enters it. The OpenRouter path, kept configured beside it, names
+`expected_provider`, sends its routing block and bills `usage.cost`; the opencode path reports
+its charge as `usage.opencode.allowance`, recorded as the cost with `billing: allowance` and
+its `billing_source`, and records the returned model of every call. Jev, the guard's judge,
+stays on OpenRouter. Another model of the same API is a change to `model` and the `request`
+block. The runtime sets no model parameters of its own: the `request` block is passed through
+unchanged, so every parameter stays at the provider's default, except the `max_tokens` an
+Anthropic provider must set (`src/sereno/attacker/config.py:174-211`). Another API is one
+adapter module under `src/sereno/attacker/providers/` implementing `Provider` and added to
+`build_provider` (`src/sereno/attacker/providers/base.py:95-101`,
+`src/sereno/attacker/providers/__init__.py:19-35`). The operator supplies the brief; the
 runtime writes no attack text. The configuration and prompt hashes are recorded with the
-response's `writer_usage` (`src/sereno/attacker/protocol.py:106-122`).
+response's `writer_usage` (`src/sereno/attacker/protocol.py:106-131`).
 
 ## 7. Budgets and measurement
 

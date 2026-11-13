@@ -7,6 +7,29 @@ provider for one memory change and answers in the hook's contract. It imports th
 This is the memory route. The environment route (a repository plant the agent writes its own note from) has no adapter
 here; the design leaves room for one and nothing of it is built.
 
+## Provider
+
+The writer speaks the OpenAI Chat Completions API on one of two providers, selected by the design's `api.json`. Both
+paths stay configured and tested, so a campaign switches back by configuration alone.
+
+- **OpenRouter** (`kind` absent or `"openrouter"`): the frozen body with its routing block (`provider.order` naming
+  one provider, `allow_fallbacks: false`, `require_parameters: true`); `usage.cost` is the charge, and an answer that
+  names another serving provider is refused.
+- **opencode Go** (`kind: "opencode"`): the Go inference API, the model `deepseek-v4.1-flash` (the API also serves
+  `qwen3.8-max`) and `OPENCODE_API_KEY`. Every request carries the client's own `User-Agent`
+  (`sereno-writer/1.0`) and one `x-opencode-session` for the whole conversation. The id is derived deterministically
+  from the request's run and chain identity (the campaign directory's name, the case, the arm, the repeat, the agent
+  id and the next session with its position), so a resumed step reuses it; it contains no path. The response's
+  returned `model` is recorded per call, and `usage.opencode.allowance` is the charge, recorded with its
+  `billing_source` and `billing: allowance`: a subscription allowance, never a cash cost.
+
+The opencode model id is an undated alias whose build can change, so every call records the build the API says it
+served. Jev, the guard's judge, stays on OpenRouter's decisions endpoint pinned to TypeSafe (`guard_judge.py`); nothing
+of this provider move touches it. Example API settings are `examples/context-eval/writer-api-opencode.json` (the
+default) and `examples/context-eval/writer-api-openrouter.json`; the design's `endpoint` and `credential_env_name` must
+match the kind (`https://opencode.ai/inference/go/openai/v1/chat/completions` with `OPENCODE_API_KEY`, or
+`https://openrouter.ai/api/v1/chat/completions` with `OPENROUTER_API_KEY`).
+
 ## Command
 
 ```sh
@@ -48,12 +71,15 @@ right before a paid run, from the commit the run uses.
 | `deadline_seconds` | wall clock of one run of the program; the hook's `timeout_seconds` must be larger (checked against the campaign manifest) |
 | `max_input_bytes` | largest request body; a larger input is refused, never cut. DeepSeek documents a 1,048,576-token context and 393,216 output tokens (api-docs.deepseek.com, `api/list-models`); the writer asks for 128,000, so 900,000 bytes is a safe bound at one token per byte |
 | `repository_stores` | repository address -> a bare git directory that holds the task's base commit |
-| `endpoint` | optional override of the design's endpoint; plain http only for a loopback host |
+| `endpoint` | optional override of the design's endpoint; plain http only for a loopback host, and the opencode kind takes only the Go API's https URL |
 | `notebook_max_utf8_bytes`, `view` | optional: notebook limit; `max_file_bytes`, `history_commits`, `line_chars` of the view |
 
-The design must carry the frozen API body (exactly `model`, `provider`, `max_tokens` 128000, `response_format`; no
-sampling, effort, fallback or penalty field, `require_parameters` true), the request control with no automatic effort
-escalation and no refusal or truncation retry, and the content patterns. The campaign's `adaptive.limits.forbidden_patterns`
+The design must carry a frozen API body of one of the two kinds. The OpenRouter body holds exactly `model`, `provider`,
+`max_tokens` 128000 and `response_format`, with no sampling, effort, fallback or penalty field and `require_parameters`
+true. The opencode body holds exactly `kind: opencode`, `model`, `max_tokens` 128000, `response_format` and
+`user_agent`, and no routing block; the model is one the Go API serves and the user agent is a product token such as
+`sereno-writer/1.0`, never a generic SDK or HTTP-library name. The design also carries the request control with no
+automatic effort escalation and no refusal or truncation retry, and the content patterns. The campaign's `adaptive.limits.forbidden_patterns`
 must equal the design's exactly, in order, or the step fails with `patterns_differ`; the numeric limits come from the
 campaign and are never widened. The credential is read from the environment variable the design names at execution time
 and is never written to any record. The prompt and objective files stay outside the repository.
@@ -106,8 +132,13 @@ Under the chain's `state/writer/`: `notebook.json` (the committed notebook), `lo
 (`call-C-tA.request.json`, `.response.json`) and `transport.jsonl`, `candidates.jsonl` (every candidate, valid or not,
 with its codes, the harness's own violation text and the reasoning fields as returned), `candidate.json` (staged) and
 `attempt.json` (terminal). An attempt with no terminal record is marked `killed_incomplete` by the next run and never
-counts as a completed call. Requested and returned model, provider, generation id, finish reasons, usage and cost are
-recorded per call. A chain reads only its own `state/`.
+counts as a completed call. Per call, the record holds the provider kind, the requested model, the returned model and
+generation id, the billing source, finish reasons, usage, and the charge: `cost` for OpenRouter, and for opencode the
+`allowance` with `cost` carrying the same number. A chain reads only its own `state/`.
+
+The live writer's `writer_usage` (the run-local attacker's response) carries the same per-completion records plus the
+aggregate `provider_kind`, `provider`, `requested_model`, `returned_model`, `billing`, `billing_source`, `allowance_usd`
+and `cost`, which is the allowance on opencode; the harness charges `cost` and never a token-price estimate.
 
 ## Audit
 

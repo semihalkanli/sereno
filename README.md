@@ -12,7 +12,7 @@ carries from one task to the next.
 
 ```sh
 uv sync
-cp .env.example .env   # then fill in ANTHROPIC_API_KEY (OPENROUTER_API_KEY for the GLM config)
+cp .env.example .env   # then fill in ANTHROPIC_API_KEY, OPENROUTER_API_KEY (the guard's judge) and OPENCODE_API_KEY
 ```
 
 The DeepSWE checkout lives outside the repository at `~/sereno-deepswe/deep-swe`,
@@ -69,10 +69,17 @@ uv run ruff format . && uv run ruff check .
 ## Cost tracking
 
 Every paid run goes through the cost wrapper, which records the cost of each
-OpenRouter or Anthropic completion (Anthropic calls are priced from their token
-usage) and appends one row per run to `runs/cost/ledger.jsonl`:
+OpenRouter, Anthropic or opencode completion (Anthropic calls are priced from their
+token usage; opencode reports its charge against the subscription allowance) and
+appends one row per run to `runs/cost/ledger.jsonl`:
 
 ```sh
 uv run scripts/cost.py run --label <label> -- <command> [args...]
 uv run scripts/cost.py report
 ```
+
+`report` keeps the opencode allowance apart from cash: an opencode call is never
+unpriced, and the OpenRouter `/credits` reading stays for the guard's judge, Jev,
+which stays on OpenRouter. The writer's and the runtime's opencode example
+configurations use the Go API (`deepseek-v4.1-flash`, `OPENCODE_API_KEY`); both
+keep a tested OpenRouter path, switched by configuration.
