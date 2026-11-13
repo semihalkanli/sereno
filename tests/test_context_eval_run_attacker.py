@@ -1108,6 +1108,7 @@ def test_a_copied_clean_result_is_counted_once(tmp_path):
     for copy in (
         tmp_path / "cases/first--default--r001/arms/clean/sessions/001-exposure",
         tmp_path / "superseded/one/cases/first--default--r001/arms/clean/sessions/001-exposure",
+        tmp_path / "superseded/one/clean/first/sessions/001-exposure",
     ):
         shutil.copytree(origin, copy)
         (copy / "branch.json").write_text(json.dumps({"shared_from": str(origin)}))
