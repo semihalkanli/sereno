@@ -272,8 +272,11 @@ def check_endpoint(endpoint: str) -> None:
 
 
 def check_opencode_endpoint(endpoint: str) -> None:
-    """The opencode kind talks to the Go inference API only: https on opencode.ai under /inference/go/."""
+    """The opencode kind talks to the Go inference API only: https on opencode.ai under /inference/go/. A plain-http
+    loopback endpoint stays open, as for every kind, so a model-free check can serve the package from a local fake."""
     parts = urlsplit(endpoint)
+    if parts.scheme == "http" and parts.hostname in LOOPBACK:
+        return
     if parts.scheme != "https" or parts.hostname != OPENCODE_HOST or not parts.path.startswith(OPENCODE_PATH):
         raise ConfigError(f"endpoint {endpoint!r} must be https on {OPENCODE_HOST} under {OPENCODE_PATH}")
 

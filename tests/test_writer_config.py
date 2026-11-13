@@ -132,11 +132,17 @@ def test_the_opencode_kind_talks_to_the_go_api_only(world):
     for endpoint in (
         "https://openrouter.ai/api/v1/chat/completions",
         "https://opencode.ai/api/v1/chat/completions",
-        "http://127.0.0.1:8080/inference/go/openai/v1/chat/completions",
     ):
         with pytest.raises(ConfigError, match="opencode"):
             world.config(api=OPENCODE_API, endpoint=endpoint)
+    with pytest.raises(ConfigError, match="loopback"):
+        world.config(api=OPENCODE_API, endpoint="http://opencode.ai/inference/go/openai/v1/chat/completions")
     assert world.config(api=OPENCODE_API, endpoint=OPENCODE_ENDPOINT).endpoint == OPENCODE_ENDPOINT
+
+
+def test_the_opencode_kind_keeps_a_loopback_fake_for_model_free_checks(world):
+    endpoint = "http://127.0.0.1:8080/api/v1/chat/completions"
+    assert world.config(api=OPENCODE_API, endpoint=endpoint).endpoint == endpoint
 
 
 def test_a_missing_api_field_is_refused(world):
