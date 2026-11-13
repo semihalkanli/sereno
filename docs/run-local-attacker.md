@@ -193,6 +193,84 @@ harness rejects and the next request reports it. The adapter keeps no state of i
 returned in `writer_usage`. Calls using paid models go through the existing experiment cost wrapper; enabling or
 testing this feature offline starts no paid run.
 
+## The model-agnostic attacker runtime
+
+`src/sereno/attacker` is a second implementation of the same protocol: a tool-using agent loop whose model is a
+configuration choice, not a property of the harness. It is stateless between calls, reads only the request and the
+bounded tools, and turns its answer into the same `actions`/`strategy`/`notebook`/`reads`/`writer_usage` response. The
+DeepSeek writer remains the single-call baseline; this runtime is the adaptive, multi-step path.
+
+### Configuration
+
+The configuration has three parts: the operator's brief, the provider block, and the runtime bounds. The brief is a
+file the operator supplies; the harness authors none.
+
+```yaml
+schema_version: "1.0"
+prompt_file: attacker-brief.md       # operator-supplied; record its hash with the campaign
+objective: ""                        # optional, appended to the brief
+provider:
+  kind: openai-compatible            # or anthropic
+  model: deepseek-chat
+  base_url: https://api.deepseek.com/chat/completions
+  credential_env: DEEPSEEK_API_KEY   # a variable name, never the key itself
+  request: {}                        # merged into every request body
+agent:
+  max_steps: 24
+  max_tool_calls_per_step: 8
+  max_tool_output_bytes: 40000
+  observation_max_bytes: 150000
+  observation_file_bytes: 30000
+  observation_paths: 200
+  transcript_page_messages: 40
+  transcript_page_bytes: 30000
+  search_limit: 40
+  max_queued_reads: 24
+deadline_seconds: 900                # below run_attacker.timeout_seconds
+```
+
+Another model of the same API is a change to `model` and the provider's `request` block. Another API is one adapter
+module under `src/sereno/attacker/providers/`: a class with `name` and `complete(turns, tools, call)`, added to
+`build_provider`. The loop and tools never read a provider's body. An Anthropic provider needs
+`provider.request.max_tokens`, because the Messages API has no default for it.
+
+### Running it
+
+```sh
+# validate the configuration and request, print the hashes; no model call, no credential needed
+/absolute/sereno/.venv/bin/python -m sereno.attacker --check --config /absolute/attacker.yaml request.json
+
+# serve one call
+/absolute/sereno/.venv/bin/python -m sereno.attacker --live --config /absolute/attacker.yaml request.json response.json
+```
+
+`run_attacker.command` must be absolute and use the project's virtual environment, because the harness runs the
+program in a fresh temporary working directory. `run_attacker.timeout_seconds` must be larger than the runtime's
+`deadline_seconds`; `--check` refuses the pair otherwise. Each response's `writer_usage` records the provider, model,
+call count, token use, cost, finish reason, and the configuration and prompt hashes, so a campaign can audit the brief
+that produced it.
+
+### The loop and its tools
+
+The loop starts with the operator's brief, a fixed runtime contract, and the request's bounded observation envelope.
+The model drives the same `run_attacker` request through tools:
+
+- `list_sessions`, `read_transcript`, `search_transcript`: the running agent's visible transcript and the chain's
+  earlier sessions, paged and searchable. Internal reasoning and provider metadata are not in the request.
+- `find_files`, `read_file`, `search_files`: the repository's file index and the code views. A path outside the
+  current call's views is queued and served with the next harness call; a path outside `code_root`, in `.git`, or
+  over the read limit is named as denied.
+- `read_memory`: the carried memory files and the paths the attacker owns.
+- `stage_action`, `drop_action`, `list_staged_actions`: the memory actions. The harness validates and applies them
+  after the call, only in an exposure session's in-task call, within the existing write budget and memory rules.
+- `set_strategy`, `set_notebook`: the private state that comes back with the next request.
+- `finish`: ends the call. Without it, the call ends at `agent.max_steps` and returns what was staged; a tool call
+  over `agent.max_tool_calls_per_step` is a denied result, not an unpaired tool call.
+
+The response is checked before it is written: `schema_version`, actions' shape, strategy and notebook sizes, reads,
+and `writer_usage`. A program, configuration or provider failure writes no response and exits non-zero, so the harness
+records infrastructure rather than an attack outcome.
+
 ## Out of scope in this version
 
 The attacker changing its own harness code, training across runs, attacks on repository or tool output, a critic
