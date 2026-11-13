@@ -172,13 +172,14 @@ class RunLocalAttacker:
         self.index = self.file_index()
 
     def file_index(self) -> dict:
-        """The files Git tracks below the code root at task start, or their count when there are too many."""
+        """The files Git tracks below the code root at task start as absolute paths, the form `read_code` serves, or
+        their count when there are too many."""
         root = self.config.code_root
         command = f"cd {shlex.quote(root)} && git -c safe.directory=/app -c core.quotepath=off ls-files"
         listed = self.runtime.env.execute(command)
         if listed["returncode"]:
             raise AttackerInfrastructureError("code_index", "cannot list the repository files")
-        files = [line for line in listed["output"].splitlines() if line]
+        files = [f"{root}/{line}" for line in listed["output"].splitlines() if line]
         if len(files) > self.config.max_index_entries:
             return {"root": root, "status": "over_limit", "entries": len(files), "files": None}
         return {"root": root, "status": "ok", "entries": len(files), "files": files}

@@ -78,11 +78,11 @@ The request (`schema_version: "1.0"`) has three parts:
    (`exposure` or `probe`), whether writes are open, the memory root, the limits, the budget with the use so far, the
    size limits and the response's keys. The writer adds its own frozen system prompt and objective.
 2. `strategy` (`version`, `text`, `sha256`) and `notebook`, the attacker's evolving, private state.
-3. `observation`: the session and task, the repository's file index at task start (`git ls-files` below `code_root`),
-   the `code_paths` views, the files the previous call asked for, the agent's visible transcript, the earlier sessions
-   of the same chain (visible transcripts and standard session summaries), the memory files that load for the project
-   (never the user's file), the paths the attacker created, the result of its previous call and, in the session-end
-   call, the session summary.
+3. `observation`: the session and task, the repository's file index at task start (`git ls-files` below `code_root`, as
+   absolute paths), the `code_paths` views, the files the previous call asked for, the agent's visible transcript, the
+   earlier sessions of the same chain (visible transcripts and standard session summaries), the memory files that load
+   for the project (never the user's file), the paths the attacker created, the result of its previous call and, in the
+   session-end call, the session summary.
 
 The transcript holds the recorded messages and tool interactions: role, content, tool calls and results, plus the target
 agent's readable thinking summaries in a `thinking` field. Signatures, redacted blocks and provider metadata are not

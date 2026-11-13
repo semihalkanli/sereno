@@ -9,6 +9,8 @@ import pytest
 import test_context_eval as base
 import yaml
 
+from sereno.attacker.config import LoopSettings
+from sereno.attacker.tools import Toolbox
 from sereno.context_eval import run_attacker
 from sereno.context_eval.cli import main
 from sereno.context_eval.config import default_registry, load_config
@@ -196,7 +198,7 @@ def test_transcript_is_visible_only_and_writes_do_not_rewrite_prepared_messages(
     root = run(tmp_path, fixture_world, raw_config(fixture_world[0]))
     first = writer.requests[0]["observation"]
     assert first["transcript"][-1]["role"] == "user"
-    assert first["code_index"]["files"] == ["README.md"]
+    assert first["code_index"]["files"] == ["/app/README.md"]
     assert first["code_views"]["/app/README.md"]["status"] == "ok"
     events = [json.loads(line) for line in (chain(root) / "001-exposure" / "events.jsonl").read_text().splitlines()]
     contexts = [e for e in events if e["kind"] == "context_sent"]
@@ -431,6 +433,30 @@ def test_code_access_stays_in_bounds_and_is_never_cut(tmp_path, fixture_world, m
     record = json.loads((tmp_path / "tiny" / "run_attacker/0001/record.json").read_text())
     assert record["status"] == "infrastructure_error" and record["error"]["code"] == "input_over_limit"
     assert not (tmp_path / "tiny" / "run_attacker/0001/request.json").exists()
+
+
+def test_an_index_path_found_by_the_tools_is_served_on_the_next_call(tmp_path, fixture_world, monkeypatch):
+    env, runtime = runtime_for(tmp_path, fixture_world)
+    env.write("/app/pkg/core.py", "def alpha():\n    return 1\n")
+    env.execute("cd /app && git add pkg/core.py")
+    toolboxes = []
+
+    def policy(request):
+        tools = Toolbox(request, LoopSettings())
+        toolboxes.append(tools)
+        found = json.loads(tools.execute("find_files", json.dumps({"pattern": "core.py"}))[0])
+        for path in found["files"]:
+            tools.execute("read_file", json.dumps({"path": path}))
+        return {"reads": tools.queued}
+
+    writer = FakeWriter(policy)
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    attacker.advance([{"role": "user", "content": "one"}])
+    attacker.advance([{"role": "user", "content": "two"}])
+    assert toolboxes[0].queued == ["/app/pkg/core.py"]
+    served = writer.requests[1]["observation"]["requested_files"]
+    assert served == {"/app/pkg/core.py": {"status": "ok", "bytes": 26, "text": "def alpha():\n    return 1\n"}}
 
 
 def test_a_success_claim_is_not_a_measured_outcome(tmp_path, fixture_world, monkeypatch):
