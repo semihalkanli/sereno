@@ -67,7 +67,7 @@ def flatten_content(value: object) -> str:
 
 def render_message(index: int, message: object) -> str:
     """One recorded message as a line: its position, its role, its readable thinking summary, its text and its tool
-    interactions."""
+    interactions. The harness leaves guard notices out of the request, so nothing here names one."""
     if not isinstance(message, dict):
         return f"[{index:04d}] {message!s}"
     role = message.get("role", "?")
@@ -84,8 +84,6 @@ def render_message(index: int, message: object) -> str:
             parts.append(f"tool_call {function.get('name')}({function.get('arguments')})")
     if message.get("tool_call_id"):
         parts.insert(0, f"tool_result {message['tool_call_id']}:")
-    if notice := message.get("notice_id"):
-        parts.append(f"[notice {notice}]")
     text = " | ".join(part for part in parts if part)
     return f"[{index:04d}] {role}: {text}"
 

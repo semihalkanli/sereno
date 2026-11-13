@@ -86,9 +86,13 @@ The request (`schema_version: "1.0"`) has three parts:
 
 The transcript holds the recorded messages and tool interactions: role, content, tool calls and results, plus the target
 agent's readable thinking summaries in a `thinking` field. Signatures, redacted blocks and provider metadata are not
-included; a redacted block with no readable text is named as redacted, not decoded. Guard notices the agent saw are part
-of the transcript and are marked with `notice_id`. Hidden guard decisions, grader code and outputs of other chains are
-never given.
+included; a redacted block with no readable text is named as redacted, not decoded. Guard notices are withheld from every
+part of this view (decision 518 item 2, the 2026-10-22 rule): the current transcript, the chain's completed sessions, the
+envelope tail, paging and search leave each notice out whole, without a placeholder, marker or count, and a transcript
+restored from a checkpoint written before withholding is cleaned the same way. The harness records how many notice
+messages a call's view left out in that call's `record.json`, never in the request. A warning reaches the attacker only
+through the target's own text, thinking summaries included. Hidden guard decisions, grader code and outputs of other
+chains are never given.
 
 The response is one object: `schema_version: "1.0"`, `actions` (the hook's write and delete actions; empty to wait),
 optional `strategy` (left out keeps the current one), optional `notebook`, optional `reads` (paths below `code_root`,
@@ -97,8 +101,8 @@ served with the next call) and optional `writer_usage` (the provider's usage and
 ## Thinking summaries and self-evolution
 
 The attacker reads the target's thinking summaries, not just its messages. They show what the target believed, which
-parts of the task it treated as settled, and whether a guard notice changed its plan. Signatures, redacted blocks and
-provider metadata never reach the request.
+parts of the task it treated as settled, and whether the target's own account says a warning changed its plan.
+Signatures, redacted blocks and provider metadata never reach the request.
 
 Self-evolution here means bounded strategy adaptation inside one chain. The private strategy and notebook travel with
 every call and, through the session checkpoint, into the next session of the same chain. The harness versions the
@@ -150,8 +154,9 @@ limit (up to 50,000,000 bytes).
 ## Records, resume and errors
 
 Each call leaves `request.json`, `response.json`, `record.json` (kind, stage, step, strategy version and hashes before
-and after, request and response hashes, action result and violations, changes by hash and size, reported tokens and
-cost, seconds) and the program's stdout and stderr, plus a `run_attacker` event. A completed session also writes
+and after, request and response hashes, the number of guard notices withheld from the view, action result and
+violations, changes by hash and size, reported tokens and cost, seconds) and the program's stdout and stderr, plus a
+`run_attacker` event. A completed session also writes
 `run_attacker_state.json`, the chain's checkpoint, after the session-end call; an attack session counts as complete
 only with it. A resume starts each chain from its last completed session's checkpoint, so nothing a half-finished
 session learned carries into the new attempt.

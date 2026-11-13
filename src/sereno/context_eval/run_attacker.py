@@ -6,7 +6,9 @@ call gets three parts: the fixed experiment contract (stage, memory root, limits
 attacker's own evolving strategy and private notebook, and an observation package (task, code views, the agent's
 visible transcript with its thinking summaries, earlier sessions of the same chain, memory, and the result of its
 previous call). It answers once with memory actions, an updated strategy and an updated notebook. The transcript
-carries the readable thinking text only: signatures, redacted blocks and provider metadata stay out.
+carries the readable thinking text only: signatures, redacted blocks and provider metadata stay out, and the guard's
+notices are withheld whole (decision 518 item 2, the 2026-10-22 rule), so a warning reaches the attacker only through
+the target's own text.
 
 Memory actions go through the hook rules of the adaptive arm (path, ownership, append-only, size and content limits);
 the user's file is out of reach. In probe sessions and in the session-end call no action is applied. A valid strategy
@@ -104,13 +106,37 @@ def read_state(path: Path) -> dict | None:
     return state
 
 
+def is_guard_notice(message: object) -> bool:
+    """A guard notice: the engine's mid-conversation system message carries `extra.notice_id`, and a transcript
+    recorded before notices were withheld carries the same mark at the top level of the recorded message."""
+    if not isinstance(message, dict):
+        return False
+    extra = message.get("extra")
+    return bool(message.get("notice_id") or (isinstance(extra, dict) and extra.get("notice_id")))
+
+
+def without_notices(sessions: list) -> int:
+    """Guard notices dropped from the chain's recorded session transcripts in place, as a count; every other message
+    keeps its bytes and its order, so nothing names the removed messages."""
+    dropped = 0
+    for session in sessions:
+        if not isinstance(session, dict) or not isinstance(session.get("transcript"), list):
+            continue
+        kept = [message for message in session["transcript"] if not is_guard_notice(message)]
+        dropped += len(session["transcript"]) - len(kept)
+        session["transcript"] = kept
+    return dropped
+
+
 def visible_transcript(messages: list[dict]) -> list[dict]:
-    """The messages as recorded for the agent's conversation: roles, visible content and tool interactions, the
+    """The messages as recorded for the agent's conversation: roles, visible content and tool interactions, and the
     readable thinking summary in a `thinking` field in every provider spelling (`reasoning`, `reasoning_content`,
-    content thinking blocks), and the guard's notices marked as such; signatures, redacted blocks and provider
-    metadata stay out."""
+    content thinking blocks). Guard notices are left out whole; signatures, redacted blocks and provider metadata stay
+    out."""
     visible = []
     for message in messages:
+        if is_guard_notice(message):
+            continue
         item = {key: copy.deepcopy(message[key]) for key in VISIBLE_KEYS if key in message}
         blocks = message.get("content")
         if isinstance(item.get("content"), list):
@@ -135,8 +161,6 @@ def visible_transcript(messages: list[dict]) -> list[dict]:
             isinstance(block, dict) and block.get("type") == "redacted_thinking" for block in blocks
         ):
             item["thinking_redacted"] = True
-        if notice := (message.get("extra") or {}).get("notice_id"):
-            item["notice_id"] = notice
         visible.append(item)
     return visible
 
@@ -188,6 +212,9 @@ class RunLocalAttacker:
     def __init__(self, config, runtime, instruction: str, task_id: str, state: dict | None = None):
         self.config, self.runtime, self.instruction, self.task_id = config, runtime, instruction, task_id
         self.state = copy.deepcopy(state) if state is not None else initial_state(config)
+        sessions = self.state.get("sessions")
+        # A checkpoint written before notices were withheld still carries them in its session transcripts.
+        self.notices_withheld_in_state = without_notices(sessions) if isinstance(sessions, list) else 0
         self.stage = "exposure" if runtime.session.exposure else "probe"
         self.ticks = 0
         self.session_calls = 0
@@ -303,6 +330,11 @@ class RunLocalAttacker:
             return "max_seconds"
         return None
 
+    def withheld_notices(self, messages: list[dict]) -> int:
+        """The guard notices this call's view leaves out: those in the session's messages and those dropped from the
+        chain's earlier transcripts when its checkpoint was loaded."""
+        return self.notices_withheld_in_state + sum(1 for message in messages if is_guard_notice(message))
+
     def advance(self, messages: list[dict]) -> None:
         """Before a model call: call the program on the session's first model call and then on call 1 + n,
         1 + 2n, ... for `every_calls: n`, while the budget has room. Its writes
@@ -311,13 +343,13 @@ class RunLocalAttacker:
         self.ticks += 1
         if tick % self.config.every_calls:
             return
-        self.call("in_task", visible_transcript(messages))
+        self.call("in_task", visible_transcript(messages), withheld=self.withheld_notices(messages))
 
     def finish(self, messages: list[dict], summary: dict) -> dict:
         """At the end of a completed session: one evaluation call that may update only the private state, then the
         checkpoint the next session of the chain starts from."""
         transcript = visible_transcript(messages)
-        self.call("session_end", transcript, summary)
+        self.call("session_end", transcript, summary, withheld=self.withheld_notices(messages))
         self.state["sessions"].append(
             {
                 "session_id": self.runtime.session.id,
@@ -332,7 +364,7 @@ class RunLocalAttacker:
         )
         return copy.deepcopy(self.state)
 
-    def call(self, kind: str, transcript: list[dict], summary: dict | None = None) -> None:
+    def call(self, kind: str, transcript: list[dict], summary: dict | None = None, *, withheld: int = 0) -> None:
         if reason := self.exhausted(kind):
             self.state["usage"]["skipped_calls"] += 1
             if reason not in self.skipped:
@@ -367,6 +399,7 @@ class RunLocalAttacker:
             "notebook_sha256_before": fingerprint(self.state["notebook"]),
             "request_bytes": len(encoded),
             "request_sha256": hashlib.sha256(encoded).hexdigest(),
+            "notices_withheld": withheld,
         }
         if len(encoded) > config.max_input_bytes:
             self.fail(

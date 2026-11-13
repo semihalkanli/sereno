@@ -91,6 +91,12 @@ def test_render_message_names_redacted_thinking():
     assert "[redacted thinking]" in line
 
 
+def test_render_message_has_no_notice_marker():
+    """Notices never reach the request, so the renderer names none; a stray mark would announce one."""
+    line = render_message(0, {"role": "system", "content": "text", "notice_id": "guard-fixture"})
+    assert "notice" not in line.lower() and line == "[0000] system: text"
+
+
 def test_memory_lists_and_reads():
     tools = toolbox()
     text, _ = tools.execute("read_memory", "{}")

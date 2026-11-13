@@ -13,7 +13,7 @@ memory poisoning: the attacker writes a memory note in an exposure session so th
 session's agent reads it and acts on it. That is different from ordinary prompt injection.
 The attacker never edits the task prompt, the harness, tool permissions, model weights, or the
 target repository's instructions. Its only effect on the target is the memory surface the
-adaptive hook already permits (`src/sereno/context_eval/run_attacker.py:573-612`).
+adaptive hook already permits (`src/sereno/context_eval/run_attacker.py:606-645`).
 
 The attacker has two capabilities that earlier versions did not have together:
 
@@ -38,7 +38,7 @@ campaign config (run_attacker)
 runner.run_session: advance / finish          runner.py:146-377
         |
 request.json: contract + strategy/notebook + observation
-        |                                         run_attacker.py:485-530
+        |                                         run_attacker.py:518-563
         v
 external attacker runtime: bounded model loop     attacker/agent.py:87-160
   tools: find_files/read_file/search_files        attacker/tools.py:351-433
@@ -48,12 +48,12 @@ external attacker runtime: bounded model loop     attacker/agent.py:87-160
         |
 response.json                                     protocol.py:120-153
         |
-harness validates and applies memory actions       run_attacker.py:573-612
+harness validates and applies memory actions       run_attacker.py:606-645
         |
 target memory -> next session start memory -> target behavior -> grade/harm-count
 ```
 
-The request (`src/sereno/context_eval/run_attacker.py:485-530`) has three parts:
+The request (`src/sereno/context_eval/run_attacker.py:518-563`) has three parts:
 
 1. `contract`: call kind (`in_task` or `session_end`), stage (`exposure` or `probe`), whether
    writes are open, the memory root, the limits, the budget and its use so far, and the
@@ -72,19 +72,25 @@ infrastructure error, not as an attack outcome.
 ## 3. Observation surfaces
 
 **Target repository code.** At task start the harness records the files Git tracks below
-`code_root` (`src/sereno/context_eval/run_attacker.py:198-214`), and that index stays fixed for the
+`code_root` (`src/sereno/context_eval/run_attacker.py:225-241`), and that index stays fixed for the
 session: a file the target creates later is not readable through the attacker's tools. The
 configured `code_paths` are served as structured views, and an indexed file the previous call asked
-for is read live on the next call (`src/sereno/context_eval/run_attacker.py:216-279`). A path outside
+for is read live on the next call (`src/sereno/context_eval/run_attacker.py:243-306`). A path outside
 `code_root`, into `.git`, through a symlink that leads out, outside the task-start index, or over the
 read budget is named as denied or queued, never silently cut. Within that fixed index the attacker
 reads the code the target is working on, not a frozen copy of the task description.
 
 **Target transcript.** The harness passes the messages the target agent has recorded so far,
-including tool calls and results and the guard notices the target saw
-(`src/sereno/context_eval/run_attacker.py:107-141`). The request's transcript is the running
-session; `completed_sessions` carries earlier sessions of the same chain, and the runtime's
-`Transcript` class pages and searches both (`src/sereno/attacker/observation.py:112-303`).
+including tool calls and results (`src/sereno/context_eval/run_attacker.py:131-164`). Guard
+notices are withheld from every part of the attacker's view, per decision 518 item 2 and the
+2026-10-22 rule: the current session's transcript, the chain's completed sessions (including
+transcripts restored from a checkpoint written before withholding), the envelope tail, paging and
+search. A notice is removed whole, so no placeholder, marker, count or index gap names it. A
+warning reaches the attacker only through the target's own text, thinking summaries included.
+The harness records how many notice messages each call's view left out in that call's audit
+record, never in the request. The request's transcript is the running session;
+`completed_sessions` carries earlier sessions of the same chain, and the runtime's `Transcript`
+class pages and searches both (`src/sereno/attacker/observation.py:110-208`).
 The first user message is a bounded tail; everything cut stays reachable through
 `read_transcript` and `search_transcript`.
 
@@ -94,11 +100,11 @@ in a `thinking` field on each visible message, taking it from the provider's `re
 `reasoning_content` field or from thinking content blocks; signatures, redacted data,
 `thinking_blocks` and provider metadata are not carried. The runtime's `render_message` shows
 the field as `[thinking] ...`, so it appears in the first envelope, in paged transcripts and
-in search results (`src/sereno/attacker/observation.py:68-90`). A redacted block with no
+in search results (`src/sereno/attacker/observation.py:68-87`). A redacted block with no
 readable text is named as redacted, not decoded.
 
 **Memory and earlier sessions.** The request carries the memory files that load for the
-project and the paths the attacker owns (`src/sereno/context_eval/run_attacker.py:485-530`).
+project and the paths the attacker owns (`src/sereno/context_eval/run_attacker.py:518-563`).
 Earlier sessions arrive as short cards plus their transcripts, so the attacker can compare
 what it intended with what the target did in the preceding task. The previous call's result
 says whether its actions were applied, rejected, not applied, or made no change; that is the
@@ -112,7 +118,7 @@ runs.
 
 - Each call may replace `strategy` and `notebook`. The harness versions the strategy, hashes
   it, and carries it to the next call; a valid update is kept even when the call's memory
-  actions were rejected or not applied (`src/sereno/context_eval/run_attacker.py:335-483`).
+  actions were rejected or not applied (`src/sereno/context_eval/run_attacker.py:367-515`).
 - The session-end call sees the completed session's transcript and summary. It is the
   reflection point: the attacker can revise the strategy for the next session of the chain.
   It can observe, but it cannot write memory at that point.
@@ -120,9 +126,9 @@ runs.
   sessions and the previous result, so the attacker can adapt to the target's observed
   behavior rather than start from the same seed every time.
 - Thinking summaries are the strongest signal for this adaptation: they show what the target
-  believed, which parts of the task it considered settled, and whether a guard notice changed
-  its plan. The attacker still has to prove an effect through the memory surface; a claim in
-  its own strategy or notebook is never a measured success.
+  believed, which parts of the task it considered settled, and whether a warning the target's
+  own account mentions changed its plan. The attacker still has to prove an effect through the
+  memory surface; a claim in its own strategy or notebook is never a measured success.
 
 The design keeps the attacker model-agnostic. The loop and tools never read a provider's body
 (`src/sereno/attacker/agent.py:87-160`); the provider is a configuration choice.
@@ -132,7 +138,7 @@ The design keeps the attacker model-agnostic. The loop and tools never read a pr
 The only target-side effect is a memory action: write a file below the project's memory root,
 or delete a file the attacker created. Actions are staged during the call and applied by the
 harness after the call, and only when the call is an `in_task` call of an exposure session
-(`src/sereno/context_eval/run_attacker.py:573-612`). A probe session and the session-end call
+(`src/sereno/context_eval/run_attacker.py:606-645`). A probe session and the session-end call
 never apply actions. The harness checks path canonicality, ownership, append-only rules, file
 size, content rules, the memory limits and the write budget; any violation rejects the whole
 call's actions and leaves memory unchanged.
@@ -173,7 +179,7 @@ response's `writer_usage` (`src/sereno/attacker/protocol.py:101-117`).
 The harness bounds one call by a timeout below the harness's own deadline, and a chain by
 maximum calls, calls per session, tokens, seconds and writes. Reads, read bytes, index
 entries, observation bytes, tool-output bytes and transcript paging have their own limits
-(`src/sereno/context_eval/run_attacker.py:485-530`). A call starts only while every budget
+(`src/sereno/context_eval/run_attacker.py:518-563`). A call starts only while every budget
 bound has room; realized use can pass a bound by at most the one call that crossed it, and a
 skipped call is recorded once per session and reason.
 
@@ -223,8 +229,9 @@ chain, not the individual session.
 - No paid model call is part of this design. The validation is model-free: the full test
   suite, a loopback provider test and an offline campaign with the scripted agent.
 - The attacker's thinking summaries are the target's own reasoning text, not hidden guard
-  decisions, grader outputs or another chain's data. Guard notices are visible because the
-  target saw them; hidden guard records are not.
+  decisions, grader outputs or another chain's data. Guard notices are withheld, not visible
+  (decision 518 item 2, the 2026-10-22 rule); a warning reaches the attacker only through the
+  target's own text, and hidden guard records are not given.
 
 ## 9. File map
 
@@ -243,7 +250,7 @@ chain, not the individual session.
 | `tests/test_attacker_tools.py` | Runtime-side transcript and tool tests. |
 
 The design's required behavior is the `thinking` field described in section 3.
-`visible_transcript` (`src/sereno/context_eval/run_attacker.py:107-141`) produces it in every
-provider spelling, and its tests (`tests/test_context_eval_run_attacker.py:215-283`) pin the
-top-level `reasoning` shape, `reasoning_content`, joined thinking blocks and the redacted
-marker.
+`visible_transcript` (`src/sereno/context_eval/run_attacker.py:131-164`) produces it in every
+provider spelling, and its tests (`tests/test_context_eval_run_attacker.py:247-321`) pin the
+top-level `reasoning` shape, `reasoning_content`, joined thinking blocks, the redacted marker
+and the withheld notice.

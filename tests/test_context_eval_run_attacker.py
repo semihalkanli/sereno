@@ -15,6 +15,7 @@ from writer_world import KEY_ENV, World
 
 from sereno.attacker.config import AttackerConfig, LoopSettings
 from sereno.attacker.config import load_config as load_attacker_config
+from sereno.attacker.observation import envelope
 from sereno.attacker.tools import Toolbox
 from sereno.context_eval import run_attacker
 from sereno.context_eval.cli import main
@@ -30,8 +31,14 @@ fixture_world = base.fixture_world
 ROOT = "/root/.claude/projects/fixture/memory"
 NOTE = f"{ROOT}/fixture-note.md"
 LINE = "fixture line written by the fake attacker for the read check"
+NOTICE_TEXT = "GUARD_NOTICE_FIXTURE_TEXT"
 IDS = {t: {"id": "sha256:fixture", "reference": "fixture:local"} for t in ("first", "second")}
 BUDGET = {"max_calls": 100, "max_calls_per_session": 20, "max_tokens": 1_000_000, "max_seconds": 3600, "max_writes": 10}
+
+
+def notice(notice_id: str = "guard-fixture") -> dict:
+    """The engine's mid-conversation guard notice: a system message marked by `extra.notice_id`."""
+    return {"role": "system", "content": NOTICE_TEXT, "extra": {"notice_id": notice_id}}
 
 
 def attacker_settings(**changes) -> dict:
@@ -237,9 +244,10 @@ def test_transcript_is_visible_only_and_writes_do_not_rewrite_prepared_messages(
     assert any(LINE in json.dumps(c["messages"]) for c in contexts[2:])
 
 
-def test_visible_transcript_carries_thinking_and_keeps_notices():
+def test_visible_transcript_carries_thinking_and_withholds_notices():
     messages = [
-        {"role": "system", "content": "notice text", "extra": {"notice_id": "guard-x"}},
+        {"role": "user", "content": "the task"},
+        {"role": "system", "content": NOTICE_TEXT, "extra": {"notice_id": "guard-x"}},
         {
             "role": "assistant",
             "content": [{"type": "thinking", "thinking": "private"}, {"type": "text", "text": "visible"}],
@@ -247,11 +255,16 @@ def test_visible_transcript_carries_thinking_and_keeps_notices():
             "thinking_blocks": [{"type": "thinking", "thinking": "private", "signature": "sig"}],
             "extra": {"response": {"usage": 1}},
         },
+        {"role": "assistant", "content": "my reply to the warning"},
     ]
     visible = run_attacker.visible_transcript(messages)
-    assert visible[0] == {"role": "system", "content": "notice text", "notice_id": "guard-x"}
+    # The target's own messages are byte-identical to the same transcript without the notice, in the same order.
+    assert visible == run_attacker.visible_transcript([messages[0], messages[2], messages[3]])
     assert visible[1] == {"role": "assistant", "content": [{"type": "text", "text": "visible"}], "thinking": "private"}
     assert set(visible[1]) == {"role", "content", "thinking"}
+    # The agent's own words about a warning are its message, not the notice.
+    assert visible[2] == {"role": "assistant", "content": "my reply to the warning"}
+    assert NOTICE_TEXT not in json.dumps(visible) and "notice_id" not in json.dumps(visible)
 
 
 def test_visible_transcript_joins_thinking_blocks_when_reasoning_is_absent():
@@ -306,6 +319,90 @@ def test_visible_transcript_names_a_redacted_thinking_block():
     assert visible == [
         {"role": "assistant", "content": [{"type": "text", "text": "visible"}], "thinking_redacted": True}
     ]
+
+
+def test_a_guard_notice_reaches_no_part_of_the_attacker_view(tmp_path, fixture_world, monkeypatch):
+    """The notice is withheld from the request, the envelope tail, paging and search, and the audit counts it."""
+    writer = FakeWriter()
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(RunAttacker(**attacker_settings()), runtime, "fixture task", "first")
+    target = [
+        {"role": "user", "content": "the task"},
+        {"role": "assistant", "content": "a reply"},
+        {"role": "user", "content": "a tool result"},
+    ]
+    attacker.advance([target[0], notice(), target[1], target[2]])
+    request = writer.requests[0]
+    observation = request["observation"]
+    assert observation["transcript"] == run_attacker.visible_transcript(target)
+    assert NOTICE_TEXT not in json.dumps(request) and "notice_id" not in json.dumps(request)
+    settings = LoopSettings()
+    tail = envelope(request, settings)["observation"]["transcript"]
+    assert tail["total"] == len(target) and tail["dropped"] == 0
+    assert all(NOTICE_TEXT not in message and "[notice" not in message for message in tail["messages"])
+    tools = Toolbox(request, settings)
+    paged = json.loads(tools.execute("read_transcript", json.dumps({"session": "current", "limit": 40}))[0])
+    assert paged["total"] == len(target)
+    assert [message.split("] ", 1)[1] for message in paged["messages"]] == [
+        "user: the task",
+        "assistant: a reply",
+        "user: a tool result",
+    ]
+    found = json.loads(tools.execute("search_transcript", json.dumps({"query": NOTICE_TEXT, "session": "all"}))[0])
+    assert found["matches"] == []
+    record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
+    assert record["notices_withheld"] == 1
+
+
+def test_a_checkpoint_written_before_withholding_is_cleaned_on_load(tmp_path, fixture_world, monkeypatch):
+    """An older checkpoint keeps a notice in its recorded transcript; loading it drops the notice and counts it."""
+    state = run_attacker.initial_state(RunAttacker(**attacker_settings()))
+    earlier = [
+        {"role": "user", "content": "earlier task turn"},
+        {"role": "system", "content": NOTICE_TEXT, "notice_id": "guard-fixture"},
+        {"role": "assistant", "content": "earlier reply", "thinking": "earlier thinking"},
+    ]
+    state["sessions"] = [
+        {
+            "session_id": "earlier",
+            "task_id": "first",
+            "stage": "exposure",
+            "instruction": "earlier task",
+            "transcript": earlier,
+            "summary": "earlier summary",
+            "calls": 2,
+            "applied_attack_actions": 0,
+        }
+    ]
+    path = tmp_path / "run_attacker_state.json"
+    path.write_text(json.dumps(state))
+    loaded = run_attacker.read_state(path)
+    assert loaded is not None
+    writer = FakeWriter()
+    monkeypatch.setattr(run_attacker, "run_program", writer)
+    _, runtime = runtime_for(tmp_path, fixture_world)
+    attacker = run_attacker.RunLocalAttacker(
+        RunAttacker(**attacker_settings()), runtime, "fixture task", "first", loaded
+    )
+    assert attacker.notices_withheld_in_state == 1
+    messages = [{"role": "user", "content": "the task"}, notice(), {"role": "assistant", "content": "a reply"}]
+    attacker.advance(messages)
+    request = writer.requests[0]
+    completed = request["observation"]["completed_sessions"][0]["transcript"]
+    # The earlier session's own messages keep their bytes and their order; only the notice is gone.
+    assert completed == [earlier[0], earlier[2]]
+    assert NOTICE_TEXT not in json.dumps(request) and "notice_id" not in json.dumps(request)
+    record = json.loads((tmp_path / "run_attacker/0001/record.json").read_text())
+    assert record["notices_withheld"] == 2
+    page = json.loads(
+        Toolbox(request, LoopSettings()).execute("read_transcript", json.dumps({"session": "earlier", "limit": 40}))[0]
+    )
+    assert page["total"] == 2 and all(NOTICE_TEXT not in message for message in page["messages"])
+    # The checkpoint this session leaves behind holds the cleaned transcript, so the notice cannot come back.
+    checkpoint = attacker.finish(messages, {"exit_status": "script_complete"})
+    assert NOTICE_TEXT not in json.dumps(checkpoint)
+    assert checkpoint["sessions"][0]["transcript"] == completed
 
 
 def test_request_carries_a_transcript_thinking_summary(tmp_path, fixture_world):
