@@ -13,7 +13,7 @@ from statistics import fmean, median
 
 from pydantic import ValidationError
 
-from sereno.context_eval.config import fingerprint
+from sereno.context_eval.config import config_identity, fingerprint
 from sereno.context_eval.engine import (
     LINES,
     MEMORY_READ,
@@ -1743,10 +1743,11 @@ POOL_FREE = {
 
 
 def pooled_config(manifest: dict) -> dict:
-    """The part of a campaign's frozen config that pooled campaigns must share. A field that names a file counts by the
-    manifest's record of the file's content, not by its path: the model config by its text, the memory instructions by
-    their sha256."""
-    config = {key: value for key, value in manifest["config"].items() if key not in POOL_FREE}
+    """The part of a campaign's frozen config that pooled campaigns must share, in the form `config_identity` defines
+    so a campaign written before a field existed pools with one whose dump carries it. A field that names a file counts
+    by the manifest's record of the file's content, not by its path: the model config by its text, the memory
+    instructions by their sha256."""
+    config = config_identity({key: value for key, value in manifest["config"].items() if key not in POOL_FREE})
     model = manifest.get("model_config")
     config["model_config_file"] = None if model is None else fingerprint(model)
     config["memory"] = (config.get("memory") or {}) | {"instructions_file": manifest.get("memory_instructions_sha256")}

@@ -25,7 +25,6 @@ from sereno.context_eval.memory import instructions
 from sereno.context_eval.run_attacker import (
     STATE_FILE,
     campaign_identity,
-    check_command_identity,
     read_state,
     writer_manifest,
 )
@@ -156,11 +155,25 @@ def read_json(path: Path):
         return None
 
 
-def events_of(directory: Path) -> list[dict]:
+def events_of(directory: Path) -> tuple[list[dict], int]:
+    """A session's events and how many of its lines could not be read. Only the last non-empty line may be torn (a
+    session interrupted while it was appended), and it is counted rather than read; any other unreadable line is a
+    broken log and fails loudly."""
     path = directory / "events.jsonl"
     if not path.is_file():
-        return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        return [], 0
+    lines = path.read_text().splitlines()
+    numbered = [(index, line) for index, line in enumerate(lines) if line.strip()]
+    last = numbered[-1][0] if numbered else None
+    events, torn = [], 0
+    for index, line in numbered:
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            if index != last:
+                raise
+            torn = 1
+    return events, torn
 
 
 def incoming(messages: list[dict]) -> str:
@@ -193,15 +206,25 @@ def added_lines(before: str | None, after: str | None, min_chars: int) -> list[s
 
 
 def realized_usage(arm_dirs: list[Path]) -> dict:
+    """What the attacker's launched calls spent, across active and superseded attempts. `cost_usd` is the whole
+    reported charge; `allowance_usd` is the part a subscription allowance covered and `cash_usd` the rest, so an
+    allowance never reads as cash. `declined_calls` counts calls whose terminal answer was a decline;
+    `declined_applied_calls` and `declined_unapplied_calls` split that count by whether the declined answer's staged
+    actions were applied (the earlier steps of the call may have staged them before the decline)."""
     totals = {
         "calls": 0,
         "tokens": 0,
         "seconds": 0.0,
         "writes": 0,
         "cost_usd": 0.0,
+        "allowance_usd": 0.0,
+        "cash_usd": 0.0,
+        "allowance_calls": 0,
         "unreported_usage_calls": 0,
         "unreported_completions": 0,
         "declined_calls": 0,
+        "declined_applied_calls": 0,
+        "declined_unapplied_calls": 0,
         "declined_attempts": 0,
     }
     paths = {path.resolve() for arm in arm_dirs for path in arm.glob("sessions/*/run_attacker/*/record.json")}
@@ -214,17 +237,29 @@ def realized_usage(arm_dirs: list[Path]) -> dict:
         usage = record.get("usage") or {}
         tokens = usage.get("tokens")
         missing = usage.get("unreported_completions", 0)
+        cost = usage.get("cost_usd") or 0.0
+        allowance = usage.get("allowance_usd")
+        if not isinstance(allowance, int | float) or isinstance(allowance, bool):
+            # A record written before the split carried only the charge; its billing marker still says whether all of
+            # it was an allowance.
+            allowance = cost if usage.get("billing") == "allowance" else 0.0
         totals["calls"] += 1
         totals["tokens"] += tokens or 0
         totals["seconds"] += record.get("seconds") or 0.0
         totals["writes"] += record.get("status") == "applied"
-        totals["cost_usd"] += usage.get("cost_usd") or 0.0
+        totals["cost_usd"] += cost
+        totals["allowance_usd"] += allowance
+        totals["cash_usd"] += cost - allowance
+        totals["allowance_calls"] += allowance > 0 or usage.get("billing") == "allowance"
         totals["unreported_usage_calls"] += tokens is None or missing > 0
         totals["unreported_completions"] += missing
-        totals["declined_calls"] += bool(record.get("declined"))
+        declined = bool(record.get("declined"))
+        totals["declined_calls"] += declined
+        totals["declined_applied_calls"] += declined and record.get("status") == "applied"
+        totals["declined_unapplied_calls"] += declined and record.get("status") != "applied"
         totals["declined_attempts"] += record.get("declined_attempts", 0)
-    totals["seconds"] = round(totals["seconds"], 3)
-    totals["cost_usd"] = round(totals["cost_usd"], 6)
+    for key in ("seconds", "cost_usd", "allowance_usd", "cash_usd"):
+        totals[key] = round(totals[key], 6 if key != "seconds" else 3)
     return totals
 
 
@@ -246,17 +281,26 @@ def clean_sessions(campaign: Path) -> list[Path]:
 
 
 def inactivity_counts(arm_dirs: list[Path]) -> dict[str, int]:
-    """Observed inactivity across active and superseded attempts, excluding copied sessions."""
+    """Observed inactivity across active and superseded attempts, excluding copied sessions. Beside
+    `sessions_without_applied_actions` (every attempt whose recorded applied count is exactly zero, probe sessions and
+    infrastructure-error sessions included) two narrower counts are reported: the exposure attempts, where attack
+    writes are open, with nothing applied, and the attempts that ended on an infrastructure error."""
     counts = {
         "no_action_calls": 0,
         "plain_text_calls": 0,
         "unknown_ending_calls": 0,
         "sessions_without_applied_actions": 0,
+        "sessions_writes_open_without_applied_actions": 0,
+        "sessions_infrastructure_error": 0,
     }
     for session in attempt_sessions(arm_dirs):
         result = read_json(session / "result.json") or {}
         applied = result.get("applied_attack_actions")
         counts["sessions_without_applied_actions"] += type(applied) is int and applied == 0
+        counts["sessions_writes_open_without_applied_actions"] += (
+            bool(result.get("exposure_phase")) and type(applied) is int and applied == 0
+        )
+        counts["sessions_infrastructure_error"] += bool(result.get("infrastructure_error"))
         for path in sorted(session.glob("run_attacker/*/record.json")):
             record = read_json(path) or {}
             actions = record.get("actions")
@@ -285,7 +329,7 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
         calls = [record for record in records if "program" in record]
         state = read_state(folder / STATE_FILE)
         last_state = state or last_state
-        events = events_of(folder)
+        events, torn_events = events_of(folder)
         contexts = sent_contexts(events) if events else []
         steps = [event["step"] for event in events if event["kind"] == "context_sent"]
         texts[folder.name] = {
@@ -307,6 +351,7 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
                 "calls": dict(Counter(record["kind"] for record in calls)),
                 "results": dict(Counter(record["status"] for record in calls)),
                 "incomplete_calls": sum(record.get("status") == "incomplete" for record in records),
+                "torn_event_lines": torn_events,
                 "applied_attack_actions": result.get("applied_attack_actions"),
                 "strategy_version_end": state["strategy"]["version"] if state else None,
             }
@@ -355,9 +400,17 @@ def chain_summary(arm_dir: Path, budget: dict, min_chars: int, *, attempts: tupl
         "usage": usage,
         "realized_usage": realized,
         "realized_cost_usd": realized["cost_usd"],
+        "realized_allowance_usd": realized["allowance_usd"],
+        "realized_cash_usd": realized["cash_usd"],
+        "allowance_calls": realized["allowance_calls"],
         "declined_calls": realized["declined_calls"],
+        "declined_applied_calls": realized["declined_applied_calls"],
+        "declined_unapplied_calls": realized["declined_unapplied_calls"],
         "declined_attempts": realized["declined_attempts"],
         "infrastructure_errors": infrastructure,
+        # A log interrupted mid-line is readable up to its last complete event; the count says how many sessions lost
+        # one, so a summary never hides that its input was cut short.
+        "torn_event_lines": sum(session["torn_event_lines"] for session in sessions),
         **inactivity_counts([arm_dir, *attempts]),
         "budget": budget,
         "writes": writes,
@@ -388,7 +441,8 @@ def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = Non
     infrastructure = sum(chain["infrastructure_errors"] for chain in chains.values())
     realized = {key: sum(chain["realized_usage"][key] for chain in chains.values()) for key in realized_usage([])}
     realized["seconds"] = round(realized["seconds"], 3)
-    realized["cost_usd"] = round(realized["cost_usd"], 6)
+    for key in ("cost_usd", "allowance_usd", "cash_usd"):
+        realized[key] = round(realized[key], 6)
     arm_names = {"clean", "attack_carry"}
     arm_names |= {arm.name for arm in (campaign / "cases").glob("*/arms/*")}
     arm_names |= {arm.name for arm in (campaign / "superseded").glob("*/cases/*/arms/*")}
@@ -400,7 +454,10 @@ def campaign_summary(campaign: Path, min_chars: int, manifest: dict | None = Non
             *(campaign / "superseded").glob(f"*/cases/*/arms/{name}"),
         ]
         usage = realized_usage(arms)
-        declines_by_arm[name] = {key: usage[key] for key in ("declined_calls", "declined_attempts")}
+        declines_by_arm[name] = {
+            key: usage[key]
+            for key in ("declined_calls", "declined_applied_calls", "declined_unapplied_calls", "declined_attempts")
+        }
         inactivity_by_arm[name] = inactivity_counts(arms)
     return {
         "campaign": str(campaign.resolve()),
@@ -435,8 +492,12 @@ def summarize_pair(pairing: dict, defended: Path, undefended: Path, *, min_line_
             raise ValueError(f"the {side} campaign does not run the paired config")
         if manifest.get("run_attacker") != pairing.get("run_attacker"):
             raise ValueError(f"the {side} campaign's attacker program or settings differ from the pairing's")
-        check_command_identity((manifest.get("run_attacker") or {}).get("command", []))
         manifests[side] = manifest
+    # A summary reads what the two campaigns recorded and compares those records with each other; it never recomputes
+    # a hash from today's code or configuration, which would make a finished campaign unreadable after any later
+    # change to the attacker. The current-identity check stays where a run starts or resumes.
+    if manifests["defended"].get("run_attacker") != manifests["undefended"].get("run_attacker"):
+        raise ValueError("the two campaigns recorded different attacker programs or settings")
     summaries = {side: campaign_summary(path, min_line_chars, manifests[side]) for side, path in sides.items()}
     return {
         "schema_version": SCHEMA_VERSION,

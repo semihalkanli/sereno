@@ -468,13 +468,35 @@ def test_test_facts_load_from_their_file_and_rule_4_needs_them(tmp_path, fixture
         load_config(path)
 
 
-def test_the_judge_stays_on_openrouter_while_the_deepseek_paths_move_to_opencode():
+def test_the_judge_stays_on_openrouter_while_the_deepseek_paths_move_to_opencode(monkeypatch):
     """The writer and the run-local attacker gained the opencode Go API; the guard's judge keeps its OpenRouter
-    decisions endpoint, its pinned build and its OpenRouter credential."""
+    decisions endpoint, its pinned build and its OpenRouter credential, and reads neither the opencode key nor a
+    provider base-URL override."""
     assert guard_judge.API == "https://openrouter.ai/api/alpha/decisions"
     assert (guard_judge.BUILD, guard_judge.PROVIDER) == ("typesafe/jev-1.14-20261014", "TypeSafe")
     source = Path(guard_judge.__file__).read_text()
     assert "opencode" not in source.lower() and "OPENCODE_API_KEY" not in source
+    # The client's credential is the OpenRouter one, never the opencode key that now serves the other two paths.
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("OPENCODE_API_KEY", "fixture-go-key")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://opencode.ai/inference/go/anthropic")
+    with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
+        guard_judge.Jev()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "fixture-openrouter-key")
+    seen = []
+
+    def reply(request):
+        seen.append(str(request.url))
+        return httpx.Response(200, json={"answers": {}})
+
+    jev = guard_judge.Jev(transport=httpx.MockTransport(reply))
+    try:
+        assert jev.client.headers["Authorization"] == "Bearer fixture-openrouter-key"
+        jev.ask(guard_judge.for_user_request("words", WISH))
+    finally:
+        jev.client.close()
+    # The base-URL override that points the Anthropic SDK at the Go host does not move the judge.
+    assert seen == [guard_judge.API]
 
 
 def test_the_judge_client_pins_the_provider_and_retries_a_busy_server(monkeypatch):

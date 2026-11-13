@@ -73,11 +73,20 @@ def test_empty_responses_and_loop_endings_stay_separate_from_declines(tmp_path):
         "sessions_without_applied_actions": 1,
     }
     assert {key: chain[key] for key in expected} == expected
-    assert summary["inactivity_by_arm"] == {"clean": EMPTY, "attack_carry": expected}
+    assert summary["inactivity_by_arm"] == {
+        "clean": EMPTY | {"sessions_writes_open_without_applied_actions": 0, "sessions_infrastructure_error": 0},
+        "attack_carry": expected
+        | {"sessions_writes_open_without_applied_actions": 0, "sessions_infrastructure_error": 0},
+    }
     assert [row["applied_attack_actions"] for row in chain["sessions"]] == [0, 2]
     assert chain["declined_calls"] == 1
     assert chain["declined_attempts"] == 3
-    assert summary["declines_by_arm"]["attack_carry"] == {"declined_calls": 1, "declined_attempts": 3}
+    assert summary["declines_by_arm"]["attack_carry"] == {
+        "declined_calls": 1,
+        "declined_applied_calls": 0,
+        "declined_unapplied_calls": 1,
+        "declined_attempts": 3,
+    }
     assert chain["realized_usage"]["calls"] == 8
     assert chain["realized_usage"]["writes"] == 1
 
@@ -95,19 +104,28 @@ def test_inactivity_totals_include_attempts_and_chains_without_counting_copies(t
     session(tmp_path / "clean" / "first", "001-clean")
     summary = pairing.campaign_summary(tmp_path, 20)
     assert summary["inactivity_by_arm"] == {
-        "clean": EMPTY,
-        "attack_reset": EMPTY,
+        "clean": EMPTY | {"sessions_writes_open_without_applied_actions": 0, "sessions_infrastructure_error": 0},
+        "attack_reset": EMPTY | {"sessions_writes_open_without_applied_actions": 0, "sessions_infrastructure_error": 0},
         "attack_carry": {
             "no_action_calls": 6,
             "plain_text_calls": 2,
             "unknown_ending_calls": 2,
             "sessions_without_applied_actions": 3,
+            # These fixture attempts carry no exposure phase, so none of them had attack writes open, and none ended
+            # on an infrastructure error: the two narrower counts stay zero while the old one keeps its value.
+            "sessions_writes_open_without_applied_actions": 0,
+            "sessions_infrastructure_error": 0,
         },
     }
     assert summary["chains"]["first"]["no_action_calls"] == 5
     assert summary["chains"]["first"]["sessions_without_applied_actions"] == 2
     assert summary["chains"]["second"]["no_action_calls"] == 1
-    assert summary["declines_by_arm"]["attack_reset"] == {"declined_calls": 0, "declined_attempts": 0}
+    assert summary["declines_by_arm"]["attack_reset"] == {
+        "declined_calls": 0,
+        "declined_applied_calls": 0,
+        "declined_unapplied_calls": 0,
+        "declined_attempts": 0,
+    }
 
 
 def test_missing_session_application_count_is_not_assumed_zero(tmp_path):
@@ -126,7 +144,7 @@ def test_missing_session_application_count_is_not_assumed_zero(tmp_path):
     assert [row["applied_attack_actions"] for row in chain["sessions"]] == [None, None]
 
 
-def test_pair_summary_keeps_campaign_and_arm_inactivity_totals_independent(tmp_path, monkeypatch):
+def test_pair_summary_keeps_campaign_and_arm_inactivity_totals_independent(tmp_path):
     defended, undefended = tmp_path / "defended", tmp_path / "undefended"
     populated_campaign(defended)
     arm = undefended / "cases" / "first" / "arms" / "attack_carry"
@@ -134,7 +152,6 @@ def test_pair_summary_keeps_campaign_and_arm_inactivity_totals_independent(tmp_p
     manifest = {"config_sha256": "fixture", "run_attacker": {"command": ["unused"]}, "paired": True}
     for root in (defended, undefended):
         write_json(root / "manifest.json", manifest)
-    monkeypatch.setattr(pairing, "check_command_identity", lambda _: None)
     report = pairing.summarize_pair(
         {
             "campaigns": {side: {"config_sha256": "fixture"} for side in ("defended", "undefended")},
@@ -149,6 +166,12 @@ def test_pair_summary_keeps_campaign_and_arm_inactivity_totals_independent(tmp_p
     left, right = (report["campaigns"][side] for side in ("defended", "undefended"))
     assert left["inactivity_by_arm"]["attack_carry"]["no_action_calls"] == 4
     assert right["inactivity_by_arm"]["attack_carry"]["no_action_calls"] == 1
-    assert left["inactivity_by_arm"]["clean"] == right["inactivity_by_arm"]["clean"] == EMPTY
+    empty = EMPTY | {"sessions_writes_open_without_applied_actions": 0, "sessions_infrastructure_error": 0}
+    assert left["inactivity_by_arm"]["clean"] == right["inactivity_by_arm"]["clean"] == empty
     assert right["inactivity_by_arm"]["attack_carry"]["plain_text_calls"] == 1
-    assert right["declines_by_arm"]["attack_carry"] == {"declined_calls": 0, "declined_attempts": 0}
+    assert right["declines_by_arm"]["attack_carry"] == {
+        "declined_calls": 0,
+        "declined_applied_calls": 0,
+        "declined_unapplied_calls": 0,
+        "declined_attempts": 0,
+    }

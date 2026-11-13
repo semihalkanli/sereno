@@ -569,6 +569,18 @@ def test_summarize_pools_campaigns_with_targets_as_clusters(tmp_path):
         summarize([first, tmp_path / "copy" / "chain-a"], tmp_path / "again", default_registry())
 
 
+def test_pooled_config_reads_an_attacker_entry_the_way_config_identity_does():
+    """A manifest written before a field existed (an attacker entry without `env`) pools with one whose dump carries
+    `env: []`: `pooled_config` applies the identity the manifest, resume and harm-count use."""
+    from sereno.context_eval.metrics import pooled_config
+
+    current = {"targets": [], "run_attacker": {"command": ["/bin/true"], "env": []}}
+    older = {"targets": [], "run_attacker": {"command": ["/bin/true"]}}
+    pooled = pooled_config({"config": current})
+    assert pooled == pooled_config({"config": older})
+    assert "env" not in pooled["run_attacker"] and pooled["run_attacker"]["command"] == ["/bin/true"]
+
+
 def test_cli_report_and_summarize_options(tmp_path, capsys):
     from sereno.context_eval.cli import main
 
