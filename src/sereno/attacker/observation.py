@@ -133,7 +133,7 @@ class Transcript:
         sessions = [
             {
                 "ref": str(position),
-                "id": session.get("id"),
+                "id": session.get("session_id", session.get("id")),
                 "task_id": session.get("task_id"),
                 "stage": session.get("stage"),
                 "instruction": bounded_text(str(session.get("instruction") or ""), 300),
@@ -283,7 +283,7 @@ def session_summaries(sessions: object, cap: int) -> dict:
         cards.append(
             {
                 "ref": str(position),
-                "id": session.get("id"),
+                "id": session.get("session_id", session.get("id")),
                 "task_id": session.get("task_id"),
                 "stage": session.get("stage"),
                 "instruction": bounded_text(str(session.get("instruction") or ""), 600),

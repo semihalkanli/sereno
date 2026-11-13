@@ -46,6 +46,15 @@ def test_transcript_pages_and_searches():
     assert json.loads(text)["total"] == 2
 
 
+def test_earlier_sessions_are_named_by_the_key_the_harness_writes():
+    request = make_request()
+    tools = Toolbox(request, LoopSettings())
+    listed = json.loads(tools.execute("list_sessions", "{}")[0])
+    assert [session["id"] for session in listed["sessions"]] == ["earlier"]
+    cards = envelope(request, LoopSettings())["observation"]["completed_sessions"]["sessions"]
+    assert [card["id"] for card in cards] == ["earlier"]
+
+
 def test_render_message_shows_thinking_summary():
     line = render_message(0, {"role": "assistant", "content": "visible", "thinking": "summary text"})
     assert "[thinking] summary text" in line and "visible" in line

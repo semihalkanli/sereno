@@ -110,7 +110,7 @@ def make_request(**contract) -> dict:
             ],
             "completed_sessions": [
                 {
-                    "id": "earlier",
+                    "session_id": "earlier",
                     "task_id": "previous",
                     "stage": "exposure",
                     "instruction": "previous task",
